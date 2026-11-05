@@ -2,7 +2,9 @@
 
 ## Dónde estamos
 
-**Rama `chore/deuda-tecnica` (sin push, sin desplegar):** tres iteraciones de deuda técnica integradas (`docs/deuda.md`). Cerradas D1–D29, D31–D50. **Abiertas**: D30 (verificar en Firebase real tras desplegar) y D51–D54 (hallazgos de la revisión GPT de la iteración 3: reabrir una invitación aceptada, `add` y `dispose` de la cola de subidas frente a Web Locks, dos aserciones flojas). Por decisión de Juan (2026-11-05) se paró de iterar aquí. Gates finales: lint, typecheck, build, `pnpm test` con emulador 544/544, `pnpm test:rules` 129/129, `pnpm test:e2e` 12/12.
+**Rama `chore/deuda-tecnica` (sin push, sin desplegar):** tres iteraciones de deuda técnica más una vuelta final integradas (`docs/deuda.md`). Cerradas D1–D29 y D31–D54. **Abierta solo D30**: verificar en Firebase y Vercel reales al mezclar a producción. Gates finales: lint, typecheck, build, `pnpm test` con emulador 547/547, `pnpm test:rules` 133/133, `pnpm test:e2e` 12/12 (dos corridas seguidas).
+
+Vuelta final (D51–D54): reabrir una invitación ya aceptada entra sin reescribir (`accept` lee antes el proyecto); la cola de subidas respeta el bloqueo perdido en `add` y no adquiere bloqueos tras `dispose`. Ese cierre es por generación (commit c2ea144): lo que empezó antes de `dispose` se aborta, lo nuevo funciona, porque StrictMode desmonta y vuelve a montar el efecto sobre la misma cola (sin eso, en desarrollo ninguna imagen se subía). Pruebas más estrictas en `SharePanel.test.tsx` y en el e2e de imagen en subida (compuerta sobre `Write/channel` con `/files/`; con otra versión del SDK hay que revisar ese patrón; vigilar un fallo aislado visto una vez: la invitada recibió la referencia con la subida retenida).
 
 Lo más relevante de la iteración 3: el guardado reintenta la transacción cuando su commit pierde la carrera contra otro cliente (Firestore evalúa las reglas antes que la precondición y devuelve `permission-denied`; D49, se perdían trazos al editar a la vez); la nota entrega su handle solo tras pintar `initialData` (D48); `joins` ligado a `members` en el mismo commit (D44); el autor de un archivo lo borra mientras pueda editar (D46, D50); la carga troceada reintenta si otro cliente la reduce a mitad (D45); el dueño republica el espejo RTDB al cambiar `members`/`aclRev` (D47); cola de subidas en `application/` con bloqueo Web Locks por `fileId` (D37, D38); pruebas de componentes y e2e de imágenes (D39, D42); emulador propio por ejecución para `src/server` (D41).
 
@@ -12,7 +14,7 @@ Lo más relevante de la iteración 3: el guardado reintenta la transacción cuan
 
 **Qué hace la app hoy:** notas (Excalidraw) y diagramas (React Flow) con autosave, imágenes en Firestore sin Storage, enlaces públicos de solo lectura, invitaciones (editor/viewer) con sincronización en vivo y fusión por elemento, **presencia y cursores en Realtime Database**, contenido de hasta **8 MiB** (troceado a partir de 900 000 bytes), lista de permitidos por **correo verificado**, y un **servidor MCP** (`/api/mcp`, `docs/mcp.md`) que opera como la propia persona bajo las reglas de Firestore.
 
-Siguen: D30 y D51–D54, y el despliegue (pendiente de Juan: «Para producción»).
+Siguen: D30 al mezclar a producción, y el despliegue (pendiente de Juan: «Para producción»).
 
 ## Para producción (lo hace Juan, con la cuenta correcta)
 
