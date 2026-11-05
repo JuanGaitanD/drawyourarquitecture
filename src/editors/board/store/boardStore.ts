@@ -253,7 +253,19 @@ export function createBoardStore(): BoardStore {
             const edges = s.edges.filter((e) => !e.selected && !gone.has(e.source) && !gone.has(e.target));
             return nodes.length === s.nodes.length && edges.length === s.edges.length ? s : { nodes, edges };
           }),
-        setTool: (tool) => set({ tool, connectFrom: null }),
+        setTool: (tool) =>
+          set((s) => {
+            // El conector por clic empieza sin selección: el panel de estilo taparía el aviso y los clics ya no seleccionan.
+            const clear = tool === 'connector' && (s.nodes.some((n) => n.selected) || s.edges.some((e) => e.selected));
+            return clear
+              ? {
+                  tool,
+                  connectFrom: null,
+                  nodes: s.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
+                  edges: s.edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+                }
+              : { tool, connectFrom: null };
+          }),
         setConnectFrom: (connectFrom) => set({ connectFrom }),
         setEditingId(editingId) {
           set({ editingId });
