@@ -2,7 +2,7 @@ import type { Firestore } from 'firebase-admin/firestore';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { decode } from '../domain/codec';
 import { validateBoardContent } from '../editors/board/model/validate';
-import { getAdminDb } from './admin';
+import { getAdminAuth, getAdminDb } from './admin';
 import { ToolError, authenticate } from './authz';
 import { decodeNote, noteText } from './note';
 import { EMULATOR, OWNER, loadRules, seedProject, seedToken, uniq, userCtx } from './testkit';
@@ -89,7 +89,9 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
       expect(projects.find((p) => p.id === own)?.role).toBe('owner');
       expect(projects.some((p) => p.id === foreign)).toBe(false);
 
-      const notes = (await listProjects(await as(uid), { type: 'note' })).data as { projects: { id: string }[] };
+      const notes = (await listProjects(await as(uid), { type: 'note' })).data as {
+        projects: { id: string }[];
+      };
       expect(notes.projects.map((p) => p.id)).toEqual([own]);
     });
   });
@@ -141,13 +143,31 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
 
     it('create_* exigen ser el dueño o estar permitido (403 si no); límites de tamaño', async () => {
       expect(await status(createNote(await as(STRANGER), { title: 'x', text: 'y' }))).toBe(403);
-      expect(await status(createBoard(await as(STRANGER), { title: 'x', mermaid: 'flowchart LR\nA-->B' }))).toBe(
-        403,
-      );
+      expect(
+        await status(createBoard(await as(STRANGER), { title: 'x', mermaid: 'flowchart LR\nA-->B' })),
+      ).toBe(403);
       expect(await status(createNote(await as(OWNER), { title: 'x', text: 'y' }))).toBe(0);
       expect(await status(createNote(await as(OWNER), { title: 'x'.repeat(121), text: 'y' }))).toBe(400);
       expect(await status(createNote(await as(OWNER), { title: 'x', text: 'y'.repeat(200_001) }))).toBe(413);
-      expect(await status(createBoard(await as(OWNER), { title: 'x', mermaid: 'A'.repeat(100_001) }))).toBe(413);
+      expect(await status(createBoard(await as(OWNER), { title: 'x', mermaid: 'A'.repeat(100_001) }))).toBe(
+        413,
+      );
+    });
+
+    it('create_* con una cuenta permitida por correo verificado: sí; sin verificar o fuera de la lista: 403', async () => {
+      const mail = `${uniq('amiga')}@example.com`;
+      await db.collection('allowedEmails').doc(mail).set({ email: mail, addedAt: 1 });
+      const auth = getAdminAuth();
+      const verified = uniq('verif');
+      const unverified = uniq('sinverif');
+      await auth.createUser({ uid: verified, email: mail, emailVerified: true });
+      await auth.createUser({ uid: unverified, email: mail.replace('@', '.x@'), emailVerified: false });
+      await db.collection('allowedEmails').doc(mail.replace('@', '.x@')).set({ email: mail, addedAt: 1 });
+
+      const ok = await createNote(await as(verified), { title: 'de una amiga', text: 'hola' });
+      const id = (ok.data as { id: string }).id;
+      expect((await db.collection('projects').doc(id).get()).data()).toMatchObject({ ownerId: verified });
+      expect(await status(createNote(await as(unverified), { title: 'x', text: 'y' }))).toBe(403);
     });
 
     it('create_board: Mermaid → tablero válido, ordenado y persistido; Mermaid roto → 400 con la línea', async () => {
@@ -185,12 +205,15 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
 
     it('ignora un `mode: replace` heredado: nunca sustituye el contenido', async () => {
       const id = (
-        (await createBoard(await as(OWNER), { title: 't', mermaid: 'flowchart LR\nA[Uno]-->B[Dos]' })).data as {
+        (await createBoard(await as(OWNER), { title: 't', mermaid: 'flowchart LR\nA[Uno]-->B[Dos]' }))
+          .data as {
           id: string;
         }
       ).id;
       const before = await nodes(id);
-      const legacy = { id, mermaid: 'flowchart LR\nC[Tres]', mode: 'replace' } as Parameters<typeof updateBoard>[1];
+      const legacy = { id, mermaid: 'flowchart LR\nC[Tres]', mode: 'replace' } as Parameters<
+        typeof updateBoard
+      >[1];
       await updateBoard(await as(OWNER), legacy);
       const after = await nodes(id);
       expect(after.nodes.map((n) => n.label).sort()).toEqual(['Dos', 'Tres', 'Uno']);
@@ -200,7 +223,8 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
 
     it('append conserva lo existente y coloca lo nuevo debajo', async () => {
       const id = (
-        (await createBoard(await as(OWNER), { title: 't', mermaid: 'flowchart LR\nA[Uno]-->B[Dos]' })).data as {
+        (await createBoard(await as(OWNER), { title: 't', mermaid: 'flowchart LR\nA[Uno]-->B[Dos]' }))
+          .data as {
           id: string;
         }
       ).id;

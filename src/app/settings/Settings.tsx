@@ -1,12 +1,17 @@
 import { Check, Copy, KeyRound, Trash2, UserPlus } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { MAX_LABEL_LENGTH, type AllowedUser, type McpTokenRecord } from '@/application/tokens';
 import {
-  addAllowedUser,
+  MAX_LABEL_LENGTH,
+  normalizeEmail,
+  type AllowedEmail,
+  type McpTokenRecord,
+} from '@/application/tokens';
+import {
+  addAllowedEmail,
   createToken,
-  listAllowedUsers,
+  listAllowedEmails,
   listTokens,
-  removeAllowedUser,
+  removeAllowedEmail,
   revokeToken,
 } from '@/infrastructure/firebase/tokens';
 import { Button, IconButton, useToast } from '@/ui';
@@ -148,38 +153,35 @@ function Tokens({ uid }: { uid: string }) {
   );
 }
 
-function AllowedUsers() {
+function AllowedEmails() {
   const { toast } = useToast();
-  const [users, setUsers] = useState<AllowedUser[] | null>(null);
-  const [uid, setUid] = useState('');
+  const [entries, setEntries] = useState<AllowedEmail[] | null>(null);
   const [email, setEmail] = useState('');
 
   useEffect(() => {
     // Solo el dueño puede listar: para el resto las reglas deniegan y la sección no se muestra.
-    listAllowedUsers().then(setUsers, () => setUsers(null));
+    listAllowedEmails().then(setEntries, () => setEntries(null));
   }, []);
 
-  if (users === null) return null;
+  if (entries === null) return null;
+  const normalized = normalizeEmail(email);
 
   async function add(e: FormEvent) {
     e.preventDefault();
-    const id = uid.trim();
-    const mail = email.trim();
-    if (!id || !mail) return;
+    if (!normalized) return;
     try {
-      const u = await addAllowedUser(id, mail);
-      setUsers((xs) => [...(xs ?? []).filter((x) => x.uid !== u.uid), u]);
-      setUid('');
+      const entry = await addAllowedEmail(normalized);
+      setEntries((xs) => [...(xs ?? []).filter((x) => x.email !== entry.email), entry]);
       setEmail('');
     } catch {
-      toast({ kind: 'error', title: 'No se pudo añadir', description: 'Revisa el UID y el correo.' });
+      toast({ kind: 'error', title: 'No se pudo añadir', description: 'Revisa el correo.' });
     }
   }
 
-  async function remove(u: AllowedUser) {
+  async function remove(entry: AllowedEmail) {
     try {
-      await removeAllowedUser(u.uid);
-      setUsers((xs) => (xs ?? []).filter((x) => x.uid !== u.uid));
+      await removeAllowedEmail(entry.email);
+      setEntries((xs) => (xs ?? []).filter((x) => x.email !== entry.email));
     } catch {
       toast({ kind: 'error', title: 'No se pudo quitar' });
     }
@@ -191,19 +193,11 @@ function AllowedUsers() {
         Personas permitidas
       </h2>
       <p className={styles.help}>
-        Pueden crear proyectos propios además de ti. Necesitas su UID de Firebase Auth.
+        Pueden crear proyectos propios además de ti. Basta su correo: entra en vigor cuando accedan con una
+        cuenta cuyo correo esté verificado (p. ej. Google).
       </p>
 
       <form className={styles.form} onSubmit={(e) => void add(e)}>
-        <label className={styles.field}>
-          <span className={styles.fieldLabel}>UID</span>
-          <input
-            className={styles.input}
-            value={uid}
-            maxLength={128}
-            onChange={(e) => setUid(e.target.value)}
-          />
-        </label>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Correo</span>
           <input
@@ -214,22 +208,20 @@ function AllowedUsers() {
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
-        <Button type="submit" icon={<UserPlus size={16} />} disabled={!uid.trim() || !email.trim()}>
+        <Button type="submit" icon={<UserPlus size={16} />} disabled={!normalized}>
           Añadir
         </Button>
       </form>
 
-      {users.length === 0 ? (
+      {entries.length === 0 ? (
         <p className={styles.muted}>Nadie más puede crear proyectos.</p>
       ) : (
         <ul className={styles.list}>
-          {users.map((u) => (
-            <li key={u.uid} className={styles.row}>
+          {entries.map((u) => (
+            <li key={u.email} className={styles.row}>
               <div className={styles.rowText}>
                 <span className={styles.rowTitle}>{u.email}</span>
-                <span className={styles.muted}>
-                  <code>{u.uid}</code> · desde el {fmt(u.addedAt)}
-                </span>
+                <span className={styles.muted}>desde el {fmt(u.addedAt)}</span>
               </div>
               <IconButton
                 label={`Quitar a ${u.email}`}
@@ -251,7 +243,7 @@ export function Settings() {
       <div className={styles.page}>
         <h1 className={styles.title}>Ajustes</h1>
         {user ? <Tokens uid={user.uid} /> : null}
-        <AllowedUsers />
+        <AllowedEmails />
       </div>
     </Shell>
   );

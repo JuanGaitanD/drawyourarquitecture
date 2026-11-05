@@ -9,10 +9,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == '__OWNER_UID__';
     }
 
-    // Quién puede crear proyectos: el dueño o quien él haya añadido en allowedUsers (fase 3).
+    // Quién puede crear proyectos: el dueño o quien él haya añadido por correo en allowedEmails/{email}
+    // (id = correo en minúsculas). Solo cuenta un correo verificado por el proveedor de acceso.
     function canCreate() {
       return isOwner()
-        || (request.auth != null && exists(/databases/$(database)/documents/allowedUsers/$(request.auth.uid)));
+        || (request.auth != null
+          && request.auth.token.email_verified == true
+          && exists(/databases/$(database)/documents/allowedEmails/$(request.auth.token.email.lower())));
     }
 
     function projectDoc(id) {
@@ -183,16 +186,20 @@ service cloud.firestore {
       }
     }
 
-    // Lista de permitidos (fase 3): solo el dueño la escribe; cada persona lee su propia entrada.
-    match /allowedUsers/{uid} {
-      allow get: if request.auth != null && (request.auth.uid == uid || isOwner());
+    // Lista de permitidos por correo: solo el dueño la escribe y la lista; cada persona (con correo verificado)
+    // puede leer su propia entrada. El id es el correo en minúsculas.
+    match /allowedEmails/{email} {
+      allow get: if request.auth != null
+        && (isOwner()
+          || (request.auth.token.email_verified == true && request.auth.token.email.lower() == email));
       allow list: if isOwner();
       allow create, update: if isOwner()
+        && email == email.lower()
+        && email.size() <= 254
+        && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
         && request.resource.data.keys().hasOnly(['email', 'addedAt'])
         && request.resource.data.keys().hasAll(['email', 'addedAt'])
-        && request.resource.data.email is string
-        && request.resource.data.email.size() > 0
-        && request.resource.data.email.size() <= 254
+        && request.resource.data.email == email
         && request.resource.data.addedAt is number;
       allow delete: if isOwner();
     }

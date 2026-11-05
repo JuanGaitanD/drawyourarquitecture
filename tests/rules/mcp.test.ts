@@ -81,39 +81,55 @@ describe('mcpTokens', () => {
   });
 });
 
-describe('allowedUsers', () => {
-  const entry = { email: 'amiga@example.com', addedAt: 1 };
+const MAIL = 'amiga@example.com';
+const entry = { email: MAIL, addedAt: 1 };
+const asMail = (email: string, verified = true, uid = STRANGER) =>
+  env.authenticatedContext(uid, { email, email_verified: verified }).firestore();
+const seedAllowed = (email = MAIL) =>
+  env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), 'allowedEmails', email), { email, addedAt: 1 }),
+  );
 
+describe('allowedEmails', () => {
   it('solo el dueño escribe y lista', async () => {
-    await assertSucceeds(setDoc(doc(asOwner(), 'allowedUsers', 'u1'), entry));
-    await assertSucceeds(getDocs(collection(asOwner(), 'allowedUsers')));
-    await assertSucceeds(deleteDoc(doc(asOwner(), 'allowedUsers', 'u1')));
+    await assertSucceeds(setDoc(doc(asOwner(), 'allowedEmails', MAIL), entry));
+    await assertSucceeds(getDocs(collection(asOwner(), 'allowedEmails')));
+    await assertSucceeds(deleteDoc(doc(asOwner(), 'allowedEmails', MAIL)));
 
-    await assertFails(setDoc(doc(asStranger(), 'allowedUsers', STRANGER), entry));
-    await assertFails(setDoc(doc(asAnon(), 'allowedUsers', 'u1'), entry));
-    await assertFails(getDocs(collection(asStranger(), 'allowedUsers')));
+    await assertFails(setDoc(doc(asStranger(), 'allowedEmails', MAIL), entry));
+    await assertFails(setDoc(doc(asMail(MAIL), 'allowedEmails', MAIL), entry));
+    await assertFails(setDoc(doc(asAnon(), 'allowedEmails', MAIL), entry));
+    await assertFails(getDocs(collection(asStranger(), 'allowedEmails')));
+    await seedAllowed();
+    await assertFails(deleteDoc(doc(asMail(MAIL), 'allowedEmails', MAIL)));
   });
 
-  it('campos cerrados', async () => {
+  it('el id es el correo en minúsculas y con forma de correo; campos cerrados', async () => {
     const fs = asOwner();
-    await assertFails(setDoc(doc(fs, 'allowedUsers', 'u1'), { email: 'a@b.c' }));
-    await assertFails(setDoc(doc(fs, 'allowedUsers', 'u1'), { ...entry, extra: 1 }));
-    await assertFails(setDoc(doc(fs, 'allowedUsers', 'u1'), { ...entry, email: '' }));
-    await assertFails(setDoc(doc(fs, 'allowedUsers', 'u1'), { ...entry, addedAt: 'hoy' }));
+    await assertFails(
+      setDoc(doc(fs, 'allowedEmails', 'Amiga@Example.com'), { ...entry, email: 'Amiga@Example.com' }),
+    );
+    await assertFails(setDoc(doc(fs, 'allowedEmails', 'sin-arroba'), { ...entry, email: 'sin-arroba' }));
+    await assertFails(setDoc(doc(fs, 'allowedEmails', 'a b@c.de'), { ...entry, email: 'a b@c.de' }));
+    await assertFails(setDoc(doc(fs, 'allowedEmails', MAIL), { email: MAIL }));
+    await assertFails(setDoc(doc(fs, 'allowedEmails', MAIL), { ...entry, extra: 1 }));
+    await assertFails(setDoc(doc(fs, 'allowedEmails', MAIL), { ...entry, email: 'otra@example.com' }));
+    await assertFails(setDoc(doc(fs, 'allowedEmails', MAIL), { ...entry, addedAt: 'hoy' }));
   });
 
-  it('cada persona lee solo su entrada', async () => {
-    await env.withSecurityRulesDisabled((ctx) =>
-      setDoc(doc(ctx.firestore(), 'allowedUsers', STRANGER), entry),
-    );
-    await assertSucceeds(getDoc(doc(asStranger(), 'allowedUsers', STRANGER)));
-    await assertFails(getDoc(doc(env.authenticatedContext('tercera').firestore(), 'allowedUsers', STRANGER)));
-    await assertSucceeds(getDoc(doc(asOwner(), 'allowedUsers', STRANGER)));
-    await assertFails(getDoc(doc(asAnon(), 'allowedUsers', STRANGER)));
+  it('cada persona lee solo su entrada, y solo con el correo verificado', async () => {
+    await seedAllowed();
+    await assertSucceeds(getDoc(doc(asMail(MAIL), 'allowedEmails', MAIL)));
+    await assertSucceeds(getDoc(doc(asMail('AMIGA@example.com'), 'allowedEmails', MAIL)));
+    await assertFails(getDoc(doc(asMail(MAIL, false), 'allowedEmails', MAIL)));
+    await assertFails(getDoc(doc(asMail('otra@example.com'), 'allowedEmails', MAIL)));
+    await assertFails(getDoc(doc(asStranger(), 'allowedEmails', MAIL)));
+    await assertSucceeds(getDoc(doc(asOwner(), 'allowedEmails', MAIL)));
+    await assertFails(getDoc(doc(asAnon(), 'allowedEmails', MAIL)));
   });
 });
 
-describe('crear proyecto con allowedUsers', () => {
+describe('crear proyecto con allowedEmails', () => {
   const create = (fs: ReturnType<typeof asStranger>, id: string, ownerId: string) => {
     const b = writeBatch(fs);
     b.set(doc(fs, 'projects', id), projectData({ ownerId }));
@@ -121,14 +137,20 @@ describe('crear proyecto con allowedUsers', () => {
     return b.commit();
   };
 
-  it('quien no está en la lista no crea; quien sí, crea el suyo y no a nombre de otro', async () => {
+  it('quien no está en la lista no crea; quien sí (correo verificado), crea el suyo y no a nombre de otro', async () => {
     await assertFails(create(asStranger(), 'p1', STRANGER));
-    await env.withSecurityRulesDisabled((ctx) =>
-      setDoc(doc(ctx.firestore(), 'allowedUsers', STRANGER), { email: 'a@b.c', addedAt: 1 }),
-    );
-    await assertSucceeds(create(asStranger(), 'p1', STRANGER));
-    await assertFails(create(asStranger(), 'p2', OWNER));
+    await assertFails(create(asMail(MAIL), 'p1', STRANGER));
+    await seedAllowed();
+    await assertSucceeds(create(asMail(MAIL), 'p1', STRANGER));
+    await assertSucceeds(create(asMail('AMIGA@Example.com', true, 'tercera'), 'p4', 'tercera'));
+    await assertFails(create(asMail(MAIL), 'p2', OWNER));
     await assertFails(create(asAnon(), 'p3', STRANGER));
+  });
+
+  it('un correo sin verificar o ausente no basta, aunque esté en la lista', async () => {
+    await seedAllowed();
+    await assertFails(create(asMail(MAIL, false), 'p1', STRANGER));
+    await assertFails(create(env.authenticatedContext(STRANGER).firestore(), 'p2', STRANGER));
   });
 
   it('el dueño sigue creando sin estar en la lista', async () => {
