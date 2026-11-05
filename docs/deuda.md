@@ -43,9 +43,9 @@ Fuente: `HANDOFF.md`, comentarios `ponytail:` del código y revisiones (`.wigi/r
 | D37 | N1 | El board importa la cola de subidas desde `editors/note` (acoplamiento entre editores) | Cola de subidas y archivos pendientes en `application/` (puerto + implementación inyectada), ambos editores la consumen | abierto |
 | D38 | N1 | Dos pestañas con la misma imagen pendiente la insertan dos veces (nota y board) | Bloqueo por `fileId` entre pestañas (Web Locks API o `BroadcastChannel`) al reponer pendientes | abierto |
 | D39 | N3 | Sin e2e de imágenes ni de las correcciones 4–6 de la revisión 2 (nota recién abierta, fondo remoto, imagen en subida) | e2e versionados de esos flujos | abierto |
-| D40 | N2 | Un invitado que entra entre la lectura y la publicación del espejo RTDB pierde la presencia hasta la próxima publicación | Al unirse, el invitado se añade al espejo con su invitación (ya permitido) y el dueño publica sin pisar altas posteriores (fusión por `aclRev`) | abierto |
+| D40 | N2 | Un invitado que entra entre la lectura y la publicación del espejo RTDB pierde la presencia hasta la próxima publicación | Al unirse, el invitado se añade al espejo con su invitación (ya permitido) y el dueño publica sin pisar altas posteriores (fusión por `aclRev`) | cerrado (commits 2383bfd) |
 | D41 | N3 | `pnpm test` (`src/server`) usa el proyecto de emulador compartido `demo-dya` | Proyecto de emulador propio por ejecución, como `test:rules` | abierto |
 | D42 | N3 | Sin pruebas de componentes (resto de D22) | Vitest + jsdom + Testing Library para los componentes con lógica de interacción (menú de tarjeta, compartir, toolbar, panel de estilo) | abierto |
-| D43 | N2 | «Crear enlace» puede tardar > 10 s si la escritura del espejo RTDB va lenta | La invitación se crea y muestra sin esperar al espejo; el espejo se publica en segundo plano con reintento visible | abierto |
+| D43 | N2 | «Crear enlace» puede tardar > 10 s si la escritura del espejo RTDB va lenta | La invitación se crea y muestra sin esperar al espejo; el espejo se publica en segundo plano con reintento visible | cerrado (commits 12c051a) |
 
 Aceptado (no es deuda): `null` ante `permission-denied` (privado = inexistente), borrador local como red de seguridad al cerrar la pestaña, atribución de React Flow, avisos de chunk > 500 kB de Excalidraw.
