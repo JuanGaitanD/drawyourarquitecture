@@ -68,7 +68,7 @@ tests/rules/  tests/e2e/
 - **Lista de permitidos por correo**: `allowedEmails/{correo en minúsculas}`; `canCreate()` en las reglas = dueño o `email_verified` + entrada en la lista. `allowedUsers` (por UID) ya no existe.
 - **Servidor MCP**: Admin solo da identidad (`mcpTokens` → uid, `createCustomToken`); los datos pasan por el SDK web autenticado (`src/server/userDb.ts`), así que las reglas aplican tal cual y no hay autorización duplicada a mano.
 - **Un solo camino por operación del board**: borrar = `removeSelected` (atajos), estilo = `updateNodeData(ids, { style })`, paths de formas e iconos = `editors/board/nodes`. Los nodos bloqueados son seleccionables pero no arrastrables ni borrables.
-- **Archivos**: sin Storage; viven en Firestore troceados (`projects/{id}/files/{fileId}` + `chunks/{i}`, ≤ 900 000 bytes por trozo). Toda subida pasa antes por `optimizeImage` (`application/imageOptimize.ts`: ≤ 2048 px, WebP 0,82, GIF intacto). PNG, JPEG, GIF y WebP; hasta 4 MiB tras optimizar.
+- **Archivos**: sin Storage; viven en Firestore troceados (`projects/{id}/files/{fileId}` con `createdBy` (quien sube, que puede borrarlo) + `chunks/{i}`, ≤ 900 000 bytes por trozo). Toda subida pasa antes por `optimizeImage` (`application/imageOptimize.ts`: ≤ 2048 px, WebP 0,82, GIF intacto). PNG, JPEG, GIF y WebP; hasta 4 MiB tras optimizar.
 - **Estilos**: CSS Modules + tokens de `src/ui/tokens.css`; nada de colores literales en el chrome (los colores del dibujo persistido sí son literales y no cambian con el tema).
 - **Accesibilidad**: Radix para overlays; `aria-label` y tooltip en botones de icono; `:focus-visible` visible; respetar `prefers-reduced-motion`.
 - **Atajos** solo con el editor enfocado; se ignoran en inputs, contentEditable e IME.

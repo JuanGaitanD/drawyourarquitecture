@@ -25,7 +25,7 @@ Antes de cada paso, verificar la cuenta activa (`firebase login:list`, `vercel w
 ### Reglas y compartir
 
 - `members: map<uid, 'editor'|'viewer'>` en el proyecto; lectura dueño/miembro/público; contenido y archivos los escriben dueño y editor; metadatos, `members` y borrados solo el dueño. `canCreate()` = dueño o correo verificado en `allowedEmails`.
-- **Unirse con invitación**: un batch escribe `projects/{id}/joins/{uid} = { token, name }` y `members.<uid>`; la regla lee el token con `getAfter(joins/uid)`, valida la invitación (`expiresAt` > `request.time`, mismo proyecto, rol exacto) y exige que solo cambie `members.<uid>`. Invitaciones: token de 32 caracteres, caducidad ≤ 7 días, las crea y borra solo el dueño. **`list` de compartidos**: `where('members.<uid>', 'in', ['editor','viewer'])` sin `orderBy` (se ordena en cliente; no hay índice compuesto por uid).
+- **Unirse con invitación**: un batch escribe `projects/{id}/joins/{uid} = { token, name }` y `members.<uid>`; la regla lee el token con `getAfter(joins/uid)`, valida la invitación (`expiresAt` > `request.time`, mismo proyecto, rol exacto) y exige que solo cambie `members.<uid>`. `joins/{uid}` solo se crea o cambia en ese mismo commit (`getAfter`: `members[uid]` pasa al rol del token escrito) y solo el dueño lo borra (D44): no se puede reescribir solo con otro token para esquivar «Revocar y quitar». Invitaciones: token de 32 caracteres, caducidad ≤ 7 días, las crea y borra solo el dueño. **`list` de compartidos**: `where('members.<uid>', 'in', ['editor','viewer'])` sin `orderBy` (se ordena en cliente; no hay índice compuesto por uid).
 - **Revocar** (solo dueño): crear enlace, copiar, revocar y quitar miembros. Una invitación ya aceptada no expulsa por sí sola: «Compartir» lo explica, muestra por enlace cuántas personas entraron con él y ofrece **«Revocar y quitar…»** (un batch borra la invitación y quita de `members` a quienes entraron con ese token, según `joins.token`; `InviteRepo.revokeAndRemove`).
 
 ### Sincronización
@@ -200,7 +200,7 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 
 ## Imágenes en Firestore
 
-- **Modelo**: `projects/{id}/files/{fileId} = { mimeType, size, chunks, createdAt }` y `…/chunks/{i} = { data: Bytes }` (≤ 900 000 bytes). Adaptador en `infrastructure/firebase/files.ts`; troceado y reparto en batch puros (`application/fileChunks.ts`). La meta se escribe la última.
+- **Modelo**: `projects/{id}/files/{fileId} = { mimeType, size, chunks, createdAt, createdBy }` (`createdBy` = uid que sube; él y el dueño borran meta y trozos, y sin meta cualquier editor borra los trozos huérfanos: D46; las metas anteriores sin `createdBy` son del dueño; `remove` lee `chunks` de la meta, sin `list`) y `…/chunks/{i} = { data: Bytes }` (≤ 900 000 bytes). Adaptador en `infrastructure/firebase/files.ts`; troceado y reparto en batch puros (`application/fileChunks.ts`). La meta se escribe la última.
 - **Optimización** (`application/imageOptimize.ts`): lado mayor ≤ 2048 px, WebP 0,82 si pesa menos; GIF tal cual; tope de 4 MiB tras optimizar. La usan `NoteCanvasInner` y `BoardCanvas.placeImage`; copiar o duplicar no recodifica. Medido: un PNG de 21 MB → WebP de 138 kB (−99,3 %).
 - **Retirado**: `storage.rules.tpl`, `cors.json`, el emulador de Storage, `firebase/storage` y `VITE_FIREBASE_STORAGE_BUCKET`. No hay migración (no hay datos reales).
 - **Accesibilidad**: los handles de conexión de `NodeChrome` son `role="button"` con «Conectar desde el lado …».

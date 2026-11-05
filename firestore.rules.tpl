@@ -112,7 +112,10 @@ service cloud.firestore {
 
       allow delete: if isProjectOwner(resource.data);
 
-      // Rastro de quién entró y con qué invitación.
+      // Rastro de quién entró y con qué invitación. Solo vale en el commit de la aceptación: el rol de `members.<uid>`
+      // cambia ahí mismo (getAfter) y es el del token que se escribe. Así `joins` siempre nombra el enlace que dio el
+      // rol efectivo y no se puede reescribir solo, con otro token, para esquivar «Revocar y quitar» (D44). Borrarlo
+      // es del dueño: un miembro no puede esconder su rastro.
       match /joins/{uid} {
         allow get, list: if isProjectOwner(projectDoc(id));
         allow create, update: if request.auth != null && request.auth.uid == uid
@@ -120,7 +123,11 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll(['token', 'name'])
           && request.resource.data.token is string
           && request.resource.data.name is string && request.resource.data.name.size() <= 80
-          && validInvite(request.resource.data.token, id);
+          && validInvite(request.resource.data.token, id)
+          && getAfter(/databases/$(database)/documents/projects/$(id)).data.get('members', {}).get(uid, '')
+            == get(/databases/$(database)/documents/invites/$(request.resource.data.token)).data.role
+          && getAfter(/databases/$(database)/documents/projects/$(id)).data.get('members', {}).get(uid, '')
+            != projectDoc(id).get('members', {}).get(uid, '');
         allow delete: if isProjectOwner(projectDoc(id));
       }
 
@@ -183,14 +190,20 @@ service cloud.firestore {
       }
 
       // Imágenes en trozos (plan · invariante 3). La lectura hereda la del proyecto; escriben dueño y editores.
-      // La meta se escribe la última; los trozos no se listan salvo el dueño (el visor lee por id).
+      // La meta se escribe la última y guarda quién la subió (`createdBy`, D46): ese uid (y el dueño) puede borrar la
+      // meta y sus trozos, p. ej. para deshacer una importación fallida. Los trozos no se listan salvo el dueño (el
+      // visor lee por id; borrar se hace por índice, leyendo `chunks` de la meta). Las metas anteriores a D46 no
+      // tienen `createdBy`: solo el dueño las borra.
+      function fileCreator(id, fileId) {
+        return get(/databases/$(database)/documents/projects/$(id)/files/$(fileId)).data.get('createdBy', '');
+      }
       match /files/{fileId} {
         allow get: if canRead(projectDoc(id));
         allow list: if isProjectOwner(projectDoc(id));
 
         allow create, update: if canWrite(projectDoc(id))
-          && request.resource.data.keys().hasOnly(['mimeType', 'size', 'chunks', 'createdAt'])
-          && request.resource.data.keys().hasAll(['mimeType', 'size', 'chunks', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['mimeType', 'size', 'chunks', 'createdAt', 'createdBy'])
+          && request.resource.data.keys().hasAll(['mimeType', 'size', 'chunks', 'createdAt', 'createdBy'])
           && request.resource.data.mimeType is string
           && request.resource.data.mimeType in ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
           && request.resource.data.size is int
@@ -199,9 +212,14 @@ service cloud.firestore {
           && request.resource.data.chunks is int
           && request.resource.data.chunks >= 1
           && request.resource.data.chunks <= 5
-          && request.resource.data.createdAt is number;
+          && request.resource.data.createdAt is number
+          // Al crear, quien sube; al reescribir, el autor no cambia (una meta anterior a D46 cuenta como del dueño).
+          && request.resource.data.createdBy == (resource == null
+            ? request.auth.uid
+            : resource.data.get('createdBy', projectDoc(id).ownerId));
 
-        allow delete: if isProjectOwner(projectDoc(id));
+        allow delete: if isProjectOwner(projectDoc(id))
+          || (request.auth != null && resource.data.get('createdBy', '') == request.auth.uid);
 
         match /chunks/{i} {
           allow get: if canRead(projectDoc(id));
@@ -213,7 +231,13 @@ service cloud.firestore {
             && request.resource.data.data is bytes
             && request.resource.data.data.size() <= 900000;
 
-          allow delete: if isProjectOwner(projectDoc(id));
+          // Dueño; quien subió el archivo; y, sin meta (subida que murió antes de escribirla), cualquier editor:
+          // ya puede sobrescribir esos trozos, y así una importación fallida no deja huérfanos.
+          allow delete: if isProjectOwner(projectDoc(id))
+            || (request.auth != null && exists(/databases/$(database)/documents/projects/$(id)/files/$(fileId))
+              && fileCreator(id, fileId) == request.auth.uid)
+            || (canWrite(projectDoc(id))
+              && !exists(/databases/$(database)/documents/projects/$(id)/files/$(fileId)));
         }
       }
     }
