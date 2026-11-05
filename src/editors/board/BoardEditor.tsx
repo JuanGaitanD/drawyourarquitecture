@@ -263,18 +263,10 @@ function Loaded({
                   viewport.current = v;
                 }}
               />
-              <div className={styles.slotToolbar}>
-                <Toolbar />
-              </div>
-              <div className={styles.slotStyle}>
-                <StylePanel />
-              </div>
-              <div className={styles.slotSearch}>
-                <SearchBox />
-              </div>
-              <div className={styles.slotActions}>
-                <ActionBar />
-              </div>
+              <Toolbar />
+              <StylePanel />
+              <SearchBox />
+              <ActionBar />
             </div>
           </div>
         </ReactFlowProvider>

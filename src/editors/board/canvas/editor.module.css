@@ -104,45 +104,11 @@
   border-bottom: 1px solid var(--border);
 }
 
-/* Lienzo y ranuras de C2: contenedores flotantes que no roban punteros; sus hijos sí los reciben. */
+/* Lienzo: Toolbar, StylePanel, SearchBox y ActionBar se posicionan solos (position: absolute) dentro de él. */
 .stage {
   position: relative;
   flex: 1;
   min-height: 0;
-}
-.slotToolbar,
-.slotStyle,
-.slotSearch,
-.slotActions {
-  position: absolute;
-  z-index: var(--z-canvas-ui);
-  display: flex;
-  pointer-events: none;
-}
-.slotToolbar > *,
-.slotStyle > *,
-.slotSearch > *,
-.slotActions > * {
-  pointer-events: auto;
-}
-.slotToolbar {
-  top: 50%;
-  left: var(--space-3);
-  transform: translateY(-50%);
-}
-.slotStyle {
-  top: var(--space-3);
-  left: 50%;
-  transform: translateX(-50%);
-}
-.slotSearch {
-  top: var(--space-3);
-  right: var(--space-3);
-}
-.slotActions {
-  bottom: var(--space-4);
-  left: 50%;
-  transform: translateX(-50%);
 }
 
 /* Compartir */
