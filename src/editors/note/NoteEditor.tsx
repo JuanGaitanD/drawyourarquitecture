@@ -182,8 +182,9 @@ function Session({
         readonly={false}
         onChange={onChange}
         onHandle={onHandle}
-        topRight={
+        topRight={(ui) => (
           <TopBar
+            library={ui}
             title={title}
             onTitle={rename}
             status={autosave.status}
@@ -193,7 +194,7 @@ function Session({
             shareUrl={`${location.origin}/view/note/${project.id}`}
             onBack={back}
           />
-        }
+        )}
       />
       <div className={styles.banners}>
         {autosave.status === 'conflicto' ? (

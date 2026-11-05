@@ -1,7 +1,8 @@
-import { ArrowLeft, Check, CloudOff, Copy, Globe, LoaderCircle, Share2, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Check, CloudOff, Copy, Globe, Library, LoaderCircle, Share2, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import type { SaveStatus } from '@/application/saveQueue';
 import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
+import type { CanvasUi } from './NoteCanvas';
 import styles from './TopBar.module.css';
 
 export interface TopBarProps {
@@ -14,6 +15,8 @@ export interface TopBarProps {
   onPublic: (value: boolean) => void;
   shareUrl: string;
   onBack: () => void;
+  /** Botón «Biblioteca» (sustituye al disparador de Excalidraw). */
+  library?: CanvasUi;
 }
 
 const STATUS: Record<SaveStatus, { label: string; tone: string }> = {
@@ -63,6 +66,15 @@ export function TopBar(p: TopBarProps) {
         {p.tooLarge ? <TriangleAlert size={14} aria-hidden="true" /> : <StatusIcon status={p.status} />}
         <span className={styles.statusText}>{s.label}</span>
       </span>
+      {p.library ? (
+        <IconButton
+          label="Biblioteca"
+          size="sm"
+          icon={<Library size={16} />}
+          pressed={p.library.libraryOpen}
+          onClick={p.library.toggleLibrary}
+        />
+      ) : null}
       <SharePopover isPublic={p.isPublic} onPublic={p.onPublic} url={p.shareUrl} />
     </div>
   );

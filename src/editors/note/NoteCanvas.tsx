@@ -13,6 +13,12 @@ export interface NoteHandle {
   drain(): NoteContent | null;
 }
 
+/** Lo que el lienzo ofrece a su barra superior: la Biblioteca de Excalidraw con un botón propio. */
+export interface CanvasUi {
+  libraryOpen: boolean;
+  toggleLibrary: () => void;
+}
+
 export interface NoteCanvasProps {
   projectId: string;
   content: NoteContent;
@@ -20,7 +26,7 @@ export interface NoteCanvasProps {
   /** Cada cambio de la escena (con un respiro de 150 ms). Nunca se llama antes de hidratar. */
   onChange?: (content: NoteContent) => void;
   /** Barra de la esquina superior derecha (título, guardado, compartir…). Solo en edición. */
-  topRight?: ReactNode;
+  topRight?: ReactNode | ((ui: CanvasUi) => ReactNode);
   /** Entrega el control imperativo cuando el lienzo está listo (y `null` al desmontar). */
   onHandle?: (handle: NoteHandle | null) => void;
 }

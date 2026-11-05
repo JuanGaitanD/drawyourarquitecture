@@ -46,7 +46,8 @@ import styles from './NoteCanvas.module.css';
 const CHANGE_THROTTLE_MS = 150;
 const REJECTION_TEXT = 'Solo se admiten PNG, JPEG, GIF y WebP (hasta 4 MiB tras optimizar).';
 
-type Scene = { elements: readonly unknown[]; appState: { viewBackgroundColor?: string } };
+type SceneState = { viewBackgroundColor?: string; openSidebar?: { name: string } | null };
+type Scene = { elements: readonly unknown[]; appState: SceneState };
 
 export default function NoteCanvasInner({
   projectId,
@@ -61,6 +62,8 @@ export default function NoteCanvasInner({
   const [, navigate] = useLocation();
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [insertOpen, setInsertOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const toggleLibrary = useCallback(() => api?.toggleSidebar({ name: 'default' }), [api]);
 
   // Estado del puente con Excalidraw. Vive en refs: no pinta nada y no debe re-renderizar el lienzo.
   const known = useRef<NoteFiles>({ ...content.files }); // archivos ya registrados en la nota
@@ -220,7 +223,8 @@ export default function NoteCanvasInner({
   );
 
   const handleChange = useCallback(
-    (elements: readonly unknown[], appState: { viewBackgroundColor?: string }, files: BinaryFiles) => {
+    (elements: readonly unknown[], appState: SceneState, files: BinaryFiles) => {
+      setLibraryOpen(appState.openSidebar?.name === 'default');
       if (!ready.current || readonly) return;
       const { fresh, rejected: bad } = diffNewFiles(
         elements,
@@ -329,7 +333,15 @@ export default function NoteCanvasInner({
         }}
         onLinkOpen={onLinkOpen}
         onLibraryChange={writeLibrary}
-        renderTopRightUI={readonly ? undefined : () => <div className={styles.topRight}>{topRight}</div>}
+        renderTopRightUI={
+          readonly
+            ? undefined
+            : () => (
+                <div className={styles.topRight}>
+                  {typeof topRight === 'function' ? topRight({ libraryOpen, toggleLibrary }) : topRight}
+                </div>
+              )
+        }
         UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
       >
         {readonly ? null : (
