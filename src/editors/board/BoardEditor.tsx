@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { useLocation } from 'wouter';
 import { useAutosave, useProject, useRemoteContent } from '@/app/hooks';
 import { fileStore, identity, projectRepo } from '@/app/services';
+import { indexedDbPendingStore } from '@/application/pendingFiles';
 import type { StoredDraft } from '@/application/saveQueue';
 import { MAX_CONTENT_LABEL, decode } from '@/domain/codec';
 import { roleOf } from '@/domain/project';
@@ -25,6 +26,8 @@ import styles from './canvas/editor.module.css';
 import { BoardMenu } from './extras/BoardMenu';
 import type { BoardContent } from './model/board';
 import { validateBoardContent } from './model/validate';
+import { createImageUploads } from './canvas/imageUploads';
+import { imageFileIds } from './extras/dyaFile';
 import { BoardFilesContext, type BoardFiles } from './nodes';
 import { BoardStoreProvider } from './store/BoardStoreProvider';
 import { createBoardStore } from './store/boardStore';
@@ -196,7 +199,54 @@ function Loaded({
   const viewport = useRef<Viewport>(initial.viewport);
   const [sync] = useState(() => createBoardSync(store, initial, revision));
   const { encoded, tooLarge, invalid, drain, touchViewport } = useEncodedContent(store, viewport);
-  const syncOpts = useMemo(() => ({ merge: sync.merge, same: boardSame, fastFirstMs: 150, onSaved: sync.onSaved }), [sync]);
+  // Imágenes nuevas (D23): el binario espera en IndexedDB hasta que el contenido con su nodo se guarda. `toast` es
+  // estable: el aviso se fija al crear la cola, uno solo aunque fallen varias imágenes.
+  const [uploads] = useState(() => {
+    let shown = false;
+    const u = createImageUploads({
+      store,
+      files: fileStore,
+      projectId: id,
+      persist: indexedDbPendingStore(),
+      published: (fileId) => imageFileIds(initial).includes(fileId),
+      onFail: () => {
+        if (shown) return;
+        shown = true;
+        toast({
+          kind: 'error',
+          title: 'No se pudo subir una imagen',
+          description: 'Se reintentará al recuperar la conexión o al volver a abrir el diagrama.',
+          duration: 0,
+          action: {
+            label: 'Reintentar',
+            onClick: () => {
+              shown = false;
+              u.retryFailed();
+            },
+          },
+        });
+      },
+    });
+    return u;
+  });
+  useEffect(() => {
+    void uploads.resume();
+    const retry = () => uploads.retryFailed();
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [uploads]);
+  const syncOpts = useMemo(
+    () => ({
+      merge: sync.merge,
+      same: boardSame,
+      fastFirstMs: 150,
+      onSaved: (r: { data: string; revision: number; merged?: string }) => {
+        sync.onSaved(r);
+        uploads.saved(r.data);
+      },
+    }),
+    [sync, uploads],
+  );
   const { status, flush, resolveConflict, acceptRemote } = useAutosave(
     id,
     encoded,
@@ -226,10 +276,14 @@ function Loaded({
 
   const files = useMemo<BoardFiles>(
     () => ({
+      projectId: id,
       load: (fileId) => fileStore.load(id, fileId),
+      loadFrom: (from, fileId) => fileStore.load(from, fileId),
       upload: (fileId, blob) => fileStore.upload(id, fileId, blob),
+      addImage: (fileId, blob, meta) => uploads.add(fileId, blob, meta),
+      remove: (fileId) => fileStore.remove(id, fileId),
     }),
-    [id],
+    [id, uploads],
   );
 
   const rename = useCallback(

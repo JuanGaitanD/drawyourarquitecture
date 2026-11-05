@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useReactFlow, type ReactFlowInstance } from '@xyflow/react';
-import type { BoardEdge, BoardNode, ShapeKind } from '../model/board';
+import { useToast } from '@/ui';
+import type { ShapeKind } from '../model/board';
 import { placeBelow } from '../extras/content';
 import { autoLayout } from '../model/layout';
 import { parseFlowchart } from '../model/mermaid';
@@ -16,13 +17,17 @@ import {
   wrapInFrame,
   type AlignMode,
 } from '../model/ops';
+import { useBoardFiles } from '../nodes';
 import { useBoardStore } from '../store/BoardStoreProvider';
 import type { BoardState, BoardStore, Tool } from '../store/boardStore';
 import {
   clipFromSelection,
+  copyImages,
   readSystemClipboard,
   writeSystemClipboard,
+  type ClipContent,
   type ClipPayload,
+  type ImageCopier,
 } from './clipboard';
 import type { ShortcutAction } from './shortcuts';
 
@@ -43,7 +48,17 @@ const reducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 export const motionDuration = (ms = 250) => (reducedMotion() ? 0 : ms);
 
-export function createBoardActions(store: BoardStore, flow: () => ReactFlowInstance | null) {
+/** Proyecto del editor: marca lo copiado con su origen y, al pegar lo de otro proyecto, copia sus imágenes (D28). */
+export interface ProjectContext extends ImageCopier {
+  /** Cuántas imágenes no se pudieron copiar al pegar. */
+  onImagesFailed?(count: number): void;
+}
+
+export function createBoardActions(
+  store: BoardStore,
+  flow: () => ReactFlowInstance | null,
+  project?: ProjectContext,
+) {
   const get = () => store.getState();
   const selectedIds = () =>
     get()
@@ -51,11 +66,14 @@ export function createBoardActions(store: BoardStore, flow: () => ReactFlowInsta
       .map((n) => n.id);
 
   /** Inserta lo copiado con ids nuevos, desplazado un poco más en cada pegado y seleccionado: un paso de historial. */
-  const pasteClip = (clip: { nodes: BoardNode[]; edges: BoardEdge[] }, rec: Clipboard | undefined) => {
+  const pasteClip = async (clip: ClipContent, rec: Clipboard | undefined) => {
+    // Las imágenes de otro proyecto se copian antes de insertar; el contador de pegados no se toca hasta entonces.
+    const copied = project ? await copyImages(clip, project) : { nodes: clip.nodes, failed: 0 };
+    if (copied.failed) project?.onImagesFailed?.(copied.failed);
     const s = get();
     const step = 16 * (rec ? ++rec.pastes : 1);
-    const roots = clip.nodes.filter((n) => !n.parentId).map((n) => n.id);
-    const dup = duplicate(clip.nodes, clip.edges, roots, { x: step, y: step });
+    const roots = copied.nodes.filter((n) => !n.parentId).map((n) => n.id);
+    const dup = duplicate(copied.nodes, clip.edges, roots, { x: step, y: step });
     s.replaceAll([...selectOnly(s.nodes, []), ...dup.nodes], [...s.edges, ...dup.edges]);
   };
 
@@ -144,7 +162,7 @@ export function createBoardActions(store: BoardStore, flow: () => ReactFlowInsta
       const ids = selectedIds();
       if (!ids.length) return false;
       const s = get();
-      const rec: Clipboard = { clip: clipFromSelection(s.nodes, s.edges, ids), pastes: 0, system: null };
+      const rec: Clipboard = { clip: clipFromSelection(s.nodes, s.edges, ids, project?.projectId), pastes: 0, system: null };
       clipboards.set(store, rec);
       void writeSystemClipboard(rec.clip).then((r) => (rec.system = r));
       return true;
@@ -160,8 +178,8 @@ export function createBoardActions(store: BoardStore, flow: () => ReactFlowInsta
     async paste() {
       const rec = clipboards.get(store);
       const sys = await readSystemClipboard();
-      if (sys.kind === 'dya') return pasteClip(sys.clip, rec);
-      if (rec && (sys.kind === 'unavailable' || rec.system !== 'full')) return pasteClip(rec.clip, rec);
+      if (sys.kind === 'dya') return await pasteClip(sys.clip, rec);
+      if (rec && (sys.kind === 'unavailable' || rec.system !== 'full')) return await pasteClip(rec.clip, rec);
       if (sys.kind === 'text') {
         const r = parseFlowchart(sys.text);
         if (!r.ok) return;
@@ -200,7 +218,25 @@ export type BoardActions = ReturnType<typeof createBoardActions>;
 export function useBoardActions(): BoardActions {
   const store = useBoardStore();
   const flow = useReactFlow();
-  return useMemo(() => createBoardActions(store, () => flow), [store, flow]);
+  const files = useBoardFiles();
+  const { toast } = useToast();
+  return useMemo(() => {
+    const project: ProjectContext | undefined =
+      files?.projectId && files.loadFrom && files.upload
+        ? {
+            projectId: files.projectId,
+            loadFrom: files.loadFrom,
+            upload: files.upload,
+            onImagesFailed: (n) =>
+              toast({
+                title: n === 1 ? 'No se pudo copiar una imagen' : `No se pudieron copiar ${n} imágenes`,
+                description: 'Quedan como «Imagen no disponible»: el archivo de origen no se pudo leer.',
+                kind: 'error',
+              }),
+          }
+        : undefined;
+    return createBoardActions(store, () => flow, project);
+  }, [store, flow, files, toast]);
 }
 
 /** Despacha la acción de un atajo. `search` la atiende el hook (abre SearchBox). */

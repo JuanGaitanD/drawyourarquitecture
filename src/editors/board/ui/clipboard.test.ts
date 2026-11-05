@@ -6,6 +6,7 @@ import { createBoardActions } from './actions';
 import {
   clipFromSelection,
   clipMermaid,
+  copyImages,
   parseClip,
   readSystemClipboard,
   writeSystemClipboard,
@@ -168,5 +169,98 @@ describe('copiar y pegar entre dos editores (pestañas)', () => {
     await settle();
     await a.actions.paste();
     expect(a.s.getState().nodes).toHaveLength(5);
+  });
+});
+
+describe('D28 · pegar entre proyectos copia las imágenes', () => {
+  const img = (id: string, fileId: string) =>
+    ({ ...makeNode('image', { x: 0, y: 0 }, { fileId, label: id }), id, width: 100, height: 50 }) as BoardNode;
+  const nodes = [img('i1', 'a'), img('i2', 'b'), img('i3', 'a')];
+  const png = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' });
+  const nowait = () => Promise.resolve();
+  const target = (loadFrom: (p: string, f: string) => Promise<Blob>, uploaded: string[] = []) => ({
+    projectId: 'destino',
+    loadFrom,
+    upload: async (id: string) => void uploaded.push(id),
+  });
+  const fileIds = (ns: BoardNode[]) => ns.map((n) => (n.data.kind === 'image' ? n.data.fileId : undefined));
+
+  it('el portapapeles lleva el proyecto de origen y sobrevive a parseClip', () => {
+    const c = clipFromSelection(nodes, [], ['i1'], 'origen');
+    expect(c.projectId).toBe('origen');
+    expect(parseClip(JSON.stringify(c))?.projectId).toBe('origen');
+    expect(clipFromSelection(nodes, [], ['i1']).projectId).toBeUndefined();
+  });
+
+  it('baja de origen y sube al destino con ids nuevos; la misma imagen se copia una vez', async () => {
+    const loaded: string[] = [];
+    const uploaded: string[] = [];
+    let n = 0;
+    const r = await copyImages(
+      { nodes, edges: [], projectId: 'origen' },
+      target(async (p, f) => (loaded.push(`${p}/${f}`), png), uploaded),
+      { newId: () => `nuevo-${++n}`, wait: nowait },
+    );
+    expect(loaded.sort()).toEqual(['origen/a', 'origen/b']);
+    expect(uploaded.sort()).toEqual(['nuevo-1', 'nuevo-2']);
+    expect(r.failed).toBe(0);
+    expect(new Set(fileIds(r.nodes).slice(0, 1)).size).toBe(1);
+    expect(fileIds(r.nodes)[0]).toBe(fileIds(r.nodes)[2]); // i1 e i3 comparten archivo
+    expect(fileIds(r.nodes)).not.toContain('a');
+  });
+
+  it('en el mismo proyecto, o sin origen conocido, no copia nada', async () => {
+    const loadFrom = vi.fn();
+    for (const projectId of ['destino', undefined]) {
+      const r = await copyImages({ nodes, edges: [], projectId }, target(loadFrom));
+      expect(r.nodes).toBe(nodes);
+    }
+    expect(loadFrom).not.toHaveBeenCalled();
+  });
+
+  it('la imagen que no se puede leer conserva su id y se cuenta; las demás se copian', async () => {
+    const r = await copyImages(
+      { nodes, edges: [], projectId: 'origen' },
+      target(async (_p, f) => {
+        if (f === 'b') throw new Error('sin permiso');
+        return png;
+      }),
+      { newId: () => 'nuevo', wait: nowait },
+    );
+    expect(r.failed).toBe(1);
+    expect(fileIds(r.nodes)).toEqual(['nuevo', 'b', 'nuevo']);
+  });
+
+  it('pegar en otro proyecto inserta los nodos con el binario ya copiado y avisa de los fallos', async () => {
+    const sys = fakeSystem(true);
+    void sys;
+    const a = createBoardStore();
+    a.getState().load({ schemaVersion: 1, nodes: [img('i1', 'a'), img('i2', 'b')], edges: [], viewport: { x: 0, y: 0, zoom: 1 } });
+    const origen = createBoardActions(a, () => null, { projectId: 'origen', loadFrom: async () => png, upload: async () => undefined });
+    a.getState().setNodes((ns) => ns.map((n) => ({ ...n, selected: true })));
+    origen.copy();
+    await settle();
+
+    const b = createBoardStore();
+    const uploaded: string[] = [];
+    const failed = vi.fn();
+    const destino = createBoardActions(b, () => null, {
+      projectId: 'destino',
+      loadFrom: async (p, f) => {
+        expect(p).toBe('origen');
+        if (f === 'b') throw new Error('borrada');
+        return png;
+      },
+      upload: async (id) => void uploaded.push(id),
+      onImagesFailed: failed,
+    });
+    await destino.paste();
+    const ids = b.getState().nodes.map((n) => (n.data.kind === 'image' ? n.data.fileId : ''));
+    expect(ids).toHaveLength(2);
+    expect(uploaded).toHaveLength(1);
+    expect(ids).toContain(uploaded[0]);
+    expect(ids).toContain('b');
+    expect(failed).toHaveBeenCalledWith(1);
+    expect(b.temporal.getState().pastStates).toHaveLength(1);
   });
 });

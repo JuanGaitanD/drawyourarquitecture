@@ -3,6 +3,8 @@ import { sortParentsFirst, toAbsolute } from '../model/geometry';
 import { toFlowchart } from '../model/mermaid';
 import { validateBoardContent } from '../model/validate';
 import { cleanEdges, cleanNodes } from '../store/boardStore';
+import { nanoid } from 'nanoid';
+import { uploadWithRetry } from '../canvas/imageFile';
 
 // Portapapeles del sistema para copiar/pegar entre pestañas. Copiar escribe dos formatos: el propio
 // (`application/x-dya+json`, como «web custom format» de Chrome: solo lo leen páginas que lo piden) y texto Mermaid
@@ -17,15 +19,21 @@ const MAX_CLIP_BYTES = 4 * 1024 * 1024;
 export interface ClipPayload {
   format: 'dya-clipboard';
   version: 1;
+  /** Proyecto de origen: sus imágenes viven en sus archivos, así que al pegar en otro proyecto se copian (D28). */
+  projectId?: string;
   nodes: BoardNode[];
   edges: BoardEdge[];
 }
+
+/** Lo que se pega: nodos y aristas, y de dónde vienen las imágenes si se sabe. */
+export type ClipContent = Pick<ClipPayload, 'nodes' | 'edges' | 'projectId'>;
 
 /** La selección con sus descendientes y las aristas internas, sin estado de runtime. */
 export function clipFromSelection(
   nodes: readonly BoardNode[],
   edges: readonly BoardEdge[],
   ids: readonly string[],
+  projectId?: string,
 ): ClipPayload {
   const included = new Set(ids);
   for (const n of sortParentsFirst(nodes)) if (n.parentId && included.has(n.parentId)) included.add(n.id);
@@ -36,7 +44,7 @@ export function clipFromSelection(
     return { ...root, position: toAbsolute(n, nodes) } as BoardNode;
   });
   const clipEdges = cleanEdges(edges.filter((e) => included.has(e.source) && included.has(e.target)));
-  return { format: 'dya-clipboard', version: 1, nodes: clipNodes, edges: clipEdges };
+  return { format: 'dya-clipboard', version: 1, ...(projectId ? { projectId } : {}), nodes: clipNodes, edges: clipEdges };
 }
 
 /** Texto Mermaid de lo copiado (frames como `subgraph`; stickies, textos e iconos se pierden). */
@@ -44,7 +52,7 @@ export const clipMermaid = (c: ClipPayload): string =>
   toFlowchart({ schemaVersion: 1, nodes: c.nodes, edges: c.edges, viewport: { x: 0, y: 0, zoom: 1 } });
 
 /** Lee y valida lo que viene de fuera (nunca se confía en el portapapeles). `null` si no es nuestro o no vale. */
-export function parseClip(text: string): Pick<ClipPayload, 'nodes' | 'edges'> | null {
+export function parseClip(text: string): ClipContent | null {
   if (text.length > MAX_CLIP_BYTES) return null;
   let raw: unknown;
   try {
@@ -61,7 +69,12 @@ export function parseClip(text: string): Pick<ClipPayload, 'nodes' | 'edges'> | 
     edges: c.edges,
     viewport: { x: 0, y: 0, zoom: 1 },
   });
-  return v.ok && v.value.nodes.length > 0 ? { nodes: v.value.nodes, edges: v.value.edges } : null;
+  if (!v.ok || v.value.nodes.length === 0) return null;
+  return {
+    nodes: v.value.nodes,
+    edges: v.value.edges,
+    ...(typeof c.projectId === 'string' && c.projectId ? { projectId: c.projectId } : {}),
+  };
 }
 
 type Api = Pick<Clipboard, 'read' | 'write' | 'readText' | 'writeText'>;
@@ -98,7 +111,7 @@ export async function writeSystemClipboard(
 }
 
 export type SystemRead =
-  | { kind: 'dya'; clip: Pick<ClipPayload, 'nodes' | 'edges'> }
+  | { kind: 'dya'; clip: ClipContent }
   | { kind: 'text'; text: string }
   | { kind: 'empty' }
   /** Sin API o sin permiso: no se sabe qué hay. */
@@ -119,4 +132,48 @@ export async function readSystemClipboard(api: Api | undefined = system()): Prom
   } catch {
     return { kind: 'unavailable' };
   }
+}
+
+/** Acceso a los archivos del proyecto donde se pega. */
+export interface ImageCopier {
+  projectId: string;
+  loadFrom(projectId: string, fileId: string): Promise<Blob>;
+  upload(fileId: string, blob: Blob): Promise<void>;
+}
+
+/**
+ * D28: lo copiado en otro proyecto lleva imágenes cuyo binario no existe aquí. Antes de insertar se baja cada una
+ * del proyecto de origen y se sube a este con `fileId` nuevo (con reintentos). Las que no se pueden copiar (sin
+ * permiso, borradas, sin red) conservan su `fileId` —el nodo mostrará «Imagen no disponible»— y se cuentan en `failed`.
+ * Sin `projectId` de origen o con el mismo proyecto no hay nada que copiar.
+ */
+export async function copyImages(
+  clip: ClipContent,
+  to: ImageCopier,
+  opts: { newId?: () => string; wait?: (ms: number) => Promise<void> } = {},
+): Promise<{ nodes: BoardNode[]; failed: number }> {
+  const from = clip.projectId;
+  if (!from || from === to.projectId) return { nodes: clip.nodes, failed: 0 };
+  const newId = opts.newId ?? nanoid;
+  const ids = new Set<string>();
+  for (const n of clip.nodes) if (n.data.kind === 'image' && n.data.fileId) ids.add(n.data.fileId);
+  const copied = new Map<string, string>();
+  await Promise.all(
+    [...ids].map(async (old) => {
+      try {
+        const blob = await to.loadFrom(from, old);
+        const id = newId();
+        await uploadWithRetry((b) => to.upload(id, b), blob, opts.wait);
+        copied.set(old, id);
+      } catch {
+        // se cuenta abajo
+      }
+    }),
+  );
+  const nodes = clip.nodes.map((n) =>
+    n.data.kind === 'image' && n.data.fileId && copied.has(n.data.fileId)
+      ? ({ ...n, data: { ...n.data, fileId: copied.get(n.data.fileId) } } as BoardNode)
+      : n,
+  );
+  return { nodes, failed: ids.size - copied.size };
 }
