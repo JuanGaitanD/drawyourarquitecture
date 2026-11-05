@@ -1,10 +1,10 @@
 import type { FileStore } from '@/application/ports';
 import { referencedFileIds, type NoteFiles, type SceneElementLike } from './codec';
 
-// Archivos de la nota (plan · invariante 3): formatos, tope, diff de nuevos y subida en cola.
+// Archivos de la nota (plan · invariante 3): formatos, diff de nuevos y subida en cola. El tope de 4 MiB se
+// aplica después de optimizar (`optimizeImage`), no aquí.
 
 export const ALLOWED_MIME = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
-export const MAX_FILE_BYTES = 4 * 1024 * 1024;
 /** Esperas antes de cada reintento: 3 reintentos tras el primer intento. */
 export const RETRY_DELAYS_MS = [1000, 2000, 4000] as const;
 
@@ -16,20 +16,11 @@ export interface BinaryLike {
   created: number;
 }
 
-/** Tamaño aproximado del binario a partir de un dataURL en base64. */
-export function dataUrlBytes(dataURL: string): number {
-  const comma = dataURL.indexOf(',');
-  const b64 = comma < 0 ? '' : dataURL.slice(comma + 1);
-  const pad = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
-  return Math.max(0, Math.floor((b64.length * 3) / 4) - pad);
-}
-
-export type FileRejection = 'formato' | 'tamaño';
+export type FileRejection = 'formato';
 
 /** `null` si se puede subir; si no, el motivo. */
-export function rejectReason(f: Pick<BinaryLike, 'mimeType' | 'dataURL'>): FileRejection | null {
-  if (!(ALLOWED_MIME as readonly string[]).includes(f.mimeType)) return 'formato';
-  return dataUrlBytes(f.dataURL) > MAX_FILE_BYTES ? 'tamaño' : null;
+export function rejectReason(f: Pick<BinaryLike, 'mimeType'>): FileRejection | null {
+  return (ALLOWED_MIME as readonly string[]).includes(f.mimeType) ? null : 'formato';
 }
 
 /**

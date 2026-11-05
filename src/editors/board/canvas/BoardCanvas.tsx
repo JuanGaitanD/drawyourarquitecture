@@ -36,6 +36,7 @@ import { ARIA_LABELS } from './ariaLabels';
 import { GRID, isCreateTool, nodeForTool } from './createNode';
 import { toDisplayNodes } from './displayNodes';
 import flow from './flow.module.css';
+import { optimizeImage } from '@/application/imageOptimize';
 import { imageNodeSize, imageProblem, pickImage, uploadWithRetry } from './imageFile';
 import { makeNode } from '../model/board';
 
@@ -129,11 +130,17 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
       if (!file) return;
       const problem = imageProblem(file);
       if (problem) return toast({ title: 'Imagen no válida', description: problem, kind: 'error' });
+      let blob: Blob;
+      try {
+        blob = await optimizeImage(file);
+      } catch (e) {
+        return toast({ title: 'Imagen no válida', description: (e as Error).message, kind: 'error' });
+      }
       const fileId = nanoid();
       const { width, height } = await imageNodeSize(file);
       const attempt = async (): Promise<void> => {
         try {
-          await uploadWithRetry((b) => upload(fileId, b), file);
+          await uploadWithRetry((b) => upload(fileId, b), blob);
         } catch {
           toast({
             title: 'No se pudo subir la imagen',

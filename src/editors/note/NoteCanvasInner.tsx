@@ -17,6 +17,7 @@ import type {
 import { LayoutDashboard } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
+import { ImageTooLargeError, optimizeImage } from '@/application/imageOptimize';
 import { fileStore } from '@/app/services';
 import { useTheme, useToast } from '@/ui';
 import { BoardEmbed } from './BoardEmbed';
@@ -43,7 +44,7 @@ import type { NoteCanvasProps } from './NoteCanvas';
 import styles from './NoteCanvas.module.css';
 
 const CHANGE_THROTTLE_MS = 150;
-const REJECTION_TEXT = 'Solo se admiten PNG, JPEG, GIF y WebP de hasta 4 MiB.';
+const REJECTION_TEXT = 'Solo se admiten PNG, JPEG, GIF y WebP (hasta 4 MiB tras optimizar).';
 
 type Scene = { elements: readonly unknown[]; appState: { viewBackgroundColor?: string } };
 
@@ -127,7 +128,7 @@ export default function NoteCanvasInner({
     };
   });
 
-  /** Descarga de Storage las imágenes indicadas y las entrega a Excalidraw con `BinaryFileData` completo. */
+  /** Descarga de Firestore las imágenes indicadas y las entrega a Excalidraw con `BinaryFileData` completo. */
   const loadFiles = useCallback(
     (a: ExcalidrawImperativeAPI, all: string[]) => {
       const run = async (ids: string[]): Promise<void> => {
@@ -138,7 +139,7 @@ export default function NoteCanvasInner({
             const meta = known.current[id];
             return {
               id: id as BinaryFileData['id'],
-              mimeType: (meta?.mimeType ?? blob.type) as BinaryFileData['mimeType'],
+              mimeType: (blob.type || meta?.mimeType) as BinaryFileData['mimeType'],
               dataURL: (await blobToDataUrl(blob)) as BinaryFileData['dataURL'],
               created: meta?.created ?? Date.now(),
             };
@@ -195,6 +196,29 @@ export default function NoteCanvasInner({
     return s ? buildNoteContent(s.elements, s.appState, known.current) : null;
   }, []);
 
+  /** Excalidraw acepta SVG y archivos grandes; aquí no. Se retira la imagen de la escena y se explica. */
+  const retire = useCallback(
+    (ids: string[], why: string) => {
+      const fresh = ids.filter((id) => !rejected.current.has(id));
+      if (!fresh.length || !api) return;
+      fresh.forEach((id) => rejected.current.add(id));
+      queueMicrotask(() => {
+        api.updateScene({
+          elements: api
+            .getSceneElementsIncludingDeleted()
+            .map((e) =>
+              e.type === 'image' && e.fileId && rejected.current.has(e.fileId)
+                ? newElementWith(e, { isDeleted: true })
+                : e,
+            ),
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
+      });
+      toast({ kind: 'error', title: 'No se añadió la imagen', description: why });
+    },
+    [api, toast],
+  );
+
   const handleChange = useCallback(
     (elements: readonly unknown[], appState: { viewBackgroundColor?: string }, files: BinaryFiles) => {
       if (!ready.current || readonly) return;
@@ -205,34 +229,33 @@ export default function NoteCanvasInner({
       );
       for (const f of fresh) {
         known.current[f.id] = { mimeType: f.mimeType, created: f.created };
-        dataUrlToBlob(f.dataURL).then(
-          (b) => uploads.add(f.id, b),
-          () =>
-            toast({ kind: 'error', title: 'No se pudo leer una imagen', description: 'Vuelve a pegarla.' }),
-        );
+        dataUrlToBlob(f.dataURL)
+          .then(optimizeImage)
+          .then(
+            (b) => {
+              // Se registra el tipo que de verdad se guarda (WebP si se recodificó).
+              known.current[f.id] = { mimeType: b.type, created: f.created };
+              uploads.add(f.id, b);
+            },
+            (e: unknown) => {
+              if (e instanceof ImageTooLargeError) retire([f.id], e.message);
+              else
+                toast({
+                  kind: 'error',
+                  title: 'No se pudo leer una imagen',
+                  description: 'Vuelve a pegarla.',
+                });
+            },
+          );
       }
-      const newBad = bad.filter((b) => !rejected.current.has(b.file.id));
-      if (newBad.length && api) {
-        newBad.forEach((b) => rejected.current.add(b.file.id));
-        // Excalidraw acepta SVG y archivos grandes; Storage no. Se retira la imagen y se explica.
-        queueMicrotask(() => {
-          api.updateScene({
-            elements: api
-              .getSceneElementsIncludingDeleted()
-              .map((e) =>
-                e.type === 'image' && e.fileId && rejected.current.has(e.fileId)
-                  ? newElementWith(e, { isDeleted: true })
-                  : e,
-              ),
-            captureUpdate: CaptureUpdateAction.NEVER,
-          });
-        });
-        toast({ kind: 'error', title: 'No se añadió la imagen', description: REJECTION_TEXT });
-      }
+      retire(
+        bad.map((b) => b.file.id),
+        REJECTION_TEXT,
+      );
       scene.current = { elements, appState };
       if (!timer.current) timer.current = setTimeout(emit, CHANGE_THROTTLE_MS);
     },
-    [api, emit, readonly, toast, uploads],
+    [emit, readonly, retire, toast, uploads],
   );
 
   // Control imperativo para «Recuperar cambios no guardados».

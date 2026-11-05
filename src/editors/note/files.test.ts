@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createUploadQueue, dataUrlBytes, diffNewFiles, rejectReason, type BinaryLike } from './files';
+import { createUploadQueue, diffNewFiles, type BinaryLike } from './files';
 
 const png = (id: string, bytes = 10): BinaryLike => ({
   id,
@@ -19,29 +19,16 @@ describe('diffNewFiles', () => {
     expect(r.rejected).toEqual([]);
   });
 
-  it('separa formatos y tamaños no admitidos', () => {
+  it('separa los formatos no admitidos; el tamaño se juzga tras optimizar', () => {
     const svg: BinaryLike = { ...png('s'), mimeType: 'image/svg+xml' };
     const big = png('g', 5 * 1024 * 1024);
     const r = diffNewFiles([image('s'), image('g')], { s: svg, g: big }, {});
-    expect(r.fresh).toEqual([]);
-    expect(r.rejected.map((x) => [x.file.id, x.reason])).toEqual([
-      ['s', 'formato'],
-      ['g', 'tamaño'],
-    ]);
+    expect(r.fresh.map((f) => f.id)).toEqual(['g']);
+    expect(r.rejected.map((x) => [x.file.id, x.reason])).toEqual([['s', 'formato']]);
   });
 
   it('ignora una imagen cuyo archivo Excalidraw aún no tiene', () => {
     expect(diffNewFiles([image('z')], {}, {}).fresh).toEqual([]);
-  });
-});
-
-describe('límites', () => {
-  it('estima los bytes del dataURL', () => {
-    expect(dataUrlBytes('data:image/png;base64,QUJD')).toBe(3);
-    expect(dataUrlBytes('data:image/png;base64,QUI=')).toBe(2);
-  });
-  it('admite hasta 4 MiB exactos', () => {
-    expect(rejectReason(png('a', 4 * 1024 * 1024))).toBeNull();
   });
 });
 

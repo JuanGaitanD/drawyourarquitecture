@@ -1,14 +1,13 @@
-// Imágenes del board (invariante 3): PNG, JPEG, GIF y WebP de hasta 4 MiB; subida con 3 reintentos (1-2-4 s).
+// Imágenes del board (invariante 3): PNG, JPEG, GIF y WebP; se optimizan antes de subir (el tope de 4 MiB se
+// aplica tras optimizar, en `optimizeImage`); subida con 3 reintentos (1-2-4 s).
 
 export const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
-export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
 /** Mensaje de error si el archivo no vale, o `null`. */
-export function imageProblem(file: { type: string; size: number }): string | null {
-  if (!(IMAGE_TYPES as readonly string[]).includes(file.type))
-    return 'Solo se admiten PNG, JPEG, GIF y WebP.';
-  if (file.size > MAX_IMAGE_BYTES) return 'La imagen pesa más de 4 MiB.';
-  return null;
+export function imageProblem(file: { type: string }): string | null {
+  return (IMAGE_TYPES as readonly string[]).includes(file.type)
+    ? null
+    : 'Solo se admiten PNG, JPEG, GIF y WebP.';
 }
 
 /** Abre el selector de archivos. Devuelve `null` si se cancela. */

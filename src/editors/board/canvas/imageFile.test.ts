@@ -2,10 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { imageProblem, uploadWithRetry } from './imageFile';
 
 describe('imageProblem', () => {
-  it('admite PNG/JPEG/GIF/WebP hasta 4 MiB y rechaza SVG y lo grande', () => {
-    expect(imageProblem({ type: 'image/png', size: 10 })).toBeNull();
-    expect(imageProblem({ type: 'image/svg+xml', size: 10 })).toMatch(/PNG/);
-    expect(imageProblem({ type: 'image/webp', size: 4 * 1024 * 1024 + 1 })).toMatch(/4 MiB/);
+  it('admite PNG/JPEG/GIF/WebP y rechaza SVG', () => {
+    expect(imageProblem({ type: 'image/png' })).toBeNull();
+    expect(imageProblem({ type: 'image/webp' })).toBeNull();
+    expect(imageProblem({ type: 'image/svg+xml' })).toMatch(/PNG/);
   });
 });
 
