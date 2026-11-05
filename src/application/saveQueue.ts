@@ -64,6 +64,21 @@ export function recoverableDraft(
   return d.at > record.updatedAt && d.data !== record.data ? d : null;
 }
 
+/**
+ * Pasa a la cola lo que el editor aún retiene en su throttle (`drain` devuelve el contenido codificado más
+ * reciente, o `null` si no hay nada pendiente) y la escribe ya. `push` deja el borrador local de forma
+ * síncrona, así que sirve también en `pagehide` o al desmontar, donde no hay tiempo de esperar al debounce
+ * ni a un nuevo render de React.
+ */
+export function drainAndFlush(
+  q: Pick<SaveQueue, 'push' | 'flush'>,
+  drain?: () => string | null,
+): Promise<void> {
+  const pending = drain?.();
+  if (pending != null) q.push(pending);
+  return q.flush();
+}
+
 export interface SaveQueueOptions {
   debounceMs?: number;
   storage?: DraftStorage | null;

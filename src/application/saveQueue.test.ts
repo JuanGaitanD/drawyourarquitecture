@@ -3,6 +3,7 @@ import type { ContentRepo } from './ports';
 import {
   DEBOUNCE_MS,
   createSaveQueue,
+  drainAndFlush,
   draftKey,
   readDraft,
   recoverableDraft,
@@ -219,5 +220,40 @@ describe('saveQueue · borrador local', () => {
     const storage = memoryStorage();
     storage.setItem(draftKey('p1'), '{no es json');
     expect(readDraft('p1', storage)).toBeNull();
+  });
+});
+
+describe('drainAndFlush · el último cambio retenido por el throttle del editor', () => {
+  it('lo pasa a la cola, deja el borrador y lo escribe sin esperar al debounce', async () => {
+    const f = fakeRepo();
+    const storage = memoryStorage();
+    const q = createSaveQueue(f.repo, 'p1', null, { storage });
+    q.hydrate(0, 'base');
+    q.push('visto por la cola');
+
+    await drainAndFlush(q, () => 'retenido por el throttle');
+
+    expect(f.calls.map((c) => c.data)).toEqual(['retenido por el throttle']);
+    expect(readDraft('p1', storage)).toBeNull(); // guardado: el borrador se borra
+    expect(q.hasPending()).toBe(false);
+  });
+
+  it('sin nada retenido solo escribe lo que ya tenía la cola', async () => {
+    const f = fakeRepo();
+    const q = createSaveQueue(f.repo, 'p1', null, { storage: memoryStorage() });
+    q.hydrate(0, 'base');
+    q.push('a');
+    await drainAndFlush(q, () => null);
+    await drainAndFlush(q);
+    expect(f.calls.map((c) => c.data)).toEqual(['a']);
+  });
+
+  it('antes de hidratar no escribe nada (gate)', async () => {
+    const f = fakeRepo();
+    const storage = memoryStorage();
+    const q = createSaveQueue(f.repo, 'p1', null, { storage });
+    await drainAndFlush(q, () => 'x');
+    expect(f.calls).toEqual([]);
+    expect(storage.map.size).toBe(0);
   });
 });

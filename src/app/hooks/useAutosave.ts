@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import {
   createSaveQueue,
+  drainAndFlush,
   readDraft,
   type SaveQueue,
   type SaveState,
@@ -25,6 +26,9 @@ export interface Autosave {
  * - `revision`: la revisión cargada (`ContentRecord.revision`).
  * - `baseline`: lo guardado en el servidor, para no reescribir lo idéntico. Si se omite, se toma el primer
  *   `encoded` que llegue tras hidratar (el que produce el propio editor al montar).
+ * - `drain`: vacía el throttle del editor y devuelve el contenido codificado más reciente (o `null` si no hay
+ *   nada pendiente). Se llama antes de cada `flush` al ocultar la pestaña, al `pagehide` y al desmontar, para
+ *   no perder lo hecho en los últimos milisegundos.
  */
 export function useAutosave(
   id: string,
@@ -32,10 +36,15 @@ export function useAutosave(
   hydrated: boolean,
   revision: number,
   baseline?: string,
+  drain?: () => string | null,
 ): Autosave {
   const [state, setState] = useState<SaveState>({ status: 'guardado' });
   const queue = useRef<SaveQueue | null>(null);
   const latest = useRef<string | null>(null);
+  const drainRef = useRef(drain);
+  useEffect(() => {
+    drainRef.current = drain;
+  }, [drain]);
   const [, navigate] = useLocation();
 
   // Una cola por id; flush y limpieza al desmontar. Compatible con StrictMode (se recrea).
@@ -43,9 +52,12 @@ export function useAutosave(
     const q = createSaveQueue(contentRepo, id, null);
     queue.current = q;
     const off = q.onStatus(setState);
+    // El drain va por ref y se lee al disparar: el editor puede registrarlo después de montar este efecto.
+    const flushNow = () => drainAndFlush(q, () => drainRef.current?.() ?? null);
     const onHide = () => {
-      if (document.visibilityState === 'hidden') void q.flush();
+      if (document.visibilityState === 'hidden') void flushNow();
     };
+    const onPageHide = () => void flushNow();
     const onOnline = () => void q.flush();
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       if (q.hasPending() || q.state.status === 'guardando') {
@@ -54,15 +66,17 @@ export function useAutosave(
       }
     };
     document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', onPageHide);
     window.addEventListener('online', onOnline);
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('online', onOnline);
       window.removeEventListener('beforeunload', onBeforeUnload);
       off();
       queue.current = null;
-      void q.flush().finally(() => q.dispose());
+      void flushNow().finally(() => q.dispose());
     };
   }, [id]);
 
@@ -78,7 +92,11 @@ export function useAutosave(
     if (encoded !== null) q.push(encoded);
   }, [encoded, hydrated, revision, baseline]);
 
-  const flush = useCallback(() => queue.current?.flush() ?? Promise.resolve(), []);
+  const flush = useCallback(
+    () =>
+      queue.current ? drainAndFlush(queue.current, () => drainRef.current?.() ?? null) : Promise.resolve(),
+    [],
+  );
 
   const resolveConflict = useCallback(
     async (kind: 'reload' | 'copy') => {

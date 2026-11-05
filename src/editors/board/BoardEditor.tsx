@@ -149,8 +149,8 @@ function Loaded({
     return s;
   });
   const viewport = useRef<Viewport>(initial.viewport);
-  const { encoded, tooLarge } = useEncodedContent(store, viewport);
-  const { status, flush, resolveConflict } = useAutosave(id, encoded, true, revision);
+  const { encoded, tooLarge, drain } = useEncodedContent(store, viewport);
+  const { status, flush, resolveConflict } = useAutosave(id, encoded, true, revision, undefined, drain);
   const [title, setTitle] = useState(initialTitle);
   const [isPublic, setPublic] = useState(initialPublic);
   const [draftOpen, setDraftOpen] = useState(draft !== null);
