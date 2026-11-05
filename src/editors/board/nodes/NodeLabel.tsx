@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { NodeStyle } from '../model/board';
 import { useBoard, useBoardStore } from '../store/BoardStoreProvider';
 import { useBoardReadonly } from '../store/readonly';
+import { returnFocus } from '../store/returnFocus';
 import styles from './nodes.module.css';
 
 export interface NodeLabelProps {
@@ -102,10 +103,13 @@ function Editor({
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.nativeEvent.isComposing) return;
-          if (e.key === 'Escape') finish(null);
-          else if (e.key === 'Enter' && !e.shiftKey) {
+          if (e.key === 'Escape') {
+            finish(null);
+            returnFocus(ref.current); // después de finish: el blur no debe confirmar el texto
+          } else if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             finish(v);
+            returnFocus(ref.current);
           }
         }}
       />

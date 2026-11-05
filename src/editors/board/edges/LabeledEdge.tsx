@@ -12,6 +12,7 @@ import type { BoardEdge, BoardEdgeData } from '../model/board';
 import { inkEdge } from '../nodes/colors';
 import { useBoard, useBoardStore } from '../store/BoardStoreProvider';
 import { useBoardReadonly } from '../store/readonly';
+import { returnFocus } from '../store/returnFocus';
 import styles from './edges.module.css';
 
 const FALLBACK: BoardEdgeData = {
@@ -111,8 +112,9 @@ function LabelEditor({ id, value }: { id: string; value: string }) {
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.nativeEvent.isComposing) return;
-        if (e.key === 'Escape') finish(null);
-        else if (e.key === 'Enter') finish(v);
+        if (e.key !== 'Escape' && e.key !== 'Enter') return;
+        finish(e.key === 'Escape' ? null : v);
+        returnFocus(ref.current); // después de finish: el blur no debe confirmar el texto
       }}
     />
   );
