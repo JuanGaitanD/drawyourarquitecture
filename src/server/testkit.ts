@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
@@ -19,15 +18,13 @@ export const EMULATOR = process.env.FIRESTORE_EMULATOR_HOST;
 export const OWNER = 'owner-test';
 
 /**
- * El emulador es compartido con otros carriles y cada uno carga SUS reglas: antes de probar se renderizan y se
- * vuelven a cargar las de este repo (misma llamada que usa `@firebase/rules-unit-testing`).
+ * El emulador es compartido con otros carriles y cada uno carga SUS reglas: antes de probar se vuelven a cargar las
+ * de este repo (misma llamada que usa `@firebase/rules-unit-testing`). La plantilla se renderiza en memoria, sin
+ * escribir `firestore.rules`: varios ficheros de test la cargan a la vez.
  */
 export async function loadRules(): Promise<void> {
-  execFileSync(process.execPath, ['scripts/render-rules.mjs', '--emulator'], { stdio: 'ignore' });
-  const env = await initializeTestEnvironment({
-    projectId: 'demo-dya',
-    firestore: { rules: readFileSync('firestore.rules', 'utf8') },
-  });
+  const rules = readFileSync('firestore.rules.tpl', 'utf8').replaceAll('__OWNER_UID__', OWNER);
+  const env = await initializeTestEnvironment({ projectId: 'demo-dya', firestore: { rules } });
   await env.cleanup();
 }
 
