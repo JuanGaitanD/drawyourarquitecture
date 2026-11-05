@@ -1,16 +1,23 @@
-import type { Presence, PresenceAcl, PresenceRepo, PresenceRoom } from '@/application/ports';
+import type { PresenceAcl, PresenceRepo, PresenceRoom } from '@/application/ports';
+import { groupSessions } from '@/application/presence';
 import { loadDatabase } from './database';
 
 const roomPath = (r: PresenceRoom) => `presence/${r.ownerId}/${r.projectId}`;
 const aclPath = (r: PresenceRoom) => `acl/${r.ownerId}/${r.projectId}`;
 
+// `randomUUID` solo existe en contextos seguros (https o localhost); el respaldo vale igual para un id de sesión.
+const newSessionId = () =>
+  globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+
 /**
- * Presencia y cursores: `presence/{ownerId}/{projectId}/{uid} = { name, color, x?, y?, at }`. El nodo vive mientras
- * haya conexión (`onDisconnect().remove()`, reabierto en cada reconexión): sin latidos ni caducidad.
+ * Presencia y cursores: `presence/{ownerId}/{projectId}/{uid}/{sessionId} = { name, color, x?, y?, at }`. Cada
+ * pestaña tiene su sesión (`onDisconnect` por sesión: cerrar una no borra a la otra) y la lista las agrupa por uid.
+ * El nodo vive mientras haya conexión (`onDisconnect().remove()`, reabierto en cada reconexión): sin latidos.
  */
 export const presenceRepo: PresenceRepo = {
   join(room, me, onList, onError) {
     let closed = false;
+    const mePath = `${roomPath(room)}/${me.uid}/${newSessionId()}`;
     let cursor: { x: number; y: number } | null = null;
     let teardown: (() => void) | null = null;
     const fail = (e: unknown) => onError?.(e instanceof Error ? e : new Error(String(e)));
@@ -19,7 +26,7 @@ export const presenceRepo: PresenceRepo = {
       if (closed || !mod) return;
       const { rtdb, db } = mod;
       const roomRef = rtdb.ref(db, roomPath(room));
-      const mine = rtdb.child(roomRef, me.uid);
+      const mine = rtdb.ref(db, mePath);
       const payload = () => ({ name: me.name.slice(0, 80), color: me.color, ...cursor, at: Date.now() });
 
       const offConnected = rtdb.onValue(rtdb.ref(db, '.info/connected'), (snap) => {
@@ -33,20 +40,7 @@ export const presenceRepo: PresenceRepo = {
       const offList = rtdb.onValue(
         roomRef,
         (snap) => {
-          const list: Presence[] = [];
-          snap.forEach((c) => {
-            const v = c.val() as Record<string, unknown> | null;
-            if (c.key === null || c.key === me.uid || !v) return;
-            list.push({
-              uid: c.key,
-              name: String(v.name ?? ''),
-              color: String(v.color ?? '#4b5563'),
-              x: typeof v.x === 'number' ? v.x : undefined,
-              y: typeof v.y === 'number' ? v.y : undefined,
-              at: Number(v.at) || 0,
-            });
-          });
-          onList(list);
+          onList(groupSessions(snap.val(), me.uid));
         },
         fail,
       );
@@ -65,7 +59,7 @@ export const presenceRepo: PresenceRepo = {
           if (closed || !mod) return;
           const { rtdb, db } = mod;
           void rtdb
-            .set(rtdb.ref(db, `${roomPath(room)}/${me.uid}`), {
+            .set(rtdb.ref(db, mePath), {
               name: me.name.slice(0, 80),
               color: me.color,
               x,

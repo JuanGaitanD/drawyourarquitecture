@@ -36,7 +36,8 @@ const seed = (
 ) => env.withSecurityRulesDisabled(async (ctx) => void (await fn(ctx.database())));
 
 const acl = (path = '') => `acl/${OWNER}/${P}${path}`;
-const node = (uid: string) => `presence/${OWNER}/${P}/${uid}`;
+const SID = 'sesion-0123456789';
+const node = (uid: string, sid = SID) => `presence/${OWNER}/${P}/${uid}/${sid}`;
 const me = (over: Record<string, unknown> = {}) => ({ name: 'Ana', color: '#2563eb', at: 1, ...over });
 
 beforeEach(async () => {
@@ -140,7 +141,26 @@ describe('presencia', () => {
     await assertFails(db(EDITOR).ref(node(OWNER)).set(me()));
     await assertSucceeds(db(EDITOR).ref(node(EDITOR)).set(me()));
     await assertFails(db(OWNER).ref(node(EDITOR)).remove());
+    await assertFails(db(OWNER).ref(`presence/${OWNER}/${P}/${EDITOR}`).remove());
     await assertSucceeds(db(EDITOR).ref(node(EDITOR)).remove());
+  });
+
+  it('una persona tiene una sesión por pestaña y cerrar una no borra la otra (D25)', async () => {
+    await assertSucceeds(db(EDITOR).ref(node(EDITOR, 'pestana-a-0001')).set(me()));
+    await assertSucceeds(db(EDITOR).ref(node(EDITOR, 'pestana-b-0002')).set(me({ x: 1, y: 2 })));
+    await assertSucceeds(db(EDITOR).ref(node(EDITOR, 'pestana-a-0001')).remove());
+    const left = await db(OWNER).ref(`presence/${OWNER}/${P}/${EDITOR}`).once('value');
+    if (Object.keys(left.val() ?? {}).join() !== 'pestana-b-0002') throw new Error('debía quedar solo la pestaña B');
+    // Ni otra persona ni un no miembro escriben sesiones bajo un uid ajeno.
+    await assertFails(db(OWNER).ref(node(EDITOR, 'pestana-c-0003')).set(me()));
+    await assertFails(db(OTHER).ref(node(EDITOR, 'pestana-c-0003')).set(me()));
+  });
+
+  it('el id de sesión tiene forma válida y el nodo no puede ir sin sesión', async () => {
+    await assertFails(db(EDITOR).ref(node(EDITOR, 'corto')).set(me()));
+    await assertFails(db(EDITOR).ref(node(EDITOR, 'con espacio 0123')).set(me()));
+    await assertFails(db(EDITOR).ref(node(EDITOR, 'x'.repeat(65))).set(me()));
+    await assertFails(db(EDITOR).ref(`presence/${OWNER}/${P}/${EDITOR}`).set(me()));
   });
 
   it('valida la forma del nodo y el cursor', async () => {
