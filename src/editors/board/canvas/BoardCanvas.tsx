@@ -28,7 +28,6 @@ import { nanoid } from 'nanoid';
 import { useTheme, useToast } from '@/ui';
 import { edgeTypes } from '../edges';
 import { makeEdge, type BoardEdge, type BoardNode } from '../model/board';
-import { sortParentsFirst } from '../model/geometry';
 import { nodeTypes, useBoardFiles } from '../nodes';
 import { useBoard, useBoardStore } from '../store/BoardStoreProvider';
 import { reparentNodes } from '../store/reparent';
@@ -105,21 +104,8 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
     [store],
   );
 
-  /** Inserta y selecciona un nodo nuevo en un solo paso de historial. */
-  const insert = useCallback(
-    (node: BoardNode, edit: boolean) => {
-      const s = store.getState();
-      s.setNodes((ns) =>
-        sortParentsFirst([
-          ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
-          { ...node, selected: true },
-        ]),
-      );
-      s.setTool('select');
-      s.setEditingId(edit ? node.id : null);
-    },
-    [store],
-  );
+  /** Inserta y selecciona un nodo nuevo en un solo paso de historial (con su etiqueta si se edita al crear). */
+  const insert = useCallback((node: BoardNode, edit: boolean) => store.getState().insertNode(node, edit), [store]);
 
   const placeImage = useCallback(
     async (point: { x: number; y: number }) => {

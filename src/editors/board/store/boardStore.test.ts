@@ -255,3 +255,51 @@ describe('historial local y cambios remotos', () => {
     expect(validateBoardContent(s.getState().toContent({ x: 0, y: 0, zoom: 1 })).ok).toBe(true);
   });
 });
+
+describe('crear una forma con etiqueta (D12)', () => {
+  const fresh = () => ({ ...makeNode('shape', { x: 500, y: 500 }), id: 'nuevo' });
+  const writeLabel = (s: ReturnType<typeof createBoardStore>, label: string) => {
+    // Lo mismo que hace NodeLabel al confirmar: primero el texto, después salir de la edición.
+    s.getState().updateNodeData(['nuevo'], { label });
+    s.getState().setEditingId(null);
+  };
+
+  it('crear y escribir la etiqueta es un solo paso: deshacer quita el nodo entero', () => {
+    const s = loaded();
+    s.getState().insertNode(fresh(), true);
+    expect(s.getState().editingId).toBe('nuevo');
+    expect(past(s)).toBe(0); // el paso se cierra al terminar de escribir
+    writeLabel(s, 'API');
+    expect(past(s)).toBe(1);
+    expect(s.getState().nodes.find((n) => n.id === 'nuevo')!.data.label).toBe('API');
+    s.temporal.getState().undo();
+    expect(s.getState().nodes.some((n) => n.id === 'nuevo')).toBe(false);
+    s.temporal.getState().redo();
+    expect(s.getState().nodes.find((n) => n.id === 'nuevo')!.data.label).toBe('API');
+  });
+
+  it('cancelar la edición (Esc) deja la forma sin etiqueta en un solo paso', () => {
+    const s = loaded();
+    s.getState().insertNode(fresh(), true);
+    s.getState().setEditingId(null);
+    expect(past(s)).toBe(1);
+    expect(s.getState().nodes.some((n) => n.id === 'nuevo')).toBe(true);
+  });
+
+  it('sin edición (iconos, imágenes) también es un paso, y el historial sigue activo después', () => {
+    const s = loaded();
+    s.getState().insertNode(fresh(), false);
+    expect(past(s)).toBe(1);
+    move(s, 'user', 3);
+    expect(past(s)).toBe(2);
+  });
+
+  it('si el remoto borra el nodo mientras se escribe, el historial se reanuda', () => {
+    const s = loaded();
+    s.getState().insertNode(fresh(), true);
+    s.getState().applyRemote(s.getState().nodes.filter((n) => n.id !== 'nuevo'), s.getState().edges);
+    expect(s.getState().editingId).toBeNull();
+    move(s, 'user', 3);
+    expect(past(s)).toBe(1);
+  });
+});

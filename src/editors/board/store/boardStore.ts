@@ -41,6 +41,11 @@ export interface BoardState {
   /** Reemplaza nodos y aristas (entra al historial: importar y plantillas son deshacibles). */
   replaceAll(nodes: BoardNode[], edges: BoardEdge[]): void;
   addNodes(nodes: BoardNode[]): void;
+  /**
+   * Inserta, selecciona y vuelve a la herramienta de selección. Con `edit` abre la edición del texto y mantiene
+   * el historial en pausa hasta que termina: crear y escribir la etiqueta es UN paso (deshacer quita el nodo).
+   */
+  insertNode(node: BoardNode, edit: boolean): void;
   addEdges(edges: BoardEdge[]): void;
   /** `patch.style` se mezcla con el estilo actual (puede ser parcial). */
   updateNodeData(ids: readonly string[], patch: NodeDataPatch): void;
@@ -50,6 +55,7 @@ export interface BoardState {
   /** Borra lo seleccionado, los hijos de un frame y las aristas colgantes, en un solo paso. Lo bloqueado no. */
   removeSelected(): void;
   setTool(tool: Tool): void;
+  /** Al dejar de editar el nodo recién creado se cierra el paso de historial de su creación. */
   setEditingId(id: string | null): void;
   /** Guarda el snapshot y pausa el historial. */
   beginGesture(): void;
@@ -136,6 +142,8 @@ function restoreRuntime(prev: readonly BoardNode[], next: BoardNode[]): BoardNod
 /** Un store por instancia (invariante 6): dos pestañas o un embed no comparten estado. */
 export function createBoardStore(): BoardStore {
   let gesture: HistoryState | null = null;
+  /** Nodo recién creado cuya edición de texto mantiene abierto el gesto de historial (ver `insertNode`). */
+  let creating: string | null = null;
 
   const store: BoardStore = createStore<BoardState>()(
     temporal(
@@ -153,6 +161,7 @@ export function createBoardStore(): BoardStore {
           const t = store.temporal.getState();
           t.pause();
           gesture = null;
+          creating = null;
           set({
             nodes: sortParentsFirst(content.nodes),
             edges: content.edges,
@@ -178,9 +187,25 @@ export function createBoardStore(): BoardStore {
           store.temporal.setState({ pastStates: t.pastStates.map(rebase), futureStates: t.futureStates.map(rebase) });
           if (gesture) gesture = rebase(gesture);
           else t.resume();
+          // Si el remoto borró el nodo que se estaba escribiendo, no queda quien cierre el gesto.
+          if (creating !== null && !next.some((n) => n.id === creating)) get().setEditingId(null);
         },
         replaceAll: (nodes, edges) => set({ nodes: sortParentsFirst(nodes), edges }),
         addNodes: (nodes) => set((s) => ({ nodes: sortParentsFirst([...s.nodes, ...nodes]) })),
+        insertNode(node, edit) {
+          if (edit && !gesture) {
+            get().beginGesture();
+            creating = node.id;
+          }
+          set((s) => ({
+            nodes: sortParentsFirst([
+              ...s.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
+              { ...node, selected: true },
+            ]),
+            tool: 'select',
+            editingId: edit ? node.id : null,
+          }));
+        },
         addEdges: (edges) => set((s) => ({ edges: [...s.edges, ...edges] })),
         updateNodeData: (ids, patch) => {
           const only = new Set(ids);
@@ -223,7 +248,13 @@ export function createBoardStore(): BoardStore {
             return nodes.length === s.nodes.length && edges.length === s.edges.length ? s : { nodes, edges };
           }),
         setTool: (tool) => set({ tool }),
-        setEditingId: (editingId) => set({ editingId }),
+        setEditingId(editingId) {
+          set({ editingId });
+          if (creating !== null && editingId !== creating) {
+            creating = null;
+            get().endGesture();
+          }
+        },
 
         beginGesture() {
           if (gesture) return;
