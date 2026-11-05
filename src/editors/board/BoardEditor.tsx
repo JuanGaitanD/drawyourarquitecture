@@ -5,7 +5,7 @@ import { useLocation } from 'wouter';
 import { useAutosave, useProject, useRemoteContent } from '@/app/hooks';
 import { fileStore, identity, projectRepo } from '@/app/services';
 import type { StoredDraft } from '@/application/saveQueue';
-import { decode } from '@/domain/codec';
+import { MAX_CONTENT_LABEL, decode } from '@/domain/codec';
 import { roleOf } from '@/domain/project';
 import { Button, useToast } from '@/ui';
 import { BoardViewer } from './BoardViewer';
@@ -290,7 +290,7 @@ function Loaded({
             {tooLarge ? (
               <div className={styles.banner} data-kind="danger" role="alert">
                 <span>
-                  El diagrama supera el tamaño máximo (900 KB) y no se guarda. Quita imágenes o simplifícalo.
+                  El diagrama supera el tamaño máximo ({MAX_CONTENT_LABEL}) y no se guarda. Simplifícalo o divídelo en varios diagramas.
                 </span>
               </div>
             ) : null}

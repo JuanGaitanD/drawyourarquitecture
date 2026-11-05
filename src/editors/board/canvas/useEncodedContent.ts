@@ -34,7 +34,7 @@ const same = (a: EncodedContent, b: EncodedContent) =>
  * El contenido del store ya codificado para `useAutosave`. El primer valor es síncrono (es la base de
  * comparación); después se recalcula 120 ms tras el último cambio de nodos o aristas (no de la selección) y, con
  * retraso (`touchViewport`), tras un pan o zoom aunque el contenido no cambie (el viewport se guarda sin pasar por el
- * historial). `tooLarge` avisa de que pasa de 900 KB e `invalid` de que el contenido no valida (no se guarda).
+ * historial). `tooLarge` avisa de que pasa del tope (`MAX_CONTENT_BYTES`, 8 MiB) e `invalid` de que el contenido no valida (no se guarda).
  * `drain` calcula ya lo pendiente (para `pagehide`, ocultar la pestaña o desmontar) y devuelve `null` si no hay.
  * Sigue valiendo después de desmontar: el cambio pendiente no depende del orden en que React limpia los efectos.
  */

@@ -8,6 +8,9 @@ export const DOC_CONTENT_BYTES = 900_000;
 /** Tope práctico del contenido troceado: una transacción admite ~10 MiB. */
 export const MAX_CONTENT_BYTES = 8 * 1024 * 1024;
 
+/** El tope escrito para personas («8 MiB»), derivado de `MAX_CONTENT_BYTES` para que los avisos no se desfasen. */
+export const MAX_CONTENT_LABEL = `${MAX_CONTENT_BYTES / 1024 / 1024} MiB`;
+
 export class ContentTooLargeError extends Error {
   readonly bytes: number;
   constructor(bytes: number) {
