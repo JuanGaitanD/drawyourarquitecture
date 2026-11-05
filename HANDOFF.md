@@ -107,7 +107,7 @@ El benchmark mide **en relación con una pasada de `JSON.stringify` del board en
 - **D8**: cada imagen nueva se copia a IndexedDB (`dya-pending-files`, `application/pendingFiles.ts`) con sus elementos y **no se publica** (ni el elemento ni `content.files`) hasta que la subida confirma (`buildNoteContent(…, unconfirmed)`); la copia se borra cuando el guardado con la imagen se confirma (`NoteHandle.saved` → `release`), y al volver a abrir la nota o recuperar la conexión la cola repone la imagen y la sube. Si la persona borra la imagen antes de que confirme y cierra la pestaña, al reabrir puede reaparecer. En el board la referencia ya se publicaba tras confirmar (`placeImage`); su binario agotado (tras los reintentos) sigue **solo en memoria**: cerrarlo exige guardarlo en `PendingStore` con la posición del nodo y reponerlo al montar `BoardEditor` (la pieza reutilizable es `indexedDbPendingStore()`).
 - **D9**: los botones del embed (`Abrir`, `Recargar`, `Reintentar`) se usan con un clic y con teclado sin activar el embed.
 - **D18**: tombstones de 30 días (ver «Sincronización»).
-- `merge.ts` no tiene test: Vitest corre en `node` y Excalidraw necesita `window` (se comprobó en Chrome). Un entorno `jsdom` solo para eso queda para D22.
+- `merge.ts` tiene test (`merge.test.ts`, D31) con Excalidraw real en `jsdom`: Vitest transforma `@excalidraw/excalidraw` y `open-color` (`server.deps.inline` en `vite.config.ts`) y el test parchea `getContext` del lienzo antes de importarlo.
 - Sin probar en navegador (solo Vitest): `remoteInbox`, `pickBackground` y `retryMissing` cubren la lógica pura, no el cableado del lienzo.
 
 ## Infraestructura (D19–D21)
@@ -186,9 +186,9 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 - `ContentRepo.load` y `ProjectRepo.get` devuelven `null` ante `permission-denied` (privado y no existente se ven igual, a propósito).
 - Las reglas de Firestore son un recurso compartido del emulador: cada suite que las carga pisa las de otra que corra a la vez; repetir la prueba. Los tests de reglas escriben `firestore-debug.log`, `database-debug.log` y `ui-debug.log` en la raíz (ignorados por git).
 - El emulador compartido acumula proyectos de `owner-test`: `list_projects` solo trae 200, así que las pruebas que listan usan una persona nueva (`seedAllowedUser`).
-- `test:e2e` falló una vez justo después de `test:rules` (las reglas de Firestore son compartidas y el emulador las recarga); repetido tres veces pasa. Si reaparece, mirar primero las reglas cargadas.
+- D29 cerrada. Causa: `test:rules` y el e2e compartían el proyecto `demo-dya` del emulador con los demás carriles, que limpian Firestore entre pruebas, recargan reglas y cierran la base de tiempo real (`emulators:exec`). Ahora `test:rules` usa un proyecto por ejecución (`RULES_PROJECT`) y el e2e `demo-dya-e2e` con `global-setup.ts`. El emulador de Auth no separa por proyecto: las cuentas de prueba siguen en `demo-dya`.
 - Los embeds muestran la atribución «React Flow» (sin plan Pro).
-- **D22 abierta**: sin pruebas de componentes (Vitest corre en `node`, sin jsdom; solo `BoardViewer.test.tsx` usa jsdom) y e2e de colaboración de dos contextos sin versionar (`tests/e2e` tiene tres pruebas de humo; los guiones de aceptación de P2 viven en `.wigi/`, no versionado).
+- **D22**: el e2e de colaboración está versionado (`tests/e2e/collab.spec.ts`). Siguen sin pruebas de componentes (Vitest corre en `node`; solo `BoardViewer.test.tsx` y `merge.test.ts` usan jsdom) ni e2e de las correcciones 4–6 de la revisión 2 (la revisión vive en `.wigi/`, no versionada).
 - Un editor abierto mientras un agente escribe por MCP recibe el cambio en vivo y lo fusiona; un agente no aparece en la presencia.
 
 ## Imágenes en Firestore

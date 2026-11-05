@@ -23,7 +23,7 @@ Gestor **pnpm 12** (corepack) y **Node 24.x**. Versiones exactas, sin `^`.
 | `pnpm lint` | ESLint flat (incluye la regla de dependencia entre capas) |
 | `pnpm typecheck` | `tsc -b --noEmit` (TypeScript strict) |
 | `pnpm test` | Vitest: `domain`, `application`, `editors/**/model` y lo que cada carril añada en `src/**`. Con `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080` corren también las pruebas de `src/server` contra los emuladores (necesitan Auth en 9099); sin ella se omiten |
-| `pnpm test:e2e` | Playwright (`tests/e2e`): tres pruebas de humo contra los emuladores |
+| `pnpm test:e2e` | Playwright (`tests/e2e`): humo (3) y colaboración de dos contextos (4) contra los emuladores. Usa su propio proyecto `demo-dya-e2e` (`VITE_EMULATOR_PROJECT`); `global-setup.ts` carga las reglas y arranca la base de tiempo real si no hay una en 9000. `E2E_PORT` cambia el puerto (5185) |
 | `pnpm og:render` | Regenera `public/og-image.png` desde `scripts/brand/og-image.svg` |
 | `node scripts/bundle-mcp.mjs` | Regenera `api/_mcp.mjs` (el servidor MCP empaquetado); `pnpm test` falla si no está al día |
 | `pnpm test:rules` | Renderiza las reglas del emulador y corre `tests/rules` (Firestore y Realtime Database). `scripts/test-rules.mjs` reutiliza los emuladores vivos en 8080 y 9000 y arranca con `firebase emulators:exec` solo los que faltan |
@@ -74,7 +74,7 @@ tests/rules/  tests/e2e/
 - **Atajos** solo con el editor enfocado; se ignoran en inputs, contentEditable e IME.
 - Commits: Conventional Commits en español, atómicos, el árbol compila en cada uno. Ámbitos: ver `wigi.json`.
 - Una prueba por cosa que puede romperse; las reglas se prueban contra los emuladores, sin mocks de Firebase.
-- Con emuladores ya corriendo, `pnpm test:rules` los reutiliza (detecta 8080 y 9000) y arranca solo los que faltan. Las reglas de Firestore son un recurso compartido del emulador: quien las carga pisa las de otro carril, así que se repite la prueba si otro las cargó entre medias.
+- Con emuladores ya corriendo, `pnpm test:rules` los reutiliza (detecta 8080 y 9000) y arranca solo los que faltan. Las reglas de Firestore son un recurso compartido del emulador: en el proyecto `demo-dya` quien las carga pisa las de otro carril. Por eso `test:rules` corre en un proyecto propio por ejecución (`RULES_PROJECT`) y el e2e en `demo-dya-e2e`: ninguno limpia ni recarga lo del otro. El emulador de Auth no separa por proyecto (siempre `demo-dya`).
 
 ## Qué no tocar
 
