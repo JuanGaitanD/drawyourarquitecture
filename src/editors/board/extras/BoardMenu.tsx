@@ -72,6 +72,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
   const [importKey, setImportKey] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
   const empty = nodeCount === 0;
   // Los diálogos se abren desde el menú: al cerrarlos el foco vuelve al botón «Diagrama».
   useReturnFocus(dialog !== null || pending !== null, trigger);
@@ -271,11 +272,12 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
       <Dialog open={pending !== null} onOpenChange={(o) => (o ? undefined : setPending(null))}>
         <DialogContent
           title="¿Reemplazar el diagrama?"
+          initialFocus={cancel}
           description={confirmText}
           size="sm"
           footer={
             <>
-              <Button variant="ghost" onClick={() => setPending(null)}>
+              <Button ref={cancel} variant="ghost" onClick={() => setPending(null)}>
                 Cancelar
               </Button>
               <Button
