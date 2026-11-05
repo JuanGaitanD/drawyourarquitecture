@@ -124,3 +124,9 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 ## Lo que sigue
 
 T6 e2e (`tests/e2e/smoke.spec.ts`: board con forma y conector que persisten tras recargar, nota con el board insertado, enlace público sin sesión) → T7 revisión → T8 despliegue (pendiente de Juan: proyecto Firebase en Blaze, su UID, la cuenta de Vercel y Analytics, que **no** está integrado).
+
+## Hoja de ruta por fases (decisión de Juan, 2026-11-05)
+
+1. **Fase 1 (esta):** un solo dueño, notas y diagramas, enlace público de solo lectura.
+2. **Fase 2:** colaboración en tiempo real (otra implementación del puerto de contenido; Firestore `onSnapshot` + reconciliación o Yjs).
+3. **Fase 3:** **servidor MCP** para que agentes de IA lean y creen las notas y diagramas de un usuario autenticado. El objetivo es un sistema que haga diagramas y notas y que procese esas notas para arrancar o detallar un proyecto. Requisitos previstos: autenticación por usuario (OAuth o token personal revocable), permisos por proyecto, operaciones `list/read/create/update` sobre los formatos versionados (`NoteContent`, `BoardContent`), validación con los mismos codecs (`validateBoardContent`) y registro de auditoría. Encaja como otro adaptador sobre `application/` (casos de uso y puertos), sin tocar los editores.
