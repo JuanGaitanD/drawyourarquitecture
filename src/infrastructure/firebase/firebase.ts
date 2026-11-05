@@ -1,7 +1,6 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
 import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore';
-import { connectStorageEmulator, getStorage, type FirebaseStorage } from 'firebase/storage';
 
 // Único sitio que crea la app de Firebase. Con VITE_USE_EMULATORS=1 todo apunta a los emuladores locales.
 
@@ -28,10 +27,9 @@ export const isFirebaseConfigured = USE_EMULATORS || Boolean(config.apiKey && co
 export const app: FirebaseApp = initializeApp(config);
 export const auth: Auth = getAuth(app);
 export const db: Firestore = getFirestore(app);
-export const storage: FirebaseStorage = getStorage(app);
+// Storage no se crea aquí: pesa y solo lo usan los editores (ver files.ts, que lo carga con import()).
 
 if (USE_EMULATORS) {
   connectAuthEmulator(auth, `http://${EMULATOR_HOST}:${EMULATOR_PORTS.auth}`, { disableWarnings: true });
   connectFirestoreEmulator(db, EMULATOR_HOST, EMULATOR_PORTS.firestore);
-  connectStorageEmulator(storage, EMULATOR_HOST, EMULATOR_PORTS.storage);
 }

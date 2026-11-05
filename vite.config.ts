@@ -12,7 +12,9 @@ export default defineConfig({
         manualChunks(id) {
           if (id.includes('@excalidraw')) return 'excalidraw';
           if (id.includes('@xyflow')) return 'xyflow';
-          if (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase')) return 'firebase';
+          // Storage va aparte (solo lo cargan los editores, ver infrastructure/firebase/files.ts).
+          if (/node_modules\/(@firebase|firebase)\/storage/.test(id)) return 'firebase-storage';
+          if (/node_modules\/(@firebase|firebase)\//.test(id)) return 'firebase';
         },
       },
     },
