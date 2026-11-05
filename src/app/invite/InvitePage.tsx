@@ -3,14 +3,11 @@ import { Redirect } from 'wouter';
 import { isExpired } from '@/domain/invite';
 import { Button } from '@/ui';
 import { PageFallback } from '../PageFallback';
-import { identity, inviteRepo } from '../services';
+import { identity, inviteRepo, presenceAcl } from '../services';
 import styles from '../StatusPage.module.css';
 
 type State =
-  | { s: 'loading' }
-  | { s: 'invalid' }
-  | { s: 'error'; message: string }
-  | { s: 'joined'; projectId: string };
+  { s: 'loading' } | { s: 'invalid' } | { s: 'error'; message: string } | { s: 'joined'; projectId: string };
 
 /** Ruta `/invite/:token` (con sesión): comprueba la invitación y añade a la persona al proyecto. */
 export function InvitePage({ token }: { token: string }) {
@@ -26,6 +23,10 @@ export function InvitePage({ token }: { token: string }) {
       if (cancelled) return;
       if (!inv || isExpired(inv)) return setState({ s: 'invalid' });
       await inviteRepo.accept(inv, me);
+      // Espejo para la presencia (mejor esfuerzo: sin él se entra igual, solo sin presencia).
+      await presenceAcl
+        .joinWithInvite({ ownerId: inv.createdBy, projectId: inv.projectId }, me.uid, inv.role, inv.token)
+        .catch(() => undefined);
       if (!cancelled) setState({ s: 'joined', projectId: inv.projectId });
     })().catch((e: unknown) => {
       if (!cancelled) setState({ s: 'error', message: e instanceof Error ? e.message : String(e) });
@@ -41,7 +42,9 @@ export function InvitePage({ token }: { token: string }) {
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>
-        {state.s === 'invalid' ? 'La invitación no es válida o ha caducado' : 'No se pudo aceptar la invitación'}
+        {state.s === 'invalid'
+          ? 'La invitación no es válida o ha caducado'
+          : 'No se pudo aceptar la invitación'}
       </h1>
       <p className={styles.text}>
         {state.s === 'invalid'
