@@ -812,6 +812,7 @@ var isPermissionDenied2 = (e) => e?.code === "permission-denied";
 
 // src/infrastructure/firebase/contentRepo.ts
 var FORMAT_ERROR = "El contenido guardado tiene un formato desconocido.";
+var SAVE_RACES = 10;
 function toRecord(d, data) {
   return {
     data,
@@ -872,35 +873,43 @@ function createContentRepo(load) {
       const { fs, db } = await load();
       const main = fs.doc(db, "projects", id2, "content", "main");
       const chunk = (i) => fs.doc(main, "chunks", String(i));
-      return untilComplete(
-        () => fs.runTransaction(db, async (tx) => {
-          const snap = await tx.get(main);
-          if (!snap.exists()) return { conflict: true };
-          const meta = snap.data();
-          const current = Number(meta.revision);
-          const oldChunks = chunkCount(meta) ?? 0;
-          let out = data;
-          if (current !== expectedRevision) {
-            if (!merge) return { conflict: true };
-            const remote = oldChunks ? await readChunks(fs, tx, main, oldChunks) : meta.data;
-            if (remote === null) return INCOMPLETE;
-            if (typeof remote !== "string") return { conflict: true };
-            out = merge(data, remote);
-          }
-          const parts = splitContent(out);
-          const updatedAt = Date.now();
-          const revision = current + 1;
-          if (parts.length === 1) {
-            tx.set(main, { data: out, schemaVersion: 1, revision, updatedAt });
-          } else {
-            tx.set(main, { schemaVersion: 1, revision, updatedAt, chunks: parts.length });
-            parts.forEach((p, i) => tx.set(chunk(i), { data: p }));
-          }
-          for (let i = parts.length > 1 ? parts.length : 0; i < oldChunks; i++) tx.delete(chunk(i));
-          tx.update(fs.doc(db, "projects", id2), { updatedAt });
-          return out === data ? { revision } : { revision, merged: out };
-        })
-      );
+      let read = Number.NaN;
+      const attempt = () => fs.runTransaction(db, async (tx) => {
+        const snap = await tx.get(main);
+        if (!snap.exists()) return { conflict: true };
+        const meta = snap.data();
+        const current = Number(meta.revision);
+        read = current;
+        const oldChunks = chunkCount(meta) ?? 0;
+        let out = data;
+        if (current !== expectedRevision) {
+          if (!merge) return { conflict: true };
+          const remote = oldChunks ? await readChunks(fs, tx, main, oldChunks) : meta.data;
+          if (remote === null) return INCOMPLETE;
+          if (typeof remote !== "string") return { conflict: true };
+          out = merge(data, remote);
+        }
+        const parts = splitContent(out);
+        const updatedAt = Date.now();
+        const revision = current + 1;
+        if (parts.length === 1) {
+          tx.set(main, { data: out, schemaVersion: 1, revision, updatedAt });
+        } else {
+          tx.set(main, { schemaVersion: 1, revision, updatedAt, chunks: parts.length });
+          parts.forEach((p, i) => tx.set(chunk(i), { data: p }));
+        }
+        for (let i = parts.length > 1 ? parts.length : 0; i < oldChunks; i++) tx.delete(chunk(i));
+        tx.update(fs.doc(db, "projects", id2), { updatedAt });
+        return out === data ? { revision } : { revision, merged: out };
+      });
+      for (let races = 1; ; races++) {
+        try {
+          return await untilComplete(attempt);
+        } catch (e) {
+          if (!isPermissionDenied2(e) || races >= SAVE_RACES) throw e;
+          if (Number((await fs.getDoc(main)).data()?.revision) === read) throw e;
+        }
+      }
     },
     subscribe(id2, cb, onError) {
       let off = null;

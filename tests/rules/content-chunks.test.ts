@@ -290,6 +290,41 @@ describe('contentRepo · contenido grande contra las reglas', () => {
     expect(res).toEqual({ revision: 3, merged: `{"mio":1}|${small}` });
   });
 
+  it('otro guardado entre la lectura y el commit: las reglas deniegan el commit y el repo reintenta y fusiona (D49)', async () => {
+    let done = false;
+    const db = as(OWNER);
+    // Tras leer `content/main` (revisión 0), el editor confirma la revisión 1. El commit de esta transacción escribe
+    // la 1 contra un documento que ya está en la 1: el emulador evalúa las reglas antes que la precondición y
+    // responde `permission-denied`, que el SDK no reintenta.
+    const racing = createContentRepo(async () => ({
+      db: db as never,
+      fs: {
+        ...sdk,
+        runTransaction: (d: never, fn: (tx: sdk.Transaction) => Promise<unknown>) =>
+          sdk.runTransaction(d, (tx) =>
+            fn(
+              new Proxy(tx, {
+                get: (t, k) =>
+                  k !== 'get'
+                    ? Reflect.get(t, k)
+                    : async (ref: sdk.DocumentReference) => {
+                        const snap = await t.get(ref);
+                        if (!done && ref.path === 'projects/p/content/main') {
+                          done = true;
+                          await repoFor(EDITOR).save('p', '{"suyo":1}', 0);
+                        }
+                        return snap;
+                      },
+              }),
+            ),
+          ),
+      } as never,
+    }));
+    const res = await racing.save('p', '{"mio":1}', 0, (local, r) => `${local}|${r}`);
+    expect(res).toEqual({ revision: 2, merged: '{"mio":1}|{"suyo":1}' });
+    expect((await repoFor(OWNER).load('p'))?.data).toBe('{"mio":1}|{"suyo":1}');
+  });
+
   it('subscribe entrega el contenido recompuesto y los cambios posteriores', async () => {
     const owner = repoFor(OWNER);
     const first = JSON.stringify({ t: x(1_200_000) });

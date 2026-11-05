@@ -14,6 +14,8 @@ import { isPermissionDenied } from './errors';
 // Firestore son 500 escrituras y ~10 MiB: con ≤ 12 trozos y 8 MiB de tope sobra.
 
 const FORMAT_ERROR = 'El contenido guardado tiene un formato desconocido.';
+/** Guardados seguidos que pueden perder la carrera del commit contra otros clientes antes de dar el error (D49). */
+const SAVE_RACES = 10;
 
 function toRecord(d: DocumentData, data: string): ContentRecord {
   return {
@@ -101,12 +103,14 @@ export function createContentRepo(load: () => Promise<FirestoreModule>): Content
       const { fs, db } = await load();
       const main = fs.doc(db, 'projects', id, 'content', 'main');
       const chunk = (i: number) => fs.doc(main, 'chunks', String(i));
-      return untilComplete(() =>
+      let read = Number.NaN; // revisión que leyó el último intento
+      const attempt = () =>
         fs.runTransaction(db, async (tx) => {
           const snap = await tx.get(main);
           if (!snap.exists()) return { conflict: true as const };
           const meta = snap.data();
           const current = Number(meta.revision);
+          read = current;
           const oldChunks = chunkCount(meta) ?? 0;
           let out = data;
           if (current !== expectedRevision) {
@@ -128,8 +132,19 @@ export function createContentRepo(load: () => Promise<FirestoreModule>): Content
           for (let i = parts.length > 1 ? parts.length : 0; i < oldChunks; i++) tx.delete(chunk(i));
           tx.update(fs.doc(db, 'projects', id), { updatedAt });
           return out === data ? { revision } : { revision, merged: out };
-        }),
-      );
+        });
+      for (let races = 1; ; races++) {
+        try {
+          return await untilComplete(attempt);
+        } catch (e) {
+          // D49: si otro cliente confirma entre la lectura y el commit, las reglas («revisión + 1») se evalúan contra
+          // su revisión y el commit vuelve como `permission-denied`, que el SDK no reintenta (no es el `aborted` de
+          // una precondición). Si la revisión se movió, se repite la transacción, que relee y fusiona; si no, la
+          // denegación es real (sin permiso de escritura) y se lanza.
+          if (!isPermissionDenied(e) || races >= SAVE_RACES) throw e;
+          if (Number((await fs.getDoc(main)).data()?.revision) === read) throw e;
+        }
+      }
     },
 
     subscribe(id, cb, onError) {
