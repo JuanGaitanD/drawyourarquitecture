@@ -1,5 +1,5 @@
 import type { Presence, PresenceAcl, PresenceRepo, PresenceRoom } from '@/application/ports';
-import { loadDatabase } from './database';
+import { loadDatabase, type DatabaseModule } from './database';
 
 const roomPath = (r: PresenceRoom) => `presence/${r.ownerId}/${r.projectId}`;
 const aclPath = (r: PresenceRoom) => `acl/${r.ownerId}/${r.projectId}`;
@@ -88,27 +88,31 @@ export const presenceRepo: PresenceRepo = {
  * con la `aclRev` del proyecto. Una instantánea anterior a la publicada se descarta; publicar reemplaza todo, así que
  * lo que ya no está en Firestore desaparece. Los errores se propagan (el llamador reintenta o avisa).
  */
-export const presenceAcl: PresenceAcl = {
-  async publish(room, snap) {
-    const mod = await loadDatabase();
-    if (!mod) return 'off';
-    const value = {
-      version: snap.version,
-      members: Object.fromEntries(Object.entries(snap.members).map(([uid, role]) => [uid, { role }])),
-      invites: snap.invites,
-    };
-    // Transacción: compara con lo publicado y aborta si es más nuevo; las reglas lo imponen también en el servidor.
-    const r = await mod.rtdb.runTransaction(
-      mod.rtdb.ref(mod.db, aclPath(room)),
-      (cur: { version?: unknown } | null) =>
-        typeof cur?.version === 'number' && cur.version > snap.version ? undefined : value,
-    );
-    return r.committed ? 'ok' : 'stale';
-  },
+export function createPresenceAcl(load: () => Promise<DatabaseModule | null>): PresenceAcl {
+  return {
+    async publish(room, snap) {
+      const mod = await load();
+      if (!mod) return 'off';
+      const value = {
+        version: snap.version,
+        members: Object.fromEntries(Object.entries(snap.members).map(([uid, role]) => [uid, { role }])),
+        invites: snap.invites,
+      };
+      // Transacción: compara con lo publicado y aborta si es más nuevo; las reglas lo imponen también en el servidor.
+      const r = await mod.rtdb.runTransaction(
+        mod.rtdb.ref(mod.db, aclPath(room)),
+        (cur: { version?: unknown } | null) =>
+          typeof cur?.version === 'number' && cur.version > snap.version ? undefined : value,
+      );
+      return r.committed ? 'ok' : 'stale';
+    },
 
-  async joinWithInvite(room, uid, role, token) {
-    const mod = await loadDatabase();
-    if (!mod) return;
-    await mod.rtdb.set(mod.rtdb.ref(mod.db, `${aclPath(room)}/members/${uid}`), { role, token });
-  },
-};
+    async joinWithInvite(room, uid, role, token) {
+      const mod = await load();
+      if (!mod) return;
+      await mod.rtdb.set(mod.rtdb.ref(mod.db, `${aclPath(room)}/members/${uid}`), { role, token });
+    },
+  };
+}
+
+export const presenceAcl: PresenceAcl = createPresenceAcl(loadDatabase);
