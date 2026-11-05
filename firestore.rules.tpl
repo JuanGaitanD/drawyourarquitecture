@@ -112,7 +112,10 @@ service cloud.firestore {
 
       allow delete: if isProjectOwner(resource.data);
 
-      // Rastro de quién entró y con qué invitación.
+      // Rastro de quién entró y con qué invitación. Solo vale en el commit de la aceptación: el rol de `members.<uid>`
+      // cambia ahí mismo (getAfter) y es el del token que se escribe. Así `joins` siempre nombra el enlace que dio el
+      // rol efectivo y no se puede reescribir solo, con otro token, para esquivar «Revocar y quitar» (D44). Borrarlo
+      // es del dueño: un miembro no puede esconder su rastro.
       match /joins/{uid} {
         allow get, list: if isProjectOwner(projectDoc(id));
         allow create, update: if request.auth != null && request.auth.uid == uid
@@ -120,7 +123,11 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll(['token', 'name'])
           && request.resource.data.token is string
           && request.resource.data.name is string && request.resource.data.name.size() <= 80
-          && validInvite(request.resource.data.token, id);
+          && validInvite(request.resource.data.token, id)
+          && getAfter(/databases/$(database)/documents/projects/$(id)).data.get('members', {}).get(uid, '')
+            == get(/databases/$(database)/documents/invites/$(request.resource.data.token)).data.role
+          && getAfter(/databases/$(database)/documents/projects/$(id)).data.get('members', {}).get(uid, '')
+            != projectDoc(id).get('members', {}).get(uid, '');
         allow delete: if isProjectOwner(projectDoc(id));
       }
 

@@ -13,6 +13,7 @@ beforeAll(async () => (env = await createEnv()));
 afterAll(async () => env.cleanup());
 
 const TOKEN = 'tok-0123456789abcdefghij';
+const TOKEN_B = 'tok-b-0123456789abcdefg';
 const EDITOR = 'editor-uid';
 
 beforeEach(async () => {
@@ -112,5 +113,51 @@ describe('D32 · las reglas rechazan aceptar una invitación ya borrada', () => 
     await assertSucceeds(sdk.deleteDoc(doc(as(OWNER), 'invites', TOKEN)));
     await assertFails(b.commit());
     expect(await members()).toEqual([EDITOR]);
+  });
+});
+
+describe('D44 · el rastro `joins` no se reescribe solo', () => {
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'invites', TOKEN_B), {
+        projectId: 'p',
+        role: 'viewer',
+        createdBy: OWNER,
+        expiresAt: Date.now() + 3_600_000,
+      });
+    });
+  });
+
+  const joinsOf = (uid: string) => doc(as(uid), 'projects', 'p', 'joins', uid);
+
+  it('entra con A (editor): cambiar `joins` a B (viewer) sin tocar `members` se deniega y revocar A lo quita', async () => {
+    expect(await accept(STRANGER)).toBe(true);
+    await assertFails(setDoc(joinsOf(STRANGER), { token: TOKEN_B, name: 'x' }));
+    await assertFails(sdk.updateDoc(joinsOf(STRANGER), { token: TOKEN_B }));
+    await assertFails(setDoc(joinsOf(STRANGER), { token: TOKEN, name: 'otro nombre' })); // ni siquiera el mismo token
+    await assertFails(sdk.deleteDoc(joinsOf(STRANGER))); // ni esconder el rastro
+    expect((await getDoc(doc(as(OWNER), 'projects', 'p', 'joins', STRANGER))).data()?.token).toBe(TOKEN);
+
+    expect(await ownerRepo(async () => undefined).revokeAndRemove('p', TOKEN)).toEqual([STRANGER]);
+    expect(await members()).toEqual([EDITOR]);
+    await assertFails(getDoc(doc(as(STRANGER), 'projects', 'p', 'content', 'main')));
+  });
+
+  it('cambiar de enlace es posible solo aceptando el otro: `members` y `joins` cambian a la vez, con el rol de B', async () => {
+    expect(await accept(STRANGER)).toBe(true);
+    const fs = as(STRANGER);
+    const bad = writeBatch(fs); // joins a B pero el rol queda en editor
+    bad.set(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: TOKEN_B, name: 'x' });
+    bad.update(doc(fs, 'projects', 'p'), { [`members.${STRANGER}`]: 'editor' });
+    await assertFails(bad.commit());
+
+    const ok = writeBatch(fs);
+    ok.set(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: TOKEN_B, name: 'x' });
+    ok.update(doc(fs, 'projects', 'p'), { [`members.${STRANGER}`]: 'viewer' });
+    await assertSucceeds(ok.commit());
+    // Revocar A ya no lo toca (ahora entró por B); revocar B sí.
+    expect(await ownerRepo(async () => undefined).revokeAndRemove('p', TOKEN)).toEqual([]);
+    expect(await members()).toContain(STRANGER);
+    expect(await ownerRepo(async () => undefined).revokeAndRemove('p', TOKEN_B)).toEqual([STRANGER]);
   });
 });
