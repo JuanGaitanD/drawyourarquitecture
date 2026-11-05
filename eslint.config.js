@@ -17,7 +17,8 @@ const capa = (nombre, rutas, extra = []) => ({
       {
         patterns: [
           ...extra,
-          ...nombre.map((n) => ({ group: [`**/${n}`, `**/${n}/**`], message: `Prohibido por la regla de dependencia (AGENTS.md).` })),
+          // Solo rutas internas (alias @/ o relativas): así «firebase/app» no choca con la capa app/.
+          ...nombre.map((n) => ({ regex: `^(@/|(\\.{1,2}/)+)${n}(/|$)`, message: `Prohibido por la regla de dependencia (AGENTS.md).` })),
         ],
       },
     ],
@@ -71,7 +72,7 @@ export default defineConfig([
           ],
           patterns: [
             { group: ['react', 'react-dom', 'react/*', 'react-dom/*', 'zustand', 'zustand/*', 'zundo', '@excalidraw/*', ...FIREBASE], message: 'model/ es TypeScript puro.' },
-            { group: ['**/infrastructure/**', '**/app/**', '**/store/**', '**/canvas/**', '**/nodes/**', '**/edges/**'], message: 'model/ no depende de capas superiores.' },
+            { regex: '^(@/|(\\.{1,2}/)+)(infrastructure|app|editors/board/(store|canvas|nodes|edges))(/|$)|^\\.\\./(store|canvas|nodes|edges)(/|$)', message: 'model/ no depende de capas superiores.' },
           ],
         },
       ],
