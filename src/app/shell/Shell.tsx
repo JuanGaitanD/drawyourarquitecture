@@ -1,6 +1,6 @@
-import { LogOut, Moon, Sun } from 'lucide-react';
+import { LogOut, Moon, Settings, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +29,7 @@ export function ThemeToggle() {
 
 export function UserMenu() {
   const { user, signOut } = useAuth();
+  const [, navigate] = useLocation();
   if (!user) return null;
   const initial = user.name.trim().charAt(0).toUpperCase() || '?';
   return (
@@ -45,6 +46,9 @@ export function UserMenu() {
       <DropdownMenuContent align="end">
         <DropdownMenuLabel>{user.name}</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem icon={<Settings size={16} />} onSelect={() => navigate('/settings')}>
+          Ajustes
+        </DropdownMenuItem>
         <DropdownMenuItem icon={<LogOut size={16} />} onSelect={() => void signOut()}>
           Cerrar sesión
         </DropdownMenuItem>
