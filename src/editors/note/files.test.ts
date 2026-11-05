@@ -194,3 +194,62 @@ describe('createUploadQueue con copia en disco (D8)', () => {
     release();
   });
 });
+
+describe('createUploadQueue.discard (D24)', () => {
+  const sleep = () => Promise.resolve();
+  const blob = new Blob(['x']);
+  const memStore = () => {
+    const m = new Map<string, PendingFile>();
+    const store: PendingStore = {
+      put: async (f) => void m.set(`${f.projectId}/${f.fileId}`, f),
+      list: async (p) => [...m.values()].filter((f) => f.projectId === p),
+      remove: async (p, id) => void m.delete(`${p}/${id}`),
+    };
+    return { store, m };
+  };
+
+  it('una imagen borrada tras subirse pero antes de guardarse no vuelve al reabrir', async () => {
+    const { store, m } = memStore();
+    const done = vi.fn();
+    const q = createUploadQueue({ store: { upload: () => Promise.resolve() }, projectId: 'p', persist: store, onFail: vi.fn(), onDone: done, sleep });
+    q.add('f', blob);
+    await vi.waitFor(() => expect(done).toHaveBeenCalled());
+    expect(m.has('p/f')).toBe(true);
+    q.discard(['f']);
+    await vi.waitFor(() => expect(m.size).toBe(0));
+    const restore = vi.fn();
+    await createUploadQueue({ store: { upload: vi.fn() }, projectId: 'p', persist: store, onFail: vi.fn(), sleep }).resume(() => false, restore);
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it('una subida fallida se olvida: ni se reintenta ni queda en disco', async () => {
+    const { store, m } = memStore();
+    const upload = vi.fn<(p: string, id: string, b: Blob) => Promise<void>>().mockRejectedValue(new Error('red'));
+    const onFail = vi.fn();
+    const q = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail, sleep });
+    q.add('f', blob);
+    await vi.waitFor(() => expect(onFail).toHaveBeenCalled());
+    q.discard(['f']);
+    upload.mockClear();
+    q.retryFailed();
+    await vi.waitFor(() => expect(m.size).toBe(0));
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('descartada mientras se escribe en disco: no se sube y no queda copia', async () => {
+    let finish!: () => void;
+    const m = new Map<string, PendingFile>();
+    const store: PendingStore = {
+      put: (f) => new Promise((r) => (finish = () => (m.set(f.fileId, f), r()))),
+      list: async () => [],
+      remove: async (_p, id) => void m.delete(id),
+    };
+    const upload = vi.fn(() => Promise.resolve());
+    const q = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail: vi.fn(), sleep });
+    q.add('f', blob);
+    q.discard(['f']);
+    finish();
+    await vi.waitFor(() => expect(m.size).toBe(0));
+    expect(upload).not.toHaveBeenCalled();
+  });
+});

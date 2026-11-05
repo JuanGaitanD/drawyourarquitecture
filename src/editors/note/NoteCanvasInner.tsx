@@ -87,6 +87,9 @@ export default function NoteCanvasInner({
   const rejected = useRef(new Set<string>());
   // Imágenes cuya subida aún no se confirmó: no se publican en el contenido hasta entonces (D8).
   const unconfirmed = useRef(new Set<string>());
+  // Imágenes en la cola de subida hasta que el contenido con ellas se guarda (id → ya vista viva en la escena). Si
+  // se borran antes de eso, se descartan de la cola y de IndexedDB para que no reaparezcan al reabrir (D24).
+  const queued = useRef(new Map<string, boolean>());
   const onChangeRef = useRef(onChange);
 
   useEffect(() => {
@@ -218,6 +221,7 @@ export default function NoteCanvasInner({
           const m = (f.meta ?? {}) as { elements?: { id: string }[]; created?: number };
           const created = m.created ?? Date.now();
           unconfirmed.current.add(f.fileId);
+          queued.current.set(f.fileId, false); // aún no está en la escena: se repone justo después
           known.current[f.fileId] = { mimeType: f.blob.type, created };
           back.push({ f, created, elements: m.elements ?? [] });
         },
@@ -315,9 +319,20 @@ export default function NoteCanvasInner({
         files as Record<string, BinaryLike>,
         known.current,
       );
+      const live = new Set(referencedFileIds(elements));
+      for (const [id, seen] of queued.current) {
+        if (live.has(id)) queued.current.set(id, true);
+        else if (seen) {
+          queued.current.delete(id);
+          unconfirmed.current.delete(id);
+          delete known.current[id]; // si se deshace el borrado, vuelve a contar como imagen nueva
+          uploads.discard([id]);
+        }
+      }
       for (const f of fresh) {
         known.current[f.id] = { mimeType: f.mimeType, created: f.created };
         unconfirmed.current.add(f.id);
+        queued.current.set(f.id, true);
         const images = (elements as { type: string; fileId?: string | null }[]).filter(
           (e) => e.type === 'image' && e.fileId === f.id,
         );
@@ -325,6 +340,7 @@ export default function NoteCanvasInner({
           .then(optimizeImage)
           .then(
             (b) => {
+              if (!queued.current.has(f.id)) return; // se borró mientras se optimizaba
               // Se registra el tipo que de verdad se guarda (WebP si se recodificó).
               known.current[f.id] = { mimeType: b.type, created: f.created };
               uploads.add(f.id, b, { elements: images, created: f.created });
@@ -358,6 +374,7 @@ export default function NoteCanvasInner({
       merge: (l, r) => mergeNoteData(knownBg.current)(l, r),
       saved(c) {
         knownBg.current = c.appState.viewBackgroundColor ?? '#ffffff';
+        for (const id of Object.keys(c.files)) queued.current.delete(id);
         uploads.release(Object.keys(c.files)); // lo confirmado ya está en el servidor: se libera la copia en disco
       },
       async applyRemote(c) {
