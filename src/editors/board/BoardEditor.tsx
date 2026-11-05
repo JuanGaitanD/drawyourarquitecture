@@ -228,6 +228,7 @@ function Loaded({
     () => ({
       load: (fileId) => fileStore.load(id, fileId),
       upload: (fileId, blob) => fileStore.upload(id, fileId, blob),
+      remove: (fileId) => fileStore.remove(id, fileId),
     }),
     [id],
   );

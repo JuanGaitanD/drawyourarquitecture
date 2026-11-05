@@ -96,7 +96,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
         }
         setBusy(true);
         try {
-          content = await uploadImages(content, files, upload);
+          content = await uploadImages(content, files, upload, { remove: boardFiles?.remove });
         } catch (e) {
           toast({
             title: 'No se pudieron subir las imágenes',

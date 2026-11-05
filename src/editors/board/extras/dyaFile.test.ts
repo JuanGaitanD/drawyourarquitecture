@@ -114,6 +114,35 @@ describe('.dya.json · formato (D14)', () => {
     expect(tries).toBe(4); // 1 intento + 3 reintentos
   });
 
+  it('D27: si la segunda subida falla, borra la primera y la que falló (aunque borrar falle)', async () => {
+    const stored = new Set<string>();
+    const removed: string[] = [];
+    let n = 0;
+    const p = uploadImages(
+      withImages(),
+      {
+        'file-a': { mimeType: 'image/png', base64: 'AQID' },
+        'file-b': { mimeType: 'image/webp', base64: 'BAUG' },
+      },
+      async (id) => {
+        if (id === 'nuevo-2') throw new Error('sin red');
+        stored.add(id);
+      },
+      {
+        newId: () => `nuevo-${++n}`,
+        wait: async () => undefined,
+        remove: async (id) => {
+          removed.push(id);
+          if (id === 'nuevo-2') throw new Error('no existe'); // no llegó a subirse: borrar falla y no importa
+          stored.delete(id);
+        },
+      },
+    );
+    await expect(p).rejects.toThrow('sin red');
+    expect(removed.sort()).toEqual(['nuevo-1', 'nuevo-2']);
+    expect([...stored]).toEqual([]);
+  });
+
   it('una imagen que no venía en el archivo se deja como estaba', async () => {
     const out = await uploadImages(withImages(), {}, async () => undefined);
     expect(imageFileIds(out).sort()).toEqual(['file-a', 'file-b']);

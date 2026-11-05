@@ -108,22 +108,35 @@ export function parseImport(raw: unknown): ParsedImport {
 /**
  * Sube las imágenes que el contenido usa (con reintentos) y devuelve el contenido con los `fileId` nuevos: cada
  * importación usa ids propios, así no pisa los archivos del proyecto ni colisiona con otro diagrama. Si una subida
- * falla, lanza y no se aplica nada. Los nodos cuya imagen no venía en el archivo se dejan como están.
+ * falla, lanza y no se aplica nada: con `remove` se borra además lo ya subido (y la imagen que falló, que pudo
+ * quedar a medias) para no dejar huérfanos en `files/`. Los nodos cuya imagen no venía en el archivo se dejan como están.
  */
 export async function uploadImages(
   content: BoardContent,
   files: DyaImages,
   upload: (fileId: string, blob: Blob) => Promise<void>,
-  opts: { newId?: () => string; wait?: (ms: number) => Promise<void> } = {},
+  opts: {
+    newId?: () => string;
+    wait?: (ms: number) => Promise<void>;
+    remove?: (fileId: string) => Promise<void>;
+  } = {},
 ): Promise<BoardContent> {
   const newId = opts.newId ?? nanoid;
   const ids = new Map<string, string>();
-  for (const old of imageFileIds(content)) {
-    const f = files[old];
-    if (!f) continue;
-    const id = newId();
-    await uploadWithRetry((b) => upload(id, b), base64ToBlob(f.base64, f.mimeType), opts.wait);
-    ids.set(old, id);
+  const attempted: string[] = [];
+  try {
+    for (const old of imageFileIds(content)) {
+      const f = files[old];
+      if (!f) continue;
+      const id = newId();
+      attempted.push(id);
+      await uploadWithRetry((b) => upload(id, b), base64ToBlob(f.base64, f.mimeType), opts.wait);
+      ids.set(old, id);
+    }
+  } catch (e) {
+    // Limpieza al mejor esfuerzo: borrar un archivo que no llegó a existir puede fallar y no importa.
+    await Promise.all(attempted.map((id) => opts.remove?.(id).catch(() => undefined)));
+    throw e;
   }
   if (!ids.size) return content;
   return {
