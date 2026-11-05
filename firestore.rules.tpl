@@ -39,6 +39,16 @@ service cloud.firestore {
       return m is map && m.size() <= 20 && m.values().hasOnly(['editor', 'viewer']);
     }
 
+    // `aclRev` versiona el espejo de acceso de Realtime Database (D33): solo el dueño lo toca y sube exactamente 1 en
+    // cada cambio de `members` (y no se mueve si `members` no cambia). Así una publicación atrasada se reconoce y se
+    // rechaza. No se usa `updatedAt` porque cualquier editor lo escribe con su reloj.
+    function aclRevOk(before, after) {
+      return after.get('aclRev', 0) is int
+        && (after.get('members', {}) == before.get('members', {})
+          ? after.get('aclRev', 0) == before.get('aclRev', 0)
+          : after.get('aclRev', 0) == before.get('aclRev', 0) + 1);
+    }
+
     function validTitle(t) {
       return t is string && t.size() > 0 && t.size() <= 120;
     }
@@ -82,7 +92,8 @@ service cloud.firestore {
       // Dueño: title, isPublic, members y updatedAt (ownerId y type son inmutables). Editor: solo updatedAt (lo sube
       // cada guardado de contenido). Invitado: solo añadirse a `members` con una invitación válida.
       allow update: if (isProjectOwner(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'isPublic', 'updatedAt', 'members'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'isPublic', 'updatedAt', 'members', 'aclRev'])
+          && aclRevOk(resource.data, request.resource.data)
           && validTitle(request.resource.data.title)
           && request.resource.data.isPublic is bool
           && request.resource.data.updatedAt is number

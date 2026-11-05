@@ -5,6 +5,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   query,
   setDoc,
   updateDoc,
@@ -12,7 +13,7 @@ import {
   writeBatch,
   FieldPath,
 } from 'firebase/firestore';
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { OWNER, STRANGER, createEnv, seedProject } from './env';
 
 let env: RulesTestEnvironment;
@@ -87,9 +88,15 @@ describe('compartir · contenido', () => {
 
   it('el dueño gestiona miembros (añadir y quitar) y no admite roles inválidos', async () => {
     const fs = as(OWNER);
-    await assertSucceeds(updateDoc(proj(fs), { [`members.${STRANGER}`]: 'viewer', updatedAt: 3 }));
-    await assertSucceeds(updateDoc(proj(fs), { [`members.${VIEWER}`]: deleteField(), updatedAt: 4 }));
-    await assertFails(updateDoc(proj(fs), { [`members.${STRANGER}`]: 'admin', updatedAt: 5 }));
+    await assertSucceeds(
+      updateDoc(proj(fs), { [`members.${STRANGER}`]: 'viewer', updatedAt: 3, aclRev: increment(1) }),
+    );
+    await assertSucceeds(
+      updateDoc(proj(fs), { [`members.${VIEWER}`]: deleteField(), updatedAt: 4, aclRev: increment(1) }),
+    );
+    await assertFails(
+      updateDoc(proj(fs), { [`members.${STRANGER}`]: 'admin', updatedAt: 5, aclRev: increment(1) }),
+    );
   });
 
   it('un miembro no puede borrar el proyecto ni cambiar su dueño', async () => {
@@ -214,7 +221,15 @@ describe('compartir · revocar y quitar', () => {
     );
     const b = writeBatch(owner);
     b.delete(doc(owner, 'invites', TOKEN));
-    b.update(proj(owner), new FieldPath('members', joined.docs[0]!.id), deleteField(), 'updatedAt', 5);
+    b.update(
+      proj(owner),
+      new FieldPath('members', joined.docs[0]!.id),
+      deleteField(),
+      'updatedAt',
+      5,
+      'aclRev',
+      increment(1),
+    );
     await assertSucceeds(b.commit());
     await assertFails(getDoc(content(as(STRANGER))));
     await assertSucceeds(getDoc(content(as(EDITOR))));
@@ -227,6 +242,35 @@ describe('compartir · revocar y quitar', () => {
     b.delete(doc(e, 'invites', TOKEN));
     b.update(proj(e), new FieldPath('members', VIEWER), deleteField(), 'updatedAt', 5);
     await assertFails(b.commit());
+  });
+});
+
+describe('compartir · aclRev (versión del espejo de presencia)', () => {
+  const rm = (fs: ReturnType<typeof as>, ...extra: unknown[]) =>
+    updateDoc(proj(fs), new FieldPath('members', VIEWER), deleteField(), 'updatedAt', 5, ...extra);
+
+  it('el dueño sube aclRev exactamente 1 con cada cambio de members; sin bump o con otro salto se rechaza', async () => {
+    const owner = as(OWNER);
+    await assertFails(rm(owner)); // quitar sin avanzar la versión
+    await assertFails(rm(owner, 'aclRev', 7)); // saltarla
+    await assertFails(rm(owner, 'aclRev', increment(2)));
+    await assertSucceeds(rm(owner, 'aclRev', increment(1)));
+    expect((await getDoc(proj(owner))).data()?.aclRev).toBe(1);
+    await assertFails(updateDoc(proj(owner), { aclRev: 5 })); // sin cambiar members no se mueve
+    await assertFails(updateDoc(proj(owner), { aclRev: 0 })); // ni retrocede
+    await assertSucceeds(updateDoc(proj(owner), { title: 'otro', updatedAt: 9 }));
+  });
+
+  it('ni un editor ni un invitado tocan aclRev; unirse no la mueve', async () => {
+    await assertFails(updateDoc(proj(as(EDITOR)), { updatedAt: 3, aclRev: 99 }));
+    await seedInvite();
+    const fs = as(STRANGER);
+    const b = writeBatch(fs);
+    b.set(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: TOKEN, name: 'x' });
+    b.update(proj(fs), { [`members.${STRANGER}`]: 'editor', aclRev: 99 });
+    await assertFails(b.commit());
+    await assertSucceeds(join(as(STRANGER), STRANGER, 'editor'));
+    expect((await getDoc(proj(as(OWNER)))).data()?.aclRev).toBeUndefined();
   });
 });
 

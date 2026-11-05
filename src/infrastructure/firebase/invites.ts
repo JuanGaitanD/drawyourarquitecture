@@ -100,6 +100,8 @@ export function createInviteRepo(loadFirestore: () => Promise<FirestoreModule>):
           ...rest.flatMap((f) => [f, fs.deleteField()]),
           'updatedAt',
           Date.now(),
+          'aclRev',
+          fs.increment(1), // versión del espejo de presencia (ver firestore.rules.tpl)
         );
       }
       return uids;

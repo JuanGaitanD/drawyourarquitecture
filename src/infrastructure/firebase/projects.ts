@@ -87,6 +87,8 @@ export const projectRepo: ProjectRepo = {
       role ?? fs.deleteField(),
       'updatedAt',
       Date.now(),
+      'aclRev',
+      fs.increment(1), // versión del espejo de presencia (ver firestore.rules.tpl)
     );
   },
 
