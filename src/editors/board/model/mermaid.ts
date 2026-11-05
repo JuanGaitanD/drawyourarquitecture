@@ -103,7 +103,7 @@ export function parseFlowchart(src: string): MermaidParseResult {
 }
 
 function build(src: string): MermaidParseResult {
-  const lines = src.replace(/^﻿/, '').split(/\r\n|\r|\n/);
+  const lines = (src.charCodeAt(0) === 0xfeff ? src.slice(1) : src).split(/\r\n|\r|\n/);
   const nodes = new Map<string, BoardNode>(); // id de Mermaid → nodo (formas y frames)
   const frameIds = new Set<string>(); // ids de Mermaid que son subgraph
   const edges: BoardEdge[] = [];
