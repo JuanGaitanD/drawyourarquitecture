@@ -792,6 +792,10 @@ function splitContent(data, size = DOC_CONTENT_BYTES) {
   return out;
 }
 var joinContent = (parts) => parts.join("");
+function joinChunks(parts) {
+  return parts.every((p) => typeof p === "string") ? joinContent(parts) : null;
+}
+var READ_ATTEMPTS = 3;
 function chunkCount(meta) {
   const n = meta.chunks;
   if (n === void 0) return null;
@@ -814,30 +818,35 @@ function toRecord(d, data) {
     updatedAt: Number(d.updatedAt) || 0
   };
 }
+var INCOMPLETE = /* @__PURE__ */ Symbol("incomplete");
+async function untilComplete(attempt) {
+  for (let i = 0; i < READ_ATTEMPTS; i++) {
+    const r = await attempt();
+    if (r !== INCOMPLETE) return r;
+  }
+  throw new Error(FORMAT_ERROR);
+}
 async function readChunks(fs, tx, main, n) {
   const snaps = await Promise.all(
     Array.from({ length: n }, (_, i) => tx.get(fs.doc(main, "chunks", String(i))))
   );
-  return joinContent(
-    snaps.map((s) => {
-      const part = s.data()?.data;
-      if (typeof part !== "string") throw new Error("Faltan trozos del contenido.");
-      return part;
-    })
-  );
+  return joinChunks(snaps.map((s) => s.data()?.data));
 }
 async function recompose({ fs, db }, main, d) {
   if (d.schemaVersion !== 1) throw new Error(FORMAT_ERROR);
   if (typeof d.data === "string") return toRecord(d, d.data);
   if (chunkCount(d) === null) throw new Error(FORMAT_ERROR);
-  return fs.runTransaction(db, async (tx) => {
-    const meta = (await tx.get(main)).data();
-    if (!meta || meta.schemaVersion !== 1) throw new Error(FORMAT_ERROR);
-    if (typeof meta.data === "string") return toRecord(meta, meta.data);
-    const n = chunkCount(meta);
-    if (!n) throw new Error(FORMAT_ERROR);
-    return toRecord(meta, await readChunks(fs, tx, main, n));
-  });
+  return untilComplete(
+    () => fs.runTransaction(db, async (tx) => {
+      const meta = (await tx.get(main)).data();
+      if (!meta || meta.schemaVersion !== 1) throw new Error(FORMAT_ERROR);
+      if (typeof meta.data === "string") return toRecord(meta, meta.data);
+      const n = chunkCount(meta);
+      if (!n) throw new Error(FORMAT_ERROR);
+      const data = await readChunks(fs, tx, main, n);
+      return data === null ? INCOMPLETE : toRecord(meta, data);
+    })
+  );
 }
 function createContentRepo(load) {
   return {
@@ -861,32 +870,35 @@ function createContentRepo(load) {
       const { fs, db } = await load();
       const main = fs.doc(db, "projects", id2, "content", "main");
       const chunk = (i) => fs.doc(main, "chunks", String(i));
-      return fs.runTransaction(db, async (tx) => {
-        const snap = await tx.get(main);
-        if (!snap.exists()) return { conflict: true };
-        const meta = snap.data();
-        const current = Number(meta.revision);
-        const oldChunks = chunkCount(meta) ?? 0;
-        let out = data;
-        if (current !== expectedRevision) {
-          if (!merge) return { conflict: true };
-          const remote = oldChunks ? await readChunks(fs, tx, main, oldChunks) : meta.data;
-          if (typeof remote !== "string") return { conflict: true };
-          out = merge(data, remote);
-        }
-        const parts = splitContent(out);
-        const updatedAt = Date.now();
-        const revision = current + 1;
-        if (parts.length === 1) {
-          tx.set(main, { data: out, schemaVersion: 1, revision, updatedAt });
-        } else {
-          tx.set(main, { schemaVersion: 1, revision, updatedAt, chunks: parts.length });
-          parts.forEach((p, i) => tx.set(chunk(i), { data: p }));
-        }
-        for (let i = parts.length > 1 ? parts.length : 0; i < oldChunks; i++) tx.delete(chunk(i));
-        tx.update(fs.doc(db, "projects", id2), { updatedAt });
-        return out === data ? { revision } : { revision, merged: out };
-      });
+      return untilComplete(
+        () => fs.runTransaction(db, async (tx) => {
+          const snap = await tx.get(main);
+          if (!snap.exists()) return { conflict: true };
+          const meta = snap.data();
+          const current = Number(meta.revision);
+          const oldChunks = chunkCount(meta) ?? 0;
+          let out = data;
+          if (current !== expectedRevision) {
+            if (!merge) return { conflict: true };
+            const remote = oldChunks ? await readChunks(fs, tx, main, oldChunks) : meta.data;
+            if (remote === null) return INCOMPLETE;
+            if (typeof remote !== "string") return { conflict: true };
+            out = merge(data, remote);
+          }
+          const parts = splitContent(out);
+          const updatedAt = Date.now();
+          const revision = current + 1;
+          if (parts.length === 1) {
+            tx.set(main, { data: out, schemaVersion: 1, revision, updatedAt });
+          } else {
+            tx.set(main, { schemaVersion: 1, revision, updatedAt, chunks: parts.length });
+            parts.forEach((p, i) => tx.set(chunk(i), { data: p }));
+          }
+          for (let i = parts.length > 1 ? parts.length : 0; i < oldChunks; i++) tx.delete(chunk(i));
+          tx.update(fs.doc(db, "projects", id2), { updatedAt });
+          return out === data ? { revision } : { revision, merged: out };
+        })
+      );
     },
     subscribe(id2, cb, onError) {
       let off = null;
