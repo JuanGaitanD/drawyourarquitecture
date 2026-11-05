@@ -117,6 +117,38 @@ describe('removeSelected', () => {
   });
 });
 
+describe('removeSelected · descendientes bloqueados', () => {
+  it('un hijo bloqueado de un frame borrado se conserva con la misma posición absoluta', () => {
+    const s = loaded();
+    s.getState().updateNodeData(['api'], { locked: true });
+    const before = toAbsolute(
+      s.getState().nodes.find((n) => n.id === 'api')!,
+      s.getState().nodes,
+    );
+    s.getState().setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === 'frame' })));
+    s.getState().removeSelected();
+    const ns = s.getState().nodes;
+    expect(ns.some((n) => n.id === 'frame')).toBe(false);
+    expect(ns.some((n) => n.id === 'db')).toBe(false); // el hijo sin bloquear sí se borra
+    const api = ns.find((n) => n.id === 'api')!;
+    expect(api.parentId).toBeUndefined();
+    expect(api.position).toEqual(before);
+  });
+
+  it('con un frame anidado superviviente, el bloqueado pasa a ese ancestro', () => {
+    const outer = { ...makeNode('frame', { x: 10, y: 10 }), id: 'outer' };
+    const mid = { ...makeNode('frame', { x: 20, y: 20 }), id: 'mid', parentId: 'outer' };
+    const leaf = { ...makeNode('shape', { x: 5, y: 5 }, { locked: true }), id: 'leaf', parentId: 'mid' };
+    const s = createBoardStore();
+    s.getState().load({ schemaVersion: 1, nodes: [outer, mid, leaf], edges: [], viewport: { x: 0, y: 0, zoom: 1 } });
+    s.getState().setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === 'mid' })));
+    s.getState().removeSelected();
+    const l = s.getState().nodes.find((n) => n.id === 'leaf')!;
+    expect(l.parentId).toBe('outer');
+    expect(l.position).toEqual({ x: 25, y: 25 }); // absoluta (35, 35) − outer (10, 10)
+  });
+});
+
 describe('updateNodeData', () => {
   it('mezcla el estilo parcial', () => {
     const s = loaded();

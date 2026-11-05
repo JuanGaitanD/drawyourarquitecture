@@ -11,7 +11,7 @@ import type {
   ShapeKind,
   Viewport,
 } from '../model/board';
-import { descendantsOf, sortParentsFirst } from '../model/geometry';
+import { sortParentsFirst, toAbsolute, toRelative } from '../model/geometry';
 
 // Store por instancia (invariante 6): zustand vanilla + zundo con partialize (solo nodes y edges, sin estado
 // de runtime), límite 100 y un gesto = un paso.
@@ -152,8 +152,22 @@ export function createBoardStore(): BoardStore {
         removeSelected: () =>
           set((s) => {
             const gone = new Set(s.nodes.filter((n) => n.selected && !n.data.locked).map((n) => n.id));
-            for (const id of [...gone]) descendantsOf(id, s.nodes).forEach((d) => gone.add(d));
-            const nodes = s.nodes.filter((n) => !gone.has(n.id));
+            // Padres antes que hijos: un descendiente bloqueado sobrevive (y con él su propio subárbol).
+            for (const n of s.nodes) if (n.parentId && gone.has(n.parentId) && !n.data.locked) gone.add(n.id);
+            const byId = new Map(s.nodes.map((n) => [n.id, n]));
+            const nodes = s.nodes
+              .filter((n) => !gone.has(n.id))
+              .map((n) => {
+                if (!n.parentId || !gone.has(n.parentId)) return n;
+                // Reparenta al ancestro superviviente conservando la posición absoluta.
+                let a = byId.get(n.parentId);
+                while (a?.parentId && gone.has(a.id)) a = byId.get(a.parentId);
+                const parentId = a && !gone.has(a.id) ? a.id : undefined;
+                const moved: BoardNode = { ...n, position: toRelative(toAbsolute(n, byId), parentId, byId) };
+                if (parentId) moved.parentId = parentId;
+                else delete moved.parentId;
+                return moved;
+              });
             const edges = s.edges.filter((e) => !e.selected && !gone.has(e.source) && !gone.has(e.target));
             return nodes.length === s.nodes.length && edges.length === s.edges.length ? s : { nodes, edges };
           }),
