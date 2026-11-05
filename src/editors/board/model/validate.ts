@@ -1,4 +1,4 @@
-import { EDGE_PATHS, NODE_KINDS, type BoardContent, type BoardEdge, type BoardNode } from './board';
+import { EDGE_PATHS, ICONS, NODE_KINDS, SHAPES, type BoardContent, type BoardEdge, type BoardNode } from './board';
 import { sortParentsFirst } from './geometry';
 
 // Invariante 8: se aplica a import JSON, plantillas, Mermaid y carga.
@@ -11,6 +11,8 @@ export type ValidationResult = { ok: true; value: BoardContent } | { ok: false; 
 const isObj = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+const STYLE_STRINGS = ['fill', 'stroke', 'textColor'] as const;
+const STYLE_NUMBERS = ['strokeWidth', 'opacity', 'fontSize'] as const;
 const fail = (error: string): ValidationResult => ({ ok: false, error });
 
 /** Busca el primer número no finito (NaN, ±Infinity) dentro de un valor JSON-like. */
@@ -54,10 +56,20 @@ export function validateBoardContent(x: unknown): ValidationResult {
       return fail(`Nodo ${n.id}: type (${String(n.type)}) distinto de data.kind (${data.kind}).`);
     if (typeof data.label !== 'string' || !isObj(data.style))
       return fail(`Nodo ${n.id}: faltan label o style.`);
+    if (data.kind === 'shape' && !(SHAPES as readonly unknown[]).includes(data.shape))
+      return fail(`Nodo ${n.id}: data.shape no válido (${String(data.shape)}).`);
+    if (data.kind === 'icon' && !(ICONS as readonly unknown[]).includes(data.icon))
+      return fail(`Nodo ${n.id}: data.icon no válido (${String(data.icon)}).`);
+    if (data.kind === 'image' && typeof data.fileId !== 'string') return fail(`Nodo ${n.id}: falta data.fileId.`);
     const pos = n.position;
     if (!isObj(pos) || !isNum(pos.x) || !isNum(pos.y)) return fail(`Nodo ${n.id}: posición no finita.`);
     const bad = badNumberPath(n, `nodes[${i}]`);
     if (bad) return fail(`Número no finito en ${bad}.`);
+    const st = data.style;
+    for (const k of STYLE_STRINGS)
+      if (typeof st[k] !== 'string') return fail(`Nodo ${n.id}: style.${k} debe ser texto.`);
+    for (const k of STYLE_NUMBERS)
+      if (!isNum(st[k])) return fail(`Nodo ${n.id}: style.${k} debe ser un número finito.`);
   }
   for (const n of x.nodes as BoardNode[]) {
     if (n.parentId === undefined) continue;

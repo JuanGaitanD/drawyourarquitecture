@@ -177,6 +177,31 @@ describe('validateBoardContent', () => {
     expect(err(c)).toMatch(/schemaVersion/);
   });
 
+  it('rechaza una forma, un icono o un fileId que los renderizadores no pueden pintar', () => {
+    const c = clone();
+    const shape = c.nodes.find((n: any) => n.data.kind === 'shape'); // eslint-disable-line @typescript-eslint/no-explicit-any
+    shape.data.shape = 'no-existe';
+    expect(err(c)).toMatch(/data\.shape/);
+    shape.data.shape = 'rectangle';
+    shape.data.kind = 'icon';
+    shape.type = 'icon';
+    shape.data.icon = 'no-existe';
+    expect(err(c)).toMatch(/data\.icon/);
+    shape.data.kind = 'image';
+    shape.type = 'image';
+    delete shape.data.fileId;
+    expect(err(c)).toMatch(/fileId/);
+  });
+
+  it('rechaza estilos que los renderizadores no pueden consumir', () => {
+    const c = clone();
+    c.nodes[0].data.style.fontSize = '12';
+    expect(err(c)).toMatch(/style\.fontSize/);
+    const d = clone();
+    d.nodes[0].data.style.fill = 7;
+    expect(err(d)).toMatch(/style\.fill/);
+  });
+
   it('rechaza ids duplicados', () => {
     const c = clone();
     c.nodes[1].id = 'frame';
