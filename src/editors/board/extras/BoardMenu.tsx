@@ -29,6 +29,7 @@ import { validateBoardContent } from '../model/validate';
 import { useBoard, useBoardStore } from '../store/BoardStoreProvider';
 import { describeContent, placeBelow, type ApplyMode } from './content';
 import { downloadText, downloadUrl, slug } from './files';
+import { track } from '@/app/services';
 import { renderBoardPng } from './exportPng';
 import { MermaidExportDialog } from './MermaidExportDialog';
 import { MermaidImportDialog } from './MermaidImportDialog';
@@ -130,6 +131,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
     try {
       const url = await renderBoardPng(viewportRef.current, store.getState().nodes);
       downloadUrl(url, `${slug(title)}.png`);
+      track({ name: 'export', params: { format: 'png' } });
       toast({ title: 'PNG exportado', kind: 'success' });
     } catch (e) {
       toast({
@@ -145,6 +147,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
 
   const exportJson = () => {
     downloadText(JSON.stringify(getContent(), null, 2), `${slug(title)}.json`);
+    track({ name: 'export', params: { format: 'json' } });
     toast({ title: 'JSON exportado', kind: 'success' });
   };
 

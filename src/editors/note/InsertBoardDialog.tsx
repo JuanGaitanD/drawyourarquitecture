@@ -1,7 +1,7 @@
 import { LayoutDashboard, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useAuth, useMyProjects } from '@/app/hooks';
-import { createProject } from '@/app/services';
+import { createProject, track } from '@/app/services';
 import { Button, Dialog, DialogContent, useToast } from '@/ui';
 import styles from './InsertBoardDialog.module.css';
 
@@ -41,6 +41,7 @@ function Body({
 
   const pick = (id: string) => {
     onPick(id);
+    track({ name: 'board_embed_insert' });
     onClose();
   };
 
