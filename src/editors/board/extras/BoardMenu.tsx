@@ -28,7 +28,7 @@ import { autoLayout } from '../model/layout';
 import { useBoardFiles } from '../nodes';
 import { useBoard, useBoardStore } from '../store/BoardStoreProvider';
 import { describeContent, placeBelow, type ApplyMode } from './content';
-import { MAX_DYA_BYTES, buildDya, parseImport, uploadImages, type DyaImages } from './dyaFile';
+import { buildDya, dyaToText, readDya, uploadImages, type DyaImages } from './dyaFile';
 import { downloadText, downloadUrl, slug } from './files';
 import { track } from '@/app/services';
 import { renderBoardPng } from './exportPng';
@@ -176,7 +176,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
     try {
       // `.dya.json`: el contenido y los binarios de las imágenes (base64), para poder importarlo en cualquier proyecto.
       const { file, missing } = await buildDya(getContent(), boardFiles.load);
-      downloadText(JSON.stringify(file, null, 2), `${slug(title)}.dya.json`);
+      downloadText(dyaToText(file), `${slug(title)}.dya.json`);
       track({ name: 'export', params: { format: 'json' } });
       toast({
         title: 'Diagrama exportado',
@@ -193,20 +193,9 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
   };
 
   const importJson = async (file: File) => {
-    if (file.size > MAX_DYA_BYTES) {
-      toast({ title: 'El archivo es demasiado grande', description: 'El máximo es 40 MB.', kind: 'error' });
-      return;
-    }
-    let raw: unknown;
-    try {
-      raw = JSON.parse(await file.text());
-    } catch {
-      toast({ title: 'No es un JSON válido', description: file.name, kind: 'error' });
-      return;
-    }
-    const v = parseImport(raw);
+    const v = await readDya(file);
     if (!v.ok) {
-      toast({ title: 'No es un diagrama válido', description: v.error, kind: 'error', duration: 8000 });
+      toast({ title: v.title ?? 'No es un diagrama válido', description: v.error, kind: 'error', duration: 8000 });
       return;
     }
     request(v.content, 'replace', `«${file.name}»`, v.files);

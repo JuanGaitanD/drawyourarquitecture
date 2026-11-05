@@ -63,6 +63,12 @@ service cloud.firestore {
         && validMembers(request.resource.data.members);
     }
 
+    // `content/main` del proyecto sube exactamente una revisión en este mismo commit (batch o transacción).
+    function revisionAdvances(id) {
+      return getAfter(/databases/$(database)/documents/projects/$(id)/content/main).data.revision
+        == get(/databases/$(database)/documents/projects/$(id)/content/main).data.revision + 1;
+    }
+
     match /projects/{id} {
       // Un proyecto público se lee con get; nunca se lista: list es del dueño (`ownerId == uid`) y de quien es
       // miembro (`members.<uid> in [...]`, sin orderBy: no hay índice compuesto posible por uid).
@@ -139,17 +145,28 @@ service cloud.firestore {
 
         allow delete: if isProjectOwner(projectDoc(id));
 
-        // Trozos del contenido: la lectura es la del contenido; escriben el dueño y los editores; el que guarda
-        // un contenido más corto borra los sobrantes; el dueño los lista (para borrar el proyecto).
+        // Trozos del contenido: la lectura es la del contenido; el dueño los lista (para borrar el proyecto).
+        // Ninguna mutación de un trozo vale sola: `content/main` avanza su revisión en el mismo commit (getAfter),
+        // así los suscriptores del padre ven todo cambio y una carga nunca mezcla trozos de dos revisiones. Crear o
+        // actualizar exige además que el índice quepa en el `chunks` final; el que guarda un contenido más corto
+        // borra los sobrantes (índice ≥ `chunks` final, o todos si el contenido vuelve a `data`). Borrar el
+        // proyecto es la única salida sin revisión: el dueño borra los trozos en el batch que borra el proyecto.
         match /chunks/{i} {
           allow get: if canRead(projectDoc(id));
           allow list: if isProjectOwner(projectDoc(id));
           allow create, update: if canWrite(projectDoc(id))
+            && revisionAdvances(id)
             && i.matches('[0-9]|1[01]')
+            && int(i) < getAfter(/databases/$(database)/documents/projects/$(id)/content/main).data.get('chunks', 0)
             && request.resource.data.keys().hasOnly(['data'])
             && request.resource.data.data is string
             && request.resource.data.data.size() <= 900000;
-          allow delete: if canWrite(projectDoc(id));
+          allow delete: if (canWrite(projectDoc(id))
+              && revisionAdvances(id)
+              && i.matches('[0-9]|1[01]')
+              && int(i) >= getAfter(/databases/$(database)/documents/projects/$(id)/content/main).data.get('chunks', 0))
+            || (isProjectOwner(projectDoc(id))
+              && !existsAfter(/databases/$(database)/documents/projects/$(id)));
         }
       }
 

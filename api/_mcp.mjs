@@ -832,8 +832,10 @@ async function recompose({ fs, db }, main, d) {
   if (chunkCount(d) === null) throw new Error(FORMAT_ERROR);
   return fs.runTransaction(db, async (tx) => {
     const meta = (await tx.get(main)).data();
-    const n = meta && chunkCount(meta);
-    if (!meta || meta.schemaVersion !== 1 || !n) throw new Error(FORMAT_ERROR);
+    if (!meta || meta.schemaVersion !== 1) throw new Error(FORMAT_ERROR);
+    if (typeof meta.data === "string") return toRecord(meta, meta.data);
+    const n = chunkCount(meta);
+    if (!n) throw new Error(FORMAT_ERROR);
     return toRecord(meta, await readChunks(fs, tx, main, n));
   });
 }

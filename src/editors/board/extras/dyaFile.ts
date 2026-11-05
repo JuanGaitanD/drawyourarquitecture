@@ -10,8 +10,28 @@ import { IMAGE_TYPES, uploadWithRetry } from '../canvas/imageFile';
 
 export const DYA_FORMAT = 'dya-board';
 export const DYA_VERSION = 1;
-/** Tope de un archivo importado con imágenes (el contenido ya pasa por `validateBoardContent`). */
-export const MAX_DYA_BYTES = 40 * 1024 * 1024;
+/**
+ * Tope de un `.dya.json` con imágenes, el mismo al exportar y al importar. Un proyecto no limita cuántas imágenes
+ * guarda (≤ 4 MiB cada una, +33 % en base64) y el contenido llega a 8 MiB: 256 MiB cubre ~48 imágenes de tope y
+ * sigue cabiendo en memoria al leerlo (`file.text()` + `JSON.parse`). ponytail: sin lectura incremental; si hace
+ * falta más, un formato empaquetado.
+ */
+export const MAX_DYA_BYTES = 256 * 1024 * 1024;
+const MIB = 1024 * 1024;
+
+/**
+ * Serializa el archivo; no devuelve nada que la app misma no pueda importar: si pesa más que `max`, lanza (el
+ * diagrama queda sin exportar en vez de descargarse un archivo que luego se rechaza).
+ */
+export function dyaToText(file: DyaFile, max = MAX_DYA_BYTES): string {
+  const text = JSON.stringify(file, null, 2);
+  const bytes = new Blob([text]).size;
+  if (bytes > max)
+    throw new Error(
+      `El diagrama con sus imágenes pesa ${(bytes / MIB).toFixed(1)} MiB y la app solo importa archivos de hasta ${Math.floor(max / MIB)} MiB.`,
+    );
+  return text;
+}
 
 export interface DyaImage {
   mimeType: string;
@@ -76,7 +96,21 @@ export async function buildDya(
 
 export type ParsedImport =
   | { ok: true; content: BoardContent; files: DyaImages }
-  | { ok: false; error: string };
+  | { ok: false; error: string; title?: string };
+
+/** Lee un archivo elegido por la persona: tope de tamaño, JSON y validación. `title` es el encabezado del aviso. */
+export async function readDya(file: Blob & { name: string }, max = MAX_DYA_BYTES): Promise<ParsedImport> {
+  if (file.size > max)
+    return { ok: false, title: 'El archivo es demasiado grande', error: `El máximo es ${Math.floor(max / MIB)} MiB.` };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await file.text());
+  } catch {
+    return { ok: false, title: 'No es un JSON válido', error: file.name };
+  }
+  const v = parseImport(raw);
+  return v.ok ? v : { ...v, title: 'No es un diagrama válido' };
+}
 
 /** Lo que se importa es entrada externa: se valida todo. Admite `.dya.json` y el `.json` antiguo sin imágenes. */
 export function parseImport(raw: unknown): ParsedImport {

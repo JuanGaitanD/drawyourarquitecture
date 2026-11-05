@@ -44,6 +44,25 @@ async function listChunks(id = 'p'): Promise<string[]> {
   return out.sort();
 }
 
+/** Como `writeChunked`, pero con el cuerpo exacto de cada trozo (para probar cuerpos inválidos). */
+function writeChunkedRaw(fs: Db, revision: number, bodies: Record<string, unknown>[]) {
+  const b = writeBatch(fs);
+  b.set(main(fs), meta(revision, bodies.length));
+  bodies.forEach((body, i) => b.set(chunk(fs, i), body));
+  return b.commit();
+}
+
+/** Guarda un contenido más corto: meta con `chunks` (o `data` si vale 1) y borra los trozos `gone`. */
+function shrink(fs: Db, revision: number, chunks: number, gone: number[]) {
+  const b = writeBatch(fs);
+  b.set(
+    main(fs),
+    chunks > 1 ? meta(revision, chunks) : { data: '{}', schemaVersion: 1, revision, updatedAt: 2 },
+  );
+  gone.forEach((i) => b.delete(chunk(fs, i)));
+  return b.commit();
+}
+
 async function waitFor(cond: () => boolean, ms = 8000) {
   const end = Date.now() + ms;
   while (!cond()) {
@@ -57,8 +76,7 @@ describe('reglas · contenido troceado', () => {
     await assertSucceeds(writeChunked(as(OWNER), 1, ['a', 'b']));
     await assertSucceeds(writeChunked(as(EDITOR), 2, ['a', 'b', 'c']));
     await assertFails(writeChunked(as(VIEWER), 3, ['a', 'b']));
-    await assertFails(setDoc(chunk(as(VIEWER), 0), { data: 'x' }));
-    await assertFails(setDoc(chunk(as(STRANGER), 0), { data: 'x' }));
+    await assertFails(writeChunked(as(STRANGER), 3, ['a', 'b']));
   });
 
   it('la lectura de los trozos es la del contenido', async () => {
@@ -75,17 +93,21 @@ describe('reglas · contenido troceado', () => {
 
   it('un trozo admite 900 000 y rechaza 900 001, un valor que no es string y claves de más', async () => {
     const fs = as(OWNER);
-    await assertSucceeds(setDoc(chunk(fs, 0), { data: x(900_000) }));
-    await assertFails(setDoc(chunk(fs, 1), { data: x(900_001) }));
-    await assertFails(setDoc(chunk(fs, 1), { data: 5 }));
-    await assertFails(setDoc(chunk(fs, 1), { data: 'x', extra: 1 }));
+    await assertSucceeds(writeChunked(fs, 1, [x(900_000), 'b']));
+    await assertFails(writeChunked(fs, 2, ['a', x(900_001)]));
+    await assertFails(writeChunkedRaw(fs, 2, [{ data: 'a' }, { data: 5 }]));
+    await assertFails(writeChunkedRaw(fs, 2, [{ data: 'a' }, { data: 'x', extra: 1 }]));
   });
 
   it('el índice del trozo va de 0 a 11', async () => {
     const fs = as(OWNER);
-    await assertSucceeds(setDoc(chunk(fs, 11), { data: 'x' }));
-    await assertFails(setDoc(chunk(fs, 12), { data: 'x' }));
-    await assertFails(setDoc(chunk(fs, 'a'), { data: 'x' }));
+    await assertSucceeds(writeChunked(fs, 1, Array.from({ length: 12 }, () => 'x')));
+    for (const i of [12, 'a']) {
+      const b = writeBatch(fs); // ni el índice 12 ni uno no numérico caben, ni con `chunks` 12
+      b.set(main(fs), meta(2, 12));
+      b.set(chunk(fs, i), { data: 'x' });
+      await assertFails(b.commit());
+    }
   });
 
   it('la meta troceada: chunks entero de 2 a 12, sin data, revisión +1 y campos cerrados', async () => {
@@ -107,10 +129,10 @@ describe('reglas · contenido troceado', () => {
     await assertSucceeds(setDoc(main(fs), big(900_000)));
   });
 
-  it('dueño y editor borran trozos sobrantes; el visor no; solo el dueño los lista', async () => {
+  it('dueño y editor borran trozos sobrantes al guardar más corto; el visor no; solo el dueño los lista', async () => {
     await assertSucceeds(writeChunked(as(OWNER), 1, ['a', 'b', 'c']));
-    await assertFails(deleteDoc(chunk(as(VIEWER), 2)));
-    await assertSucceeds(deleteDoc(chunk(as(EDITOR), 2)));
+    await assertFails(shrink(as(VIEWER), 2, 2, [2]));
+    await assertSucceeds(shrink(as(EDITOR), 2, 2, [2]));
     await assertSucceeds(getDocs(collection(main(as(OWNER)), 'chunks')));
     await assertFails(getDocs(collection(main(as(EDITOR)), 'chunks')));
   });
@@ -181,6 +203,30 @@ describe('contentRepo · contenido grande contra las reglas', () => {
     expect(await repoFor(OWNER).load('no-existe')).toBeNull();
   });
 
+  it('carga con el contenido encogiéndose a mitad de la lectura: devuelve el pequeño, no un falso error de formato (D36)', async () => {
+    const owner = repoFor(OWNER);
+    await owner.save('p', JSON.stringify({ t: x(1_500_000) }), 0); // revisión 1, troceado
+    const small = '{"t":"corto"}';
+    let shrunk = false;
+    const db = as(OWNER);
+    const racing = createContentRepo(async () => ({
+      db: db as never,
+      fs: {
+        ...sdk,
+        // Entre ver `chunks` y recomponer, otro editor guarda un contenido pequeño (revisión 2, sin trozos).
+        getDoc: async (ref: never) => {
+          const snap = await sdk.getDoc(ref);
+          if (!shrunk) {
+            shrunk = true;
+            await owner.save('p', small, 1);
+          }
+          return snap;
+        },
+      } as typeof sdk,
+    }));
+    expect(await racing.load('p')).toEqual({ data: small, schemaVersion: 1, revision: 2, updatedAt: expect.any(Number) });
+  });
+
   it('subscribe entrega el contenido recompuesto y los cambios posteriores', async () => {
     const owner = repoFor(OWNER);
     const first = JSON.stringify({ t: x(1_200_000) });
@@ -193,5 +239,84 @@ describe('contentRepo · contenido grande contra las reglas', () => {
     await waitFor(() => seen.at(-1) === `2:${second.length}`);
     off();
     expect(seen[0]).toBe(`1:${first.length}`);
+  });
+});
+
+describe('reglas · los trozos no cambian sin avanzar la revisión (D34)', () => {
+  let o: Db;
+  let e: Db; // una sola instancia por cliente: un batch no mezcla referencias de otra
+  beforeEach(() => {
+    o = as(OWNER);
+    e = as(EDITOR);
+  });
+  const seedChunked = () => assertSucceeds(writeChunked(as(OWNER), 1, ['a', 'b', 'c']));
+
+  it('escribir, sobrescribir o borrar un trozo suelto, sin tocar content/main, se deniega', async () => {
+    await seedChunked();
+    for (const uid of [OWNER, EDITOR]) {
+      await assertFails(setDoc(chunk(as(uid), 0), { data: 'otro' }));
+      await assertFails(setDoc(chunk(as(uid), 1), { data: 'otro' }));
+      await assertFails(deleteDoc(chunk(as(uid), 2)));
+    }
+    expect((await getDoc(chunk(as(OWNER), 0))).data()).toEqual({ data: 'a' });
+  });
+
+  it('un trozo con la revisión del padre sin avanzar (la misma o un salto de dos) se deniega', async () => {
+    await seedChunked();
+    const same = writeBatch(o);
+    same.set(main(o), meta(1, 3));
+    same.set(chunk(o, 0), { data: 'x' });
+    await assertFails(same.commit());
+    await assertFails(writeChunked(o, 3, ['a', 'b', 'c']));
+  });
+
+  it('el guardado real (nuevo, más largo, más corto y de vuelta a data) sigue permitido, también con 12 trozos', async () => {
+    await assertSucceeds(writeChunked(as(EDITOR), 1, ['a', 'b']));
+    await assertSucceeds(writeChunked(o, 2, Array.from({ length: 12 }, (_, i) => `t${i}`)));
+    await assertSucceeds(shrink(as(EDITOR), 3, 2, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]));
+    await assertSucceeds(shrink(o, 4, 1, [0, 1]));
+    expect(await listChunks()).toEqual([]);
+  });
+
+  it('el índice debe caber en el `chunks` final: ni de más al escribir ni de menos al borrar', async () => {
+    await seedChunked();
+    const extra = writeBatch(o); // `chunks` final 2 y se escribe el índice 2
+    extra.set(main(o), meta(2, 2));
+    extra.set(chunk(o, 2), { data: 'x' });
+    await assertFails(extra.commit());
+    await assertFails(shrink(o, 2, 3, [0])); // borra un trozo que sigue en uso
+    const stale = writeBatch(o); // vuelve a `data` y deja un trozo escrito
+    stale.set(main(o), { data: '{}', schemaVersion: 1, revision: 2, updatedAt: 2 });
+    stale.set(chunk(o, 0), { data: 'x' });
+    await assertFails(stale.commit());
+  });
+
+  it('el visor y un extraño no mutan trozos ni con la revisión avanzada', async () => {
+    await seedChunked();
+    await assertFails(writeChunked(as(VIEWER), 2, ['a', 'b', 'c']));
+    await assertFails(shrink(as(STRANGER), 2, 2, [2]));
+  });
+
+  it('borrar el proyecto (trozos, content/main y proyecto en un batch, como projectRepo.remove) lo permite al dueño', async () => {
+    await seedChunked();
+    const fs = as(OWNER);
+    const b = writeBatch(fs);
+    (await getDocs(collection(main(fs), 'chunks'))).docs.forEach((d) => b.delete(d.ref));
+    b.delete(main(fs));
+    b.delete(doc(fs, 'projects', 'p'));
+    await assertSucceeds(b.commit());
+    expect(await listChunks()).toEqual([]);
+  });
+
+  it('borrar solo los trozos (el proyecto sigue) o por un editor, aunque sea en un batch de borrado, se deniega', async () => {
+    await seedChunked();
+    const a = writeBatch(o);
+    [0, 1, 2].forEach((i) => a.delete(chunk(o, i)));
+    await assertFails(a.commit());
+    const b = writeBatch(e);
+    [0, 1, 2].forEach((i) => b.delete(chunk(e, i)));
+    b.delete(main(e));
+    b.delete(doc(e, 'projects', 'p'));
+    await assertFails(b.commit());
   });
 });
