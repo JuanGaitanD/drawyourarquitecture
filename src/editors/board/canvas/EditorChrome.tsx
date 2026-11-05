@@ -2,6 +2,7 @@ import { ArrowLeft, CircleAlert, CloudOff, Link2, LoaderCircle, Check, Copy, Glo
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import type { SaveStatus } from '@/application/saveQueue';
+import { SharePanel } from '@/app/invite/SharePanel';
 import { ThemeToggle, UserMenu } from '@/app/shell/Shell';
 import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
 import styles from './editor.module.css';
@@ -139,6 +140,7 @@ export function ShareButton({ id, isPublic, onChange }: ShareProps) {
         >
           {isPublic ? 'Dejar de compartir' : 'Publicar enlace'}
         </Button>
+        <SharePanel projectId={id} />
       </PopoverContent>
     </Popover>
   );

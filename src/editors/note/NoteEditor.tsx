@@ -3,11 +3,11 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
 import { PageFallback } from '@/app/PageFallback';
 import { useAutosave, useProject, type ProjectState } from '@/app/hooks';
-import { projectRepo } from '@/app/services';
+import { identity, projectRepo } from '@/app/services';
 import type { StoredDraft } from '@/application/saveQueue';
 import type { ContentRecord } from '@/application/ports';
 import { ContentTooLargeError } from '@/domain/codec';
-import { normalizeTitle, type Project } from '@/domain/project';
+import { normalizeTitle, roleOf, type Project } from '@/domain/project';
 import { Button, useToast } from '@/ui';
 import { decodeNote, encodeNote, type NoteContent } from './codec';
 import styles from './NoteEditor.module.css';
@@ -104,6 +104,8 @@ function Session({
 }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const role = roleOf(project, identity.current()?.uid);
+  const viewOnly = role === 'viewer';
   const [title, setTitle] = useState(project.title);
   const [isPublic, setIsPublic] = useState(project.isPublic);
   const [encoded, setEncoded] = useState<string | null>(null);
@@ -179,12 +181,14 @@ function Session({
       <NoteCanvas
         projectId={project.id}
         content={content}
-        readonly={false}
+        readonly={viewOnly}
         onChange={onChange}
         onHandle={onHandle}
         topRight={(ui) => (
           <TopBar
             library={ui}
+            projectId={project.id}
+            canShare={role === 'owner'}
             title={title}
             onTitle={rename}
             status={autosave.status}

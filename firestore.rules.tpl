@@ -95,9 +95,10 @@ service cloud.firestore {
       match /joins/{uid} {
         allow get, list: if isProjectOwner(projectDoc(id));
         allow create, update: if request.auth != null && request.auth.uid == uid
-          && request.resource.data.keys().hasOnly(['token', 'role'])
-          && request.resource.data.keys().hasAll(['token', 'role'])
+          && request.resource.data.keys().hasOnly(['token', 'role', 'name'])
+          && request.resource.data.keys().hasAll(['token', 'role', 'name'])
           && request.resource.data.token is string
+          && request.resource.data.name is string && request.resource.data.name.size() <= 80
           && request.resource.data.role in ['editor', 'viewer']
           && validInvite(request.resource.data.token, id, request.resource.data.role);
         allow delete: if isProjectOwner(projectDoc(id));

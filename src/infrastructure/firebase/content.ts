@@ -23,19 +23,54 @@ export const contentRepo: ContentRepo = {
     }
   },
 
-  /** Transacción: solo escribe si la revisión guardada es la esperada; actualiza también `projects/{id}.updatedAt`. */
-  async save(id, data, expectedRevision) {
+  /**
+   * Transacción. Con la revisión esperada escribe `data`; si cambió y hay `merge`, escribe la fusión contra el
+   * remoto sobre la revisión actual (el guardado ya no falla por conflicto). Actualiza `projects/{id}.updatedAt`.
+   */
+  async save(id, data, expectedRevision, merge) {
     const { fs, db } = await loadFirestore();
     return fs.runTransaction(db, async (tx) => {
       const ref = fs.doc(db, 'projects', id, 'content', 'main');
       const snap = await tx.get(ref);
-      if (!snap.exists() || Number(snap.data().revision) !== expectedRevision)
-        return { conflict: true as const };
+      if (!snap.exists()) return { conflict: true as const };
+      const current = Number(snap.data().revision);
+      let out = data;
+      if (current !== expectedRevision) {
+        const remote = snap.data().data;
+        if (!merge || typeof remote !== 'string') return { conflict: true as const };
+        out = merge(data, remote);
+      }
       const updatedAt = Date.now();
-      const revision = expectedRevision + 1;
-      tx.update(ref, { data, schemaVersion: 1, revision, updatedAt });
+      const revision = current + 1;
+      tx.update(ref, { data: out, schemaVersion: 1, revision, updatedAt });
       tx.update(fs.doc(db, 'projects', id), { updatedAt });
-      return { revision };
+      return out === data ? { revision } : { revision, merged: out };
     });
+  },
+
+  subscribe(id, cb, onError) {
+    let off: (() => void) | null = null;
+    let closed = false;
+    loadFirestore().then(({ fs, db }) => {
+      if (closed) return;
+      off = fs.onSnapshot(
+        fs.doc(db, 'projects', id, 'content', 'main'),
+        (snap) => {
+          const d = snap.data();
+          if (!d || typeof d.data !== 'string' || d.schemaVersion !== 1) return;
+          cb({
+            data: d.data,
+            schemaVersion: 1,
+            revision: Number(d.revision) || 0,
+            updatedAt: Number(d.updatedAt) || 0,
+          });
+        },
+        (e) => onError?.(e),
+      );
+    }, (e) => onError?.(e));
+    return () => {
+      closed = true;
+      off?.();
+    };
   },
 };

@@ -49,7 +49,7 @@ async function seedInvite(over: Record<string, unknown> = {}, token = TOKEN) {
 /** Lo que hace el invitado: el rol en `members` y el rastro en `joins/{uid}`, en un batch. */
 function join(fs: ReturnType<typeof as>, uid: string, role: string, token = TOKEN, id = 'p') {
   const b = writeBatch(fs);
-  b.set(doc(fs, 'projects', id, 'joins', uid), { token, role });
+  b.set(doc(fs, 'projects', id, 'joins', uid), { token, role, name: uid });
   b.update(proj(fs, id), { [`members.${uid}`]: role });
   return b.commit();
 }
@@ -174,7 +174,7 @@ describe('compartir · invitaciones', () => {
     await seedInvite();
     const fs = as(STRANGER);
     const b = writeBatch(fs);
-    b.set(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: TOKEN, role: 'editor' });
+    b.set(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: TOKEN, role: 'editor', name: 'x' });
     b.update(proj(fs), { 'members.otra-persona': 'editor' });
     await assertFails(b.commit());
   });

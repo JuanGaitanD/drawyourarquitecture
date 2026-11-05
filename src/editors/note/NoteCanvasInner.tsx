@@ -334,7 +334,7 @@ export default function NoteCanvasInner({
         onLinkOpen={onLinkOpen}
         onLibraryChange={writeLibrary}
         renderTopRightUI={
-          readonly
+          !topRight
             ? undefined
             : () => (
                 <div className={styles.topRight}>

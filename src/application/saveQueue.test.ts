@@ -31,9 +31,11 @@ function fakeRepo(serverRevision = 0) {
   let release: (() => void) | null = null;
   let hold = false;
   let failNext: Error | null = null;
+  let remoteData = '';
   const repo: ContentRepo = {
     load: async () => null,
-    async save(_id, data, expected) {
+    subscribe: () => () => undefined,
+    async save(_id, data, expected, merge) {
       calls.push({ data, expected });
       if (hold) await new Promise<void>((r) => (release = r));
       if (failNext) {
@@ -41,8 +43,15 @@ function fakeRepo(serverRevision = 0) {
         failNext = null;
         throw e;
       }
-      if (expected !== rev) return { conflict: true };
+      if (expected !== rev) {
+        if (!merge) return { conflict: true };
+        rev += 1;
+        const merged = merge(data, remoteData);
+        remoteData = merged;
+        return merged === data ? { revision: rev } : { revision: rev, merged };
+      }
       rev += 1;
+      remoteData = data;
       return { revision: rev };
     },
   };
@@ -55,6 +64,11 @@ function fakeRepo(serverRevision = 0) {
       release?.();
     },
     failNext: (e: Error) => (failNext = e),
+    /** Simula que otro cliente guardó: sube la revisión y deja su contenido. */
+    remoteSave: (data: string) => {
+      rev += 1;
+      remoteData = data;
+    },
   };
 }
 
@@ -187,6 +201,36 @@ describe('saveQueue · conflicto de revisión', () => {
     q.push('mío');
     await q.flush();
     expect(readDraft(draftKey('p1', q.sessionId), storage)?.data).toBe('mío');
+  });
+});
+
+describe('saveQueue · fusión con el remoto', () => {
+  const merge = (local: string, remote: string) => (local === remote ? local : `${remote}+${local}`);
+
+  it('con merge, un desfase de revisión no da conflicto: escribe la fusión y sigue guardando', async () => {
+    const f = fakeRepo(0);
+    const q = createSaveQueue(f.repo, 'p1', 0, { storage: memoryStorage(), merge });
+    f.remoteSave('R');
+    q.push('L1');
+    await q.flush();
+    expect(q.state.status).toBe('guardado');
+    expect(q.revision).toBe(2);
+    // la cola ya no está sucia: no reescribe lo que ya mandó
+    await q.flush();
+    expect(f.calls).toHaveLength(1);
+    q.push('L2');
+    await q.flush();
+    expect(f.calls[1]).toEqual({ data: 'L2', expected: 2 });
+    expect(q.state.status).toBe('guardado');
+  });
+
+  it('sin merge el mismo desfase sigue siendo conflicto', async () => {
+    const f = fakeRepo(0);
+    const q = createSaveQueue(f.repo, 'p1', 0, { storage: memoryStorage() });
+    f.remoteSave('R');
+    q.push('L1');
+    await q.flush();
+    expect(q.state.status).toBe('conflicto');
   });
 });
 

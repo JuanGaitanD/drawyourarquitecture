@@ -11,7 +11,9 @@ import { EMULATOR_HOST, EMULATOR_PORTS, EMULATOR_PROJECT, USE_EMULATORS, auth } 
 
 /** Uid fijo del dueño en los emuladores: coincide con `OWNER_UID` de las reglas renderizadas con --emulator. */
 export const EMULATOR_OWNER_UID = 'owner-test';
-const TEST_EMAIL = 'owner@test.dev';
+// Con `localStorage['dya:testUser'] = 'guest-a'` (solo emuladores) se entra como otra cuenta de prueba: sirve para
+// probar la colaboración con dos navegadores.
+const testUser = () => (USE_EMULATORS && globalThis.localStorage?.getItem('dya:testUser')) || EMULATOR_OWNER_UID;
 const TEST_PASSWORD = 'test-password-1';
 
 const toUser = (u: User | null): AuthUser | null =>
@@ -22,21 +24,23 @@ const toUser = (u: User | null): AuthUser | null =>
  * administración del emulador y entra con correo y clave. Nunca se usa contra Firebase real.
  */
 async function signInEmulator(): Promise<void> {
+  const uid = testUser();
+  const email = uid === EMULATOR_OWNER_UID ? 'owner@test.dev' : `${uid}@test.dev`;
   await fetch(
     `http://${EMULATOR_HOST}:${EMULATOR_PORTS.auth}/identitytoolkit.googleapis.com/v1/projects/${EMULATOR_PROJECT}/accounts`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
       body: JSON.stringify({
-        localId: EMULATOR_OWNER_UID,
-        email: TEST_EMAIL,
+        localId: uid,
+        email,
         password: TEST_PASSWORD,
-        displayName: 'Dueño de prueba',
+        displayName: uid === EMULATOR_OWNER_UID ? 'Dueño de prueba' : `Invitado ${uid}`,
         emailVerified: true,
       }),
     },
   ).catch(() => undefined); // si ya existe responde 400: da igual
-  await signInWithEmailAndPassword(auth, TEST_EMAIL, TEST_PASSWORD);
+  await signInWithEmailAndPassword(auth, email, TEST_PASSWORD);
 }
 
 export const identity: Identity = {

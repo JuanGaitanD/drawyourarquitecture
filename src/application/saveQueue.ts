@@ -1,4 +1,4 @@
-import type { ContentRepo } from './ports';
+import type { ContentMerger, ContentRepo } from './ports';
 
 // Autosave sin React (plan · invariante 2). Una sola escritura en vuelo, la última gana;
 // transacción con revisión esperada; borrador local en cada cambio.
@@ -115,6 +115,11 @@ export interface SaveQueueOptions {
   isOffline?: () => boolean;
   /** Identifica el borrador de esta cola; por defecto uno aleatorio por instancia. */
   sessionId?: string;
+  /**
+   * Si se pasa, un guardado con la revisión desfasada se fusiona contra el remoto en la transacción en vez de
+   * dar conflicto (colaboración en tiempo real). Sin él, el desfase es `conflicto` como antes.
+   */
+  merge?: ContentMerger;
 }
 
 export interface SaveQueue {
@@ -189,7 +194,7 @@ export function createSaveQueue(
           const data = latest as string;
           setState({ status: 'guardando' });
           try {
-            const res = await repo.save(id, data, revision);
+            const res = await repo.save(id, data, revision, opts.merge);
             if ('conflict' in res) {
               setState({ status: 'conflicto' });
               return;

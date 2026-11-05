@@ -9,6 +9,7 @@ import { identity } from '@/infrastructure/firebase/auth';
 import { contentRepo } from '@/infrastructure/firebase/content';
 import { fileStore } from '@/infrastructure/firebase/files';
 import { track } from '@/infrastructure/firebase/analytics';
+import { inviteRepo } from '@/infrastructure/firebase/invites';
 import { projectRepo as firestoreProjects } from '@/infrastructure/firebase/projects';
 import type { ProjectRepo } from '@/application/ports';
 
@@ -20,7 +21,7 @@ const projectRepo: ProjectRepo = {
   },
 };
 
-export { identity, contentRepo, fileStore, projectRepo, track };
+export { identity, contentRepo, fileStore, projectRepo, inviteRepo, track };
 export { USE_EMULATORS, isFirebaseConfigured } from '@/infrastructure/firebase/firebase';
 
 const emptyContent = (type: ProjectType): string => encode(type === 'board' ? emptyBoard() : emptyNote());
