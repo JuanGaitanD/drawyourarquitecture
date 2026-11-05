@@ -1,0 +1,206 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  outline: 0;
+  background: var(--surface-app);
+}
+
+.header {
+  position: relative;
+  z-index: var(--z-header);
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  height: 3.5rem;
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.spacer {
+  flex: 1;
+}
+
+.title {
+  min-width: 8rem;
+  max-width: 28rem;
+  height: var(--control-h-md);
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+.title:hover {
+  background: var(--surface-hover);
+}
+.title:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+.title::placeholder {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+.status[data-status='sin conexión'] {
+  color: var(--warning);
+}
+.status[data-status='error'],
+.status[data-status='conflicto'] {
+  color: var(--danger);
+}
+.spin {
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-link);
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.banner {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-sm);
+}
+.banner > span {
+  flex: 1;
+}
+.banner[data-kind='danger'] {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-bottom: 1px solid var(--danger);
+}
+.banner[data-kind='info'] {
+  background: var(--accent-soft);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Lienzo y ranuras de C2: contenedores flotantes que no roban punteros; sus hijos sí los reciben. */
+.stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.slotToolbar,
+.slotStyle,
+.slotSearch,
+.slotActions {
+  position: absolute;
+  z-index: var(--z-canvas-ui);
+  display: flex;
+  pointer-events: none;
+}
+.slotToolbar > *,
+.slotStyle > *,
+.slotSearch > *,
+.slotActions > * {
+  pointer-events: auto;
+}
+.slotToolbar {
+  top: 50%;
+  left: var(--space-3);
+  transform: translateY(-50%);
+}
+.slotStyle {
+  top: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.slotSearch {
+  top: var(--space-3);
+  right: var(--space-3);
+}
+.slotActions {
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* Compartir */
+.share {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 22rem;
+}
+.shareTitle {
+  font-weight: 600;
+}
+.shareHint {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.shareRow {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+}
+.shareUrl {
+  flex: 1;
+  min-width: 0;
+  height: var(--control-h-sm);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-size: var(--text-sm);
+}
+
+/* Estados a pantalla completa */
+.full {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  height: 100%;
+  padding: var(--space-6);
+  text-align: center;
+}
+.fullIcon {
+  color: var(--warning);
+}
+.fullTitle {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.fullText {
+  max-width: 32rem;
+  color: var(--text-muted);
+}
+.fullActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
