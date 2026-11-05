@@ -1,0 +1,19 @@
+.toolbar {
+  top: 50%;
+  left: var(--space-3);
+  transform: translateY(-50%);
+  /* Con ventanas bajas la barra se desplaza en vez de recortarse. */
+  max-height: calc(100% - var(--space-6));
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.picker {
+  padding: var(--space-2);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 4), var(--control-h-md));
+  gap: var(--space-1);
+}

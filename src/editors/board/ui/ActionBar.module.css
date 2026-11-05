@@ -1,0 +1,8 @@
+.bar {
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 2 * var(--space-8));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
