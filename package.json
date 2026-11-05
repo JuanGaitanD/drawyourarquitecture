@@ -16,7 +16,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:rules": "node scripts/render-rules.mjs --emulator && firebase emulators:exec --only firestore --project demo-dya \"vitest run --config vitest.rules.config.ts\"",
+    "test:rules": "node scripts/test-rules.mjs",
     "rules:render": "node scripts/render-rules.mjs",
     "emulators": "node scripts/render-rules.mjs --emulator && firebase emulators:start --project demo-dya",
     "test:e2e": "playwright test"

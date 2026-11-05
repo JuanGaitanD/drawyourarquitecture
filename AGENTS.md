@@ -23,7 +23,7 @@ Gestor **pnpm 12** (corepack) y **Node 24.x**. Versiones exactas, sin `^`.
 | `pnpm lint` | ESLint flat (incluye la regla de dependencia entre capas) |
 | `pnpm typecheck` | `tsc -b --noEmit` (TypeScript strict) |
 | `pnpm test` | Vitest: `domain`, `application`, `editors/**/model` y lo que cada carril añada en `src/**` |
-| `pnpm test:rules` | Renderiza las reglas para el emulador y corre `tests/rules` con `firebase emulators:exec` |
+| `pnpm test:rules` | Renderiza las reglas para el emulador y corre `tests/rules`: reutiliza el emulador vivo en 8080 y, si no hay, arranca uno con `firebase emulators:exec` (`scripts/test-rules.mjs`) |
 | `pnpm build` | `tsc -b && vite build` |
 | `pnpm emulators` | Auth y Firestore locales (proyecto `demo-dya`; no necesita login) |
 | `pnpm rules:render` | Genera `firestore.rules` con `OWNER_UID` de `.env` (para desplegar) |
@@ -67,7 +67,7 @@ tests/rules/  tests/e2e/
 - **Atajos** solo con el editor enfocado; se ignoran en inputs, contentEditable e IME.
 - Commits: Conventional Commits en español, atómicos, el árbol compila en cada uno. Ámbitos: ver `wigi.json`.
 - Una prueba por cosa que puede romperse; las reglas se prueban contra los emuladores, sin mocks de Firebase.
-- Si ya hay emuladores corriendo en 9099/8080, `pnpm test:rules` falla con «port taken»: `node scripts/render-rules.mjs --emulator` y `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm exec vitest run --config vitest.rules.config.ts`.
+- `pnpm test:rules` no falla con emuladores ya corriendo: detecta el puerto 8080 y reutiliza ese emulador (recarga las reglas al renderizarlas).
 
 ## Qué no tocar
 
