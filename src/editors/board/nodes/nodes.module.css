@@ -1,0 +1,249 @@
+/* Nodos del board. Lo dibujado (rellenos, trazos, stickies) es literal y no cambia con el tema;
+   el chrome (selección, handles, candado, título de frame, marcadores) usa los tokens. */
+
+.node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  font-family: var(--font-sans);
+  line-height: 1.3;
+}
+
+/* Selección: contorno del cajón (los handles de resize se pintan encima). */
+.selected::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 1.5px solid var(--selection);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  display: block;
+}
+
+/* Texto */
+.labelBox {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.label {
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: none;
+}
+.label[data-empty] {
+  color: var(--text-faint) !important;
+  font-style: italic;
+}
+.editGrid {
+  display: grid;
+  width: 100%;
+  pointer-events: auto;
+}
+.editGrid::after {
+  content: attr(data-replicated);
+  grid-area: 1 / 1;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  visibility: hidden;
+  padding: 0 1px;
+}
+.editor {
+  grid-area: 1 / 1;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0 1px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  caret-color: currentcolor;
+  box-shadow: 0 1px 0 0 var(--selection);
+}
+
+/* Texto suelto: alto automático (lo quita displayNodes) */
+.textNode {
+  min-height: 24px;
+  height: auto;
+}
+.fillBox {
+  position: absolute;
+  inset: 0;
+  border-style: solid;
+  border-radius: 4px;
+}
+.textNode .labelBox {
+  position: relative;
+}
+.hOnly :global(.react-flow__resize-control.top),
+.hOnly :global(.react-flow__resize-control.bottom) {
+  display: none;
+}
+
+/* Sticky */
+.sticky {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 0.12),
+    0 6px 14px -4px rgb(0 0 0 / 0.22);
+}
+
+/* Frame: título arriba a la izquierda sobre una pastilla del chrome (se lee en ambos temas) */
+.frame {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.frameTitle {
+  position: absolute;
+  left: 0;
+  bottom: 100%;
+  max-width: 100%;
+  margin-bottom: 6px;
+  min-width: 4rem;
+  pointer-events: none;
+}
+.frameTitle .labelBox {
+  position: static;
+  display: block;
+  padding: 0;
+}
+.frameTitle .label,
+.frameTitle .editGrid {
+  display: block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Icono: glifo cuadrado arriba y texto debajo */
+.iconBox {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.iconGlyph {
+  width: 100%;
+  height: 100%;
+}
+.iconLabel {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 160px;
+  margin-top: 2px;
+  transform: translateX(-50%);
+}
+.iconLabel .labelBox {
+  position: static;
+}
+
+/* Imagen */
+.image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+.imagePlaceholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* Handles: visibles al pasar, seleccionar o con la herramienta de conector */
+.handle {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--selection);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+.node:hover .handle,
+.selected .handle,
+:global(.board-tool-connector) .handle,
+:global(.react-flow__handle.connectingto),
+:global(.react-flow__handle.connectionindicator):hover {
+  opacity: 1;
+}
+.handle:hover {
+  background: var(--selection);
+}
+.handle:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.resizeLine {
+  border-color: var(--selection) !important;
+}
+.resizeHandle {
+  width: 9px !important;
+  height: 9px !important;
+  border: 1.5px solid var(--selection) !important;
+  border-radius: 2px !important;
+  background: var(--surface) !important;
+}
+
+/* Candado: el nodo no recibe punteros, el botón sí */
+.lock {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.lock:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.lock:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
