@@ -262,7 +262,8 @@ function build(src: string): MermaidParseResult {
 const OPEN_CLOSE = new Map(SHAPES.map((x) => [x.shape, x]));
 const RESERVED = new Set(['end', 'subgraph', 'graph', 'flowchart', 'direction', 'style', 'class', 'click']);
 const SAFE_TEXT = /^[\p{L}\p{N} _.,:!?+-]+$/u;
-const SAFE_ID = /^[A-Za-z_][A-Za-z0-9_]*$/;
+// Ids cortos y legibles; los nanoid (21 caracteres) pasan a n1, n2…
+const SAFE_ID = /^[A-Za-z_][A-Za-z0-9_]{0,19}$/;
 
 const quoteIfNeeded = (t: string): string =>
   SAFE_TEXT.test(t) ? t : `"${t.replace(/"/g, '#quot;').replace(/\r?\n/g, '<br/>')}"`;
