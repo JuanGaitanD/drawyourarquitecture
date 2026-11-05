@@ -184,7 +184,7 @@ function Loaded({
     return s;
   });
   const viewport = useRef<Viewport>(initial.viewport);
-  const [sync] = useState(() => createBoardSync(store, initial, revision, viewport));
+  const [sync] = useState(() => createBoardSync(store, initial, revision));
   const { encoded, tooLarge, invalid, drain } = useEncodedContent(store, viewport);
   const syncOpts = useMemo(() => ({ merge: sync.merge, same: boardSame, onSaved: sync.onSaved }), [sync]);
   const { status, flush, resolveConflict, acceptRemote } = useAutosave(
@@ -310,6 +310,7 @@ function Loaded({
                 initialViewport={initial.viewport}
                 onViewportChange={(v) => {
                   viewport.current = v;
+                  sync.setViewport(v);
                 }}
               />
               <Toolbar />

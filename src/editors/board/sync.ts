@@ -48,16 +48,16 @@ export function createBoardSync(
   store: BoardStore,
   initial: BoardContent,
   initialRevision: number,
-  view: { readonly current: Viewport },
 ) {
   let base: BoardContent = initial;
+  let view: Viewport = initial.viewport;
   let seen = initialRevision;
 
   /** Un solo camino: lo usa el reintento de la transacción de guardado. */
   const merge: ContentMerger = (_local, remote) => {
     const r = parse(remote);
     if (!r) throw new Error('No se pudo fusionar: el contenido del servidor no es válido.');
-    const merged = mergeBoards(store.getState().toContent(view.current), r, base);
+    const merged = mergeBoards(store.getState().toContent(view), r, base);
     const ok = validateBoardContent(merged);
     if (!ok.ok) throw new Error(`La fusión no es válida: ${ok.error}`);
     return encode(ok.value);
@@ -65,6 +65,9 @@ export function createBoardSync(
 
   return {
     merge,
+    setViewport(v: Viewport): void {
+      view = v;
+    },
 
     /**
      * Llega el contenido del servidor: se fusiona con lo local y se aplica al store sin tocar el historial.
@@ -76,7 +79,7 @@ export function createBoardSync(
       const remote = parse(record.data);
       if (!remote) return false;
       const s0 = store.getState();
-      const merged = mergeBoards(s0.toContent(view.current), remote, base);
+      const merged = mergeBoards(s0.toContent(view), remote, base);
       base = remote;
       const nodes = reuse(s0.nodes, merged.nodes, cleanNodes);
       const edges = reuse(s0.edges, merged.edges, cleanEdges);
