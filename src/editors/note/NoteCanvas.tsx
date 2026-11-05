@@ -6,6 +6,11 @@ import type { NoteContent } from './codec';
 export interface NoteHandle {
   /** Sustituye la escena por `content` (no entra en el historial) y carga sus imágenes. */
   applyContent(content: NoteContent): Promise<void>;
+  /**
+   * Saca ya el último cambio retenido por el respiro de 150 ms (o `null` si no hay). Sigue valiendo después de
+   * desmontar el lienzo: el editor lo llama al `pagehide`, al ocultar la pestaña y al desmontar.
+   */
+  drain(): NoteContent | null;
 }
 
 export interface NoteCanvasProps {

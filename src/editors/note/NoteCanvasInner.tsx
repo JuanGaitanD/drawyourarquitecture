@@ -20,7 +20,7 @@ import { useLocation } from 'wouter';
 import { fileStore } from '@/app/services';
 import { useTheme, useToast } from '@/ui';
 import { BoardEmbed } from './BoardEmbed';
-import { buildNoteContent, referencedFileIds, type NoteFiles } from './codec';
+import { buildNoteContent, referencedFileIds, type NoteContent, type NoteFiles } from './codec';
 import {
   boardEmbedLink,
   embedOrigin,
@@ -185,16 +185,15 @@ export default function NoteCanvasInner({
     if (s) onChangeRef.current?.(buildNoteContent(s.elements, s.appState, known.current));
   }, []);
 
-  // Al desmontar: lo pendiente sale ya (el borrador y el guardado lo recogen).
-  useEffect(
-    () => () => {
-      if (timer.current) {
-        clearTimeout(timer.current);
-        emit();
-      }
-    },
-    [emit],
-  );
+  // Lo retenido por el respiro sale por `drain` (lo llama NoteEditor antes de guardar). Al desmontar no se emite
+  // aquí: los efectos del padre se limpian antes que los de este componente y el cambio se perdería.
+  const drain = useCallback((): NoteContent | null => {
+    if (!timer.current) return null;
+    clearTimeout(timer.current);
+    timer.current = null;
+    const s = scene.current;
+    return s ? buildNoteContent(s.elements, s.appState, known.current) : null;
+  }, []);
 
   const handleChange = useCallback(
     (elements: readonly unknown[], appState: { viewBackgroundColor?: string }, files: BinaryFiles) => {
@@ -240,6 +239,7 @@ export default function NoteCanvasInner({
   useEffect(() => {
     if (!api || !onHandle) return;
     onHandle({
+      drain,
       async applyContent(c) {
         known.current = { ...known.current, ...c.files };
         const elements = restoreElements(c.elements as ExcalidrawElement[], null, { repairBindings: true });
@@ -256,7 +256,7 @@ export default function NoteCanvasInner({
       },
     });
     return () => onHandle(null);
-  }, [api, onHandle, loadFiles]);
+  }, [api, onHandle, loadFiles, drain]);
 
   const insertBoard = useCallback(
     (boardId: string) => {

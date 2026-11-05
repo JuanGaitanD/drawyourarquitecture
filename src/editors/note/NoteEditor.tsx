@@ -1,5 +1,5 @@
 import { FileX2, TriangleAlert } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
 import { PageFallback } from '@/app/PageFallback';
 import { useAutosave, useProject, type ProjectState } from '@/app/hooks';
@@ -109,9 +109,25 @@ function Session({
   const [encoded, setEncoded] = useState<string | null>(null);
   const [tooLarge, setTooLarge] = useState(false);
   const [handle, setHandle] = useState<NoteHandle | null>(null);
+  // El drain no se borra al desmontar el lienzo: useAutosave lo usa en su limpieza para no perder el último trazo.
+  const drainRef = useRef<NoteHandle['drain'] | null>(null);
+  const onHandle = useCallback((h: NoteHandle | null) => {
+    if (h) drainRef.current = h.drain;
+    setHandle(h);
+  }, []);
+  const drain = useCallback((): string | null => {
+    const c = drainRef.current?.();
+    if (!c) return null;
+    try {
+      return encodeNote(c);
+    } catch (e) {
+      if (e instanceof ContentTooLargeError) return null; // el aviso lo da onChange; no se guarda nada a medias
+      throw e;
+    }
+  }, []);
 
   // El lienzo solo llama a onChange tras aplicar initialData: aquí `hydrated` ya es cierto.
-  const autosave = useAutosave(project.id, encoded, true, record.revision);
+  const autosave = useAutosave(project.id, encoded, true, record.revision, undefined, drain);
 
   const onChange = useCallback((c: NoteContent) => {
     try {
@@ -165,7 +181,7 @@ function Session({
         content={content}
         readonly={false}
         onChange={onChange}
-        onHandle={setHandle}
+        onHandle={onHandle}
         topRight={
           <TopBar
             title={title}
