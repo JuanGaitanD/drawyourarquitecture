@@ -12,7 +12,7 @@ Desviación consciente de `stack.md` §Alcance v1 (board mínimo): este plan cub
 | **P0** | lienzo, minimapa, cuadrícula y snap, multiselección, formas (rectángulo, redondeado, elipse, rombo), texto, sticky, conectores (con etiqueta, flechas, reconectar), frame, panel de estilo, alinear, orden Z, borrar, duplicar, deshacer por gesto, copiar/pegar, atajos básicos, guardar, JSON, lectura pública | panel (crear, listar, filtrar, renombrar, borrar, publicar), nota Excalidraw completa con autosave e imágenes, embed de board, reglas, despliegue |
 | **P1** | 10 formas más (triángulo, paralelogramo, hexágono, cilindro, nube, documento, terminador, flecha, callout, actor), 15 iconos, imagen, distribuir, bloquear, frame alrededor de la selección, Mermaid (importar y exportar), 3 plantillas, autolayout (dagre), buscar, exportar PNG, atajos completos | duplicar proyecto con imágenes, recuperar borrador |
 
-**Fuera**: tiempo real (fase 2), comentarios, IA, tablas, tarjetas, mind map, PDF, SVG de board, miniaturas, Open Graph dinámico, librerías oficiales AWS/Azure, payload en blob de Storage.
+**Fuera**: tiempo real (fase 2), comentarios, IA, tablas, tarjetas, mind map, PDF, SVG de board, miniaturas, Open Graph dinámico, librerías oficiales AWS/Azure, payload en blob aparte.
 
 ## Estructura (de `stack.md`)
 
@@ -39,7 +39,7 @@ tests/rules/  tests/e2e/
 
 ## Invariantes (todos los carriles)
 
-1. **Persistencia como string versionado.** `projects/{id}/content/main = { data: string, schemaVersion: 1, revision: number, updatedAt }`. Codec en `domain/codec.ts`: `encode(obj)` (`JSON.stringify` y bytes UTF-8 con `TextEncoder`; si pasan de 900 000 lanza `ContentTooLargeError`) y `decode<T>(s)`. `data` va exento de índices. `ponytail:` por encima de 900 KB, error visible; el blob en Storage queda para cuando un board real lo alcance.
+1. **Persistencia como string versionado.** `projects/{id}/content/main = { data: string, schemaVersion: 1, revision: number, updatedAt }`. Codec en `domain/codec.ts`: `encode(obj)` (`JSON.stringify` y bytes UTF-8 con `TextEncoder`; si pasan de 900 000 lanza `ContentTooLargeError`) y `decode<T>(s)`. `data` va exento de índices. `ponytail:` por encima de 900 KB, error visible; el contenido troceado como los archivos queda para cuando un board real lo alcance.
 2. **Guardado** (`application/saveQueue.ts`, sin React, y `app/hooks/useAutosave.ts`):
    - El editor se monta con `key={id}`. Guardar está **deshabilitado hasta hidratar** con éxito. Si la carga falla: error, reintentar y nunca guardar.
    - Si el string codificado es igual al último guardado, no hay escritura. Debounce de 800 ms y una sola escritura en vuelo; la última gana.
@@ -47,11 +47,13 @@ tests/rules/  tests/e2e/
    - Borrador `localStorage['draft:'+id] = {data, at, revision}` en cada cambio. Se borra al confirmar. Al cargar, si el borrador es más reciente, se ofrece «Recuperar cambios no guardados».
    - Flush en `visibilitychange` hidden y al desmontar; aviso en `beforeunload` si hay cambios pendientes. Sin conexión, el estado es `sin conexión, borrador local` y se reintenta con `online`.
    - Estados: `guardando | guardado | sin conexión | conflicto | error`.
-3. **Archivos** (`FileStore`): ruta `projects/{id}/files/{fileId}`.
-   - Descarga solo con `getBlob`; nunca `getDownloadURL`.
+3. **Archivos** (`FileStore`): **Firestore troceado, sin Storage ni plan Blaze** (decisión de Juan, 2026-11-05).
+   - `projects/{id}/files/{fileId} = { mimeType, size, chunks, createdAt }` y `projects/{id}/files/{fileId}/chunks/{i} = { data: Bytes }` (≤ 900 000 bytes por trozo, `Bytes.fromUint8Array`, sin base64). Se escribe con batch y la meta va la última; si hiciera falta, se parte en varios batch (≤ 450 operaciones y ≤ 8 MiB). `load` recompone un `Blob` con el `type` guardado; `remove` borra trozos y meta.
+   - **Toda imagen se optimiza antes de subir** (`application/imageOptimize.ts`, en nota y board): `createImageBitmap` → lado mayor ≤ 2048 px → WebP a calidad 0,82 (`OffscreenCanvas`, o `<canvas>` si no existe) → se conserva solo si pesa menos que el original. El GIF se sube tal cual (animación); sin soporte de WebP o con una imagen que no se decodifica, se sube el original. Tope de 4 MiB **después** de optimizar (`ImageTooLargeError`). La copia de un proyecto mueve los bytes ya optimizados, sin recodificar.
+   - Descarga solo por `FileStore.load`, que devuelve un `Blob`; no hay URLs públicas.
    - Subida en cola con 3 reintentos (1-2-4 s); los errores se ven en un toast con «Reintentar». El binario sigue en memoria y en el borrador mientras falte.
-   - La nota guarda `files: Record<fileId, {mimeType, created}>` y reconstruye `BinaryFileData {id, mimeType, dataURL, created}` para pasarlo a `api.addFiles`.
-   - Formatos PNG, JPEG, GIF y WebP; máximo 4 MiB.
+   - La nota guarda `files: Record<fileId, {mimeType, created}>` (el `mimeType` es el que se guardó, normalmente `image/webp`) y reconstruye `BinaryFileData {id, mimeType, dataURL, created}` con el `type` del `Blob` descargado para pasarlo a `api.addFiles`.
+   - Formatos de entrada PNG, JPEG, GIF y WebP; se rechaza SVG.
 4. **Coordenadas del board.** Los hijos (`parentId`) guardan su posición relativa al padre y los padres van primero en el array. Sin `extent:'parent'`. Las operaciones geométricas trabajan en absolutas con `toAbsolute` y `toRelative`. Reparentar al soltar se decide por el centro del nodo y convierte la posición.
 5. **Discriminantes.** `node.type === node.data.kind` y `edge.type === 'labeled'` (trazado en `data.path`). Handles `t r b l` con `ConnectionMode.Loose`. Nodos y aristas se crean solo con `makeNode` y `makeEdge`, que fijan nanoid, `DEFAULT_SIZE[kind]` y estilo. Fixture compartido: `model/fixtures.ts`.
 6. **Store por instancia.** `createBoardStore()` devuelve un store vanilla, inyectado con `BoardStoreProvider`. No hay store global, así que dos pestañas o un embed no comparten estado. Historial de zundo:
@@ -141,17 +143,14 @@ Node 24.22.2 y Java 21 (`JAVA_HOME="C:/Program Files/Eclipse Adoptium/jre-21.0.1
      - `create` exige `isOwner`, `ownerId == uid` y `keys().hasOnly`, con tipos validados.
      - `update` solo cambia `title`, `isPublic` y `updatedAt`; `delete`, solo del dueño.
      - `content/main` hereda la lectura del padre. Su `create` usa `getAfter()` (batch). Claves `data`, `schemaVersion`, `revision` y `updatedAt`. En `update`, `revision == resource.revision + 1`.
-   - **`storage.rules`**
-     - Lectura si es del dueño o público, consultando `firestore.get(/databases/(default)/documents/projects/$(id))`.
-     - Escritura solo del dueño, con PNG, JPEG, GIF o WebP y hasta 4 MiB.
-     - `delete` del dueño, sin condición de `request.resource`.
-   - `firestore.indexes.json` (exime `data`), `cors.json` y `firebase.json` con emuladores.
+     - `files/{fileId}` y `files/{fileId}/chunks/{i}`: `get` si el proyecto padre es del dueño o público (`get()` al proyecto); `list` solo del dueño; escritura solo del dueño. Meta con claves cerradas (`mimeType` en png/jpeg/gif/webp, `size` entero ≤ 4 194 304, `chunks` entero 1–5, `createdAt`); trozo con `data is bytes` y `data.size() <= 900000`.
+   - `firestore.indexes.json` (exime `data`) y `firebase.json` con los emuladores de Auth y Firestore.
 7. `tests/rules/*.test.ts`:
    - El dueño crea en batch, lee y escribe.
    - Una cuenta ajena no lee lo privado ni crea.
    - Un anónimo lee lo público con `get` y no puede listar.
    - `ownerId` y `type` son inmutables; una `revision` que no corresponde se rechaza.
-   - Storage rechaza SVG y archivos de 5 MiB, y permite borrar.
+   - Archivos: el dueño escribe y lee trozos y meta, una cuenta ajena no, un anónimo lee si el proyecto es público; un trozo de 900 001 bytes y un `mimeType` SVG se rechazan; el dueño borra.
 8. `vercel.json`: rewrite de la SPA que no intercepta `/assets` ni `/api`; caché inmutable en `/assets/*`; `nosniff`, `Referrer-Policy` y `X-Frame-Options: SAMEORIGIN`.
 9. Fuentes de Excalidraw en `public/excalidraw-assets/` (`window.EXCALIDRAW_ASSET_PATH`).
 10. Stubs, `AGENTS.md`, `CLAUDE.md` (`@AGENTS.md`), `wigi.json`, `HANDOFF.md`, `.env.example` y `.gitignore` (`.wigi/`, `.env*`).
@@ -250,9 +249,8 @@ Un `tests/e2e/smoke.spec.ts` (Playwright + emuladores):
 - Abrir el enlace público sin sesión.
 
 ### T7 · Revisión final GPT-6.1-sol → correcciones → T8 · Despliegue
-- **Firebase personal en plan Blaze**:
-  - `firebase deploy --only firestore:rules,firestore:indexes,storage`.
-  - IAM entre productos y CORS del bucket (`gcloud storage buckets update gs://<bucket> --cors-file=cors.json`, o Cloud Shell).
+- **Firebase personal (plan Spark, sin Storage)**:
+  - `firebase deploy --only firestore:rules,firestore:indexes`.
   - Dominio de Vercel en los dominios autorizados de Auth.
 - **Vercel**: `vercel --prod` con `VITE_FIREBASE_*` en el equipo personal `juangaitands-projects` (validado 2026-11-05: CLI como `juangaitand`).
 - **Analytics** (pedido por Juan): `firebase/analytics` en `infrastructure/firebase/analytics.ts`, cargado con `import()` solo en producción, si `isSupported()` y hay `VITE_FIREBASE_MEASUREMENT_ID`. Eventos: `project_create {type}`, `project_publish`, `board_embed_insert`, `export {format}`. Sin datos personales ni títulos. Usar la skill `firebase-analytics` del plugin oficial.
@@ -262,6 +260,6 @@ Un `tests/e2e/smoke.spec.ts` (Playwright + emuladores):
 T0 40→60 · A/B/C1/C2/D en paralelo 75→110 · T5 25→40 · T6 15→20 · T7 30→45 · T8 15→25. **≈ 5 h**, con ~1 h ya consumida en investigación y plan. El recorte por prioridad (P1 fuera) es la válvula.
 
 ## Pendiente de Juan (antes de T8)
-1. Proyecto Firebase **personal** en **Blaze**, con Google Sign-In, Firestore y Storage; config web; `npx firebase-tools login`.
+1. Proyecto Firebase **personal** (plan gratuito Spark), con Google Sign-In y Firestore; config web; `npx firebase-tools login`.
 2. Tu UID: aparece tras el primer login en local, o en Firebase Console → Authentication.
 3. Vercel: la CLI está en `jgaitan-6182`. ¿Es la cuenta Pro personal?

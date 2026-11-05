@@ -32,15 +32,13 @@ flowchart LR
     Infra --> application
     Note -. "renderEmbeddable → BoardViewer (sin iframe)" .-> Board
   end
-  subgraph Firebase["Firebase (plan Blaze)"]
+  subgraph Firebase["Firebase (plan gratuito)"]
     FAuth["Auth · Google · solo OWNER_UID escribe"]
-    FS[("Firestore<br/>projects/{id}<br/>projects/{id}/content/main {data, schemaVersion, revision}")]
-    ST[("Storage<br/>projects/{id}/files/{fileId}")]
+    FS[("Firestore<br/>projects/{id}<br/>projects/{id}/content/main {data, schemaVersion, revision}<br/>projects/{id}/files/{fileId} + chunks/{i} {data: Bytes}")]
   end
   Vercel["Vercel Pro · estáticos + rewrites"] --> Browser
   Infra --> FAuth
   Infra --> FS
-  Infra --> ST
 ```
 
 ## Regla de dependencia
@@ -54,7 +52,7 @@ SOLID sin ceremonia:
 
 ## Seguridad
 - Solo el `OWNER_UID` crea y escribe. Lo público se lee con `get`, nunca con `list`. `ownerId` y `type` son inmutables, los campos van en lista cerrada y la `revision` es monótona.
-- Storage: lectura cruzada con Firestore (dueño o público); solo imágenes rasterizadas de hasta 4 MiB; la descarga se hace con `getBlob`, sin URLs con token.
+- Sin Storage: las imágenes viven en Firestore, en trozos de ≤ 900 000 bytes bajo `projects/{id}/files/{fileId}`. La lectura hereda la del proyecto (dueño o público, con `get()` al padre) y la escritura es solo del dueño, con campos cerrados, `mimeType` png/jpeg/gif/webp (nunca SVG) y hasta 4 MiB. Toda imagen se optimiza (WebP, ≤ 2048 px) antes de subirla; no hay URLs públicas ni con token.
 - Si una nota pública incrusta un board privado, el embed muestra «Diagrama privado».
 
 ## Embed de board en nota

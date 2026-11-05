@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// Humo de extremo a extremo contra los emuladores (Auth 9099, Firestore 8080, Storage 9199).
+// Humo de extremo a extremo contra los emuladores (Auth 9099, Firestore 8080).
 // Cada escenario entra con la cuenta de prueba y crea sus propios datos; no depende de los demás.
 
 /** Título único por ejecución: los proyectos se listan por título en el panel y en «Insertar diagrama». */
@@ -78,9 +78,9 @@ const nodeNamed = (page: Page, label: string) =>
 const edges = (page: Page) => page.getByLabel(/^Edge from /);
 
 /**
- * Arrastra desde el punto de conexión derecho del origen hasta el izquierdo del destino. React Flow no da nombre
- * accesible a los puntos (ni `getByLabel` ni `getByRole` los ven), así que se apuntan en el borde de cada nodo, donde
- * NodeChrome los coloca: centro del lado derecho y del izquierdo.
+ * Arrastra desde el punto de conexión derecho del origen hasta el izquierdo del destino. Se apuntan en el borde de
+ * cada nodo, donde NodeChrome los coloca: centro del lado derecho y del izquierdo (también tienen nombre accesible:
+ * «Conectar desde el lado derecho»).
  */
 async function connect(page: Page, from: string, to: string) {
   const a = await nodeNamed(page, from).boundingBox();

@@ -4,6 +4,8 @@
 
 **T5 · Integración terminada** en la rama `feat/base` (sin push): los carriles C1, C2, D, A y B están fusionados (`chore(merge): integrar carril <X>`, sin conflictos) y los pendientes cruzados resueltos. Gates `lint`, `typecheck`, `test` (309), `test:rules` (25) y `build` en verde. Bundle inicial **152,7 kB gzip** (objetivo < 250). Probado a mano en Chrome contra los emuladores (nota con imagen y board embebido, board con plantilla, Mermaid, ordenar, PNG, JSON, atajos, bloqueo, enlace público sin sesión, despublicar, conflicto entre pestañas, claro y oscuro a 1280 y 1024 px).
 
+**Imágenes en Firestore, sin Storage** (decisión de Juan, 2026-11-05): `FileStore` guarda cada imagen troceada en `projects/{id}/files/{fileId}` + `chunks/{i}` y toda subida (nota y board) se optimiza antes (`application/imageOptimize.ts`). Ya no hay Storage, `cors.json` ni plan Blaze en el proyecto. Detalle en «Imágenes en Firestore».
+
 **T7 · Revisión final corregida** (6 hallazgos de `.wigi/review/final-gpt.md`, un commit por cada uno, ver «Correcciones de la revisión final»). Gates `lint`, `typecheck`, `test` y `build` en verde (`test:rules` no se tocó: no cambian las reglas).
 
 Siguen T6 (e2e) y T8 (despliegue, pendiente de Juan).
@@ -14,12 +16,12 @@ Siguen T6 (e2e) y T8 (despliegue, pendiente de Juan).
 | ---------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Dominio          | `src/domain/{project,codec}.ts`                                        | Hecho y probado                                                                                        |
 | Aplicación       | `src/application/{ports,projects,saveQueue}.ts`                        | Hecho y probado (gate de hidratación, cola serial, conflicto, borrador)                                |
-| Infraestructura  | `src/infrastructure/firebase/*`                                        | Hecho; Storage se carga con `import()`                                                                 |
+| Infraestructura  | `src/infrastructure/firebase/*`                                        | Hecho; Firestore se carga con `import()`                                                                 |
 | Modelo del board | `src/editors/board/model/{board,geometry,validate,fixtures}.ts`        | Hecho y probado                                                                                        |
 | UI               | `src/ui/*`                                                             | Tokens, tema (claro/oscuro/sistema), Dialog, DropdownMenu, Popover, Tooltip, Button, IconButton, Toast |
 | App              | `src/app/*`                                                            | Router (5 rutas + 404), AuthGate, login, shell, hooks, `services.ts`, páginas lazy                     |
-| Reglas           | `firestore.rules.tpl`, `storage.rules.tpl`, `scripts/render-rules.mjs` | 25 casos en `tests/rules`                                                                              |
-| Despliegue       | `firebase.json`, `firestore.indexes.json`, `cors.json`, `vercel.json`  | Escritos, sin desplegar                                                                                |
+| Reglas           | `firestore.rules.tpl`, `scripts/render-rules.mjs`                      | 27 casos en `tests/rules`                                                                              |
+| Despliegue       | `firebase.json`, `firestore.indexes.json`, `vercel.json`               | Escritos, sin desplegar                                                                                |
 
 ### Carriles integrados
 
@@ -47,7 +49,7 @@ Siguen T6 (e2e) y T8 (despliegue, pendiente de Juan).
 
 ```
 export JAVA_HOME="C:/Program Files/Eclipse Adoptium/jre-21.0.13.9-hotspot"; export PATH="$JAVA_HOME/bin:$PATH"
-pnpm emulators                        # terminal 1: auth 9099, firestore 8080, storage 9199 (proyecto demo-dya)
+pnpm emulators                        # terminal 1: auth 9099, firestore 8080 (proyecto demo-dya)
 VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de prueba» → uid owner-test
 ```
 
@@ -56,7 +58,7 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 1. **pnpm 12.6.0** (`corepack enable` sin errores y pnpm ya disponible en la máquina: no hizo falta `npm i -g`; fijado en `packageManager`). `pnpm-workspace.yaml` solo declara `allowBuilds` (los scripts de instalación de `@firebase/util`, `protobufjs`, `esbuild` y `re2` no hacen falta) y `minimumReleaseAgeExclude` para `lucide-react@1.69.0`, que pnpm 12 añadió por ser muy reciente.
 2. **TypeScript 6.0.3**, no 7.0.2: `typescript-eslint@8.72.1` declara `typescript >=4.8.4 <6.1.0`. Subir cuando typescript-eslint admita 7.
 3. **Vite 8.3.6**: la comprobación de humo pasó (Excalidraw + React Flow, React 19, `pnpm build` y navegación sin errores de consola); no hizo falta bajar a Vite 7.
-4. **Reglas como plantillas.** El plan dice que `render-rules.mjs` toma `OWNER_UID` de `.env`; para no versionar un `firestore.rules` con un UID de prueba, lo versionado son `firestore.rules.tpl` y `storage.rules.tpl` y los `*.rules` generados están en `.gitignore`. Antes de `firebase deploy` hay que correr `pnpm rules:render` (necesita `OWNER_UID`).
+4. **Reglas como plantillas.** El plan dice que `render-rules.mjs` toma `OWNER_UID` de `.env`; para no versionar un `firestore.rules` con un UID de prueba, lo versionado es `firestore.rules.tpl` y el `firestore.rules` generado están en `.gitignore`. Antes de `firebase deploy` hay que correr `pnpm rules:render` (necesita `OWNER_UID`).
 5. **`OWNER_UID` en `.env.example`** (sin prefijo `VITE_`: no llega al navegador) y **`VITE_FIREBASE_MEASUREMENT_ID`** (pedida por Juan; Analytics **no** está integrado).
 6. **Fuentes de Excalidraw sin Xiaolai** (el subconjunto CJK, ≈ 13 MB): `public/excalidraw-assets/fonts` pesa 500 KB. Si hace falta CJK: `cp -r node_modules/@excalidraw/excalidraw/dist/prod/fonts/Xiaolai public/excalidraw-assets/fonts/`.
 7. **`useAutosave` con 5.º parámetro opcional `baseline`** y `createSaveQueue` con `initialRevision: number | null` (superset del contrato; ver arriba).
@@ -76,7 +78,7 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 18. **Foco**: al terminar de editar un texto con Enter o Esc el foco vuelve al nodo (`store/returnFocus.ts`); sin eso los atajos callaban hasta el siguiente clic. `ui/Dialog` admite `initialFocus` y exporta `useReturnFocus` (borrar proyecto y reemplazar diagrama enfocan «Cancelar»; al cerrar, el foco vuelve al botón que abrió el menú).
 19. **Imágenes en lectura**: `BoardViewer` recibe `files={{ load }}` en `Viewer`, `EmbedPage` y `BoardEmbed`.
 20. **Último cambio**: `drainAndFlush` (`application/saveQueue.ts`, con test) pasa a la cola lo que retiene el throttle del editor (B 150 ms, C1 250 ms) y la escribe; `useAutosave` admite un 6.º argumento `drain` y escucha también `pagehide`. `useEncodedContent` y `NoteHandle.drain()` lo implementan. B ya no emite al desmontar el lienzo (los efectos del padre se limpian antes). Comprobado: crear una forma y recargar a los ~30 ms deja el borrador y se recupera.
-21. **Bundle**: `vite.config.ts` ya no usa `manualChunks` (arrastraba React y Radix al chunk de Excalidraw y `index.html` precargaba ≈ 1,8 MB gzip). Firestore se carga con `import()` (`infrastructure/firebase/firestore.ts`, como Storage). `ThemeToggle` y `UserMenu` viven en el chunk inicial, así que no inflan el del editor y no hizo falta moverlos a `ui/`.
+21. **Bundle**: `vite.config.ts` ya no usa `manualChunks` (arrastraba React y Radix al chunk de Excalidraw y `index.html` precargaba ≈ 1,8 MB gzip). Firestore se carga con `import()` (`infrastructure/firebase/firestore.ts`). `ThemeToggle` y `UserMenu` viven en el chunk inicial, así que no inflan el del editor y no hizo falta moverlos a `ui/`.
 22. **`/note` a 1024 px**: la barra superior de B oculta el texto del estado (queda para lectores de pantalla) y acorta el título para que quepa «Biblioteca».
 
 ### Correcciones de la revisión final (T7)
@@ -107,23 +109,31 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 
 ## Riesgos y deuda
 
-- **Reglas de Storage en producción**: la lectura pública consulta `firestore.get(...)`; exige el rol IAM entre productos (T8) y el CORS del bucket con `cors.json`.
+- **Imágenes en Firestore**: cada lectura de un trozo de un proyecto público cuesta una lectura extra por el `get()` al proyecto en las reglas (cuota Spark: 50 000 lecturas al día); una imagen de 1 MiB son 2 trozos. Sin Storage no hay rol IAM ni CORS que configurar.
 - `ContentRepo.load` y `ProjectRepo.get` devuelven `null` ante `permission-denied` (privado y no existente se ven igual, a propósito); los demás errores se propagan.
-- Los tests de reglas escriben `firestore-debug.log` / `ui-debug.log` en la raíz (ignorados por git). `pnpm test:rules` arranca sus emuladores en 9099/8080/9199: si ya hay otros corriendo, falla con «port taken»; entonces `node scripts/render-rules.mjs --emulator` y `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199 pnpm exec vitest run --config vitest.rules.config.ts` (así se verificó en T5: 25 casos).
+- Los tests de reglas escriben `firestore-debug.log` / `ui-debug.log` en la raíz (ignorados por git). `pnpm test:rules` arranca sus emuladores en 9099/8080: si ya hay otros corriendo, falla con «port taken»; entonces `node scripts/render-rules.mjs --emulator` y `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm exec vitest run --config vitest.rules.config.ts` (así se verificó en T5: 25 casos).
 - **Pendientes del board**: conector por clic origen → destino (hoy solo arrastrar desde un handle); el viewport se guarda con el siguiente cambio de contenido (pan y zoom solos no disparan guardado); el historial compara por JSON (O(n); pasar a referencia con tableros de miles de nodos, `ponytail` en `boardStore.ts`); cada forma nueva son dos pasos de historial (crear y escribir la etiqueta).
-- **Pendientes de la nota**: el toast «Reintentar» de subida con Storage caído solo está probado por test de la cola, no en navegador; con una subida agotada el binario solo sigue en memoria. Los `Abrir`/`Recargar` de un embed solo reciben el ratón cuando Excalidraw activa el embed (doble clic).
+- **Pendientes de la nota**: el toast «Reintentar» de subida con Firestore caído solo está probado por test de la cola, no en navegador; con una subida agotada el binario solo sigue en memoria. Los `Abrir`/`Recargar` de un embed solo reciben el ratón cuando Excalidraw activa el embed (doble clic).
 - **Último cambio al cerrar la pestaña**: el borrador local se escribe de forma síncrona y se ofrece «Recuperar»; la escritura en Firestore al `pagehide` no está garantizada (el navegador puede cortarla).
 - Los embeds muestran la atribución «React Flow» (sin plan Pro). El título de la plantilla «Web de 3 capas» se parte en dos líneas (texto suelto estrecho).
 - Sin tests de componentes (Vitest corre en `node`, sin jsdom): la lógica no trivial está en funciones puras probadas; el comportamiento de UI se comprobó en Chrome. Lo cubrirá T6 (e2e).
 - El 400 de `identitytoolkit … /accounts` en consola con emuladores es el login de prueba (el usuario `owner-test` ya existe), no un error de la app.
 
+## Imágenes en Firestore
+
+- **Modelo**: `projects/{id}/files/{fileId} = { mimeType, size, chunks, createdAt }` y `…/chunks/{i} = { data: Bytes }` (≤ 900 000 bytes). Adaptador en `infrastructure/firebase/files.ts`; el troceado y el reparto en batch son puros (`application/fileChunks.ts`, con tests). La meta se escribe la última.
+- **Optimización** (`application/imageOptimize.ts`, lógica pura con el códec del navegador inyectable): lado mayor ≤ 2048 px, WebP 0,82, se conserva solo si pesa menos; GIF tal cual; sin WebP o sin poder decodificar, el original; tope de 4 MiB tras optimizar. La usan `NoteCanvasInner` y `BoardCanvas.placeImage`; copiar o duplicar un proyecto no recodifica.
+- **Medido** (PNG sintético 3200×2400 de 21 016 258 bytes, en Chrome contra los emuladores): el board lo guardó como WebP de 2048×1536 y 138 214 bytes (−99,3 %); pegado en una nota, WebP de 18 356 bytes (Excalidraw ya lo reduce a 1440 px antes). Tras recargar se ve en el editor y en el visor público sin sesión.
+- **Retirado**: `storage.rules.tpl`, `cors.json`, la sección `storage` de `firebase.json`, el emulador de Storage, `firebase/storage` y `VITE_FIREBASE_STORAGE_BUCKET`. Los archivos que ya hubiera en un bucket de pruebas no se migran (no hay datos reales).
+- **Accesibilidad**: los handles de conexión de `NodeChrome` son `role="button"` con «Conectar desde el lado derecho/izquierdo/superior/inferior» (`aria-hidden` en solo lectura o bloqueado).
+
 ## Gates
 
-`pnpm lint` · `pnpm typecheck` · `pnpm test` (Vitest) · `pnpm test:rules` (emuladores; exige Java 21 en el `PATH`; 25 casos) · `pnpm build`.
+`pnpm lint` · `pnpm typecheck` · `pnpm test` (Vitest) · `pnpm test:rules` (emuladores; exige Java 21 en el `PATH`; 27 casos) · `pnpm build`.
 
 ## Lo que sigue
 
-T6 e2e (`tests/e2e/smoke.spec.ts`: board con forma y conector que persisten tras recargar, nota con el board insertado, enlace público sin sesión) → T7 revisión → T8 despliegue (pendiente de Juan: proyecto Firebase en Blaze, su UID, la cuenta de Vercel y Analytics, que **no** está integrado).
+T6 e2e (`tests/e2e/smoke.spec.ts`: board con forma y conector que persisten tras recargar, nota con el board insertado, enlace público sin sesión) → T7 revisión → T8 despliegue (pendiente de Juan: proyecto Firebase (Spark), su UID, la cuenta de Vercel y Analytics, que **no** está integrado).
 
 ## Hoja de ruta por fases (decisión de Juan, 2026-11-05)
 

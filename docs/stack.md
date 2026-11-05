@@ -26,7 +26,7 @@ Fuentes: [`architecture.md`](architecture.md), [`plan.md`](plan.md) (rev. 2, man
 | Accesibilidad | **`<dialog>` nativo** + teclado propio; **lucide-react** para iconos | Cubre menús y diálogos sin dependencia. Si aparece un popover o menú complejo, valorar Radix | Radix/React Aria desde el día uno (recomendado por la revisión; se pospone por plazo) |
 | Auth | **Firebase Auth** (Google) **restringida al dueño** | Poder autenticarse no autoriza a escribir: solo el UID/correo del dueño crea y edita | — |
 | Datos | **Cloud Firestore** | Contenido como string JSON (sin arrays anidados) en `projects/{id}/content/main`, con codec único y tope de 900 000 bytes UTF-8 | RTDB; Supabase/Postgres (más operación sin resolver lo difícil) |
-| Archivos | **Firebase Storage** (plan **Blaze**) | Imágenes fuera del documento (1 MiB por documento). Descarga con `getBlob`, nunca `getDownloadURL` | base64 en el documento |
+| Archivos | **Firestore troceado** (≤ 900 000 bytes por trozo, `Bytes`) con optimización previa a WebP | Sin Storage ni plan Blaze. Una imagen optimizada rara vez pasa de 1 MiB; el tope son 4 MiB | Firebase Storage (exige Blaze), base64 en el documento |
 | Hosting | **Vercel Pro** (estático + rewrites SPA) | Ya lo tienes; previews por PR. El catch-all no intercepta assets ni `/api` | Firebase Hosting (equivalente) |
 | Tests | **Vitest** (dominio, codecs, autosave) y **@firebase/rules-unit-testing** con Emulator Suite (reglas). Prueba de humo e2e **manual** en T5 | Una prueba por cosa que puede romperse. Nada de mocks de Firebase para reglas | Playwright en v1 (recortado por tiempo; reevaluar tras v1) |
 | Calidad | ESLint flat + Prettier, `tsc --noEmit`, build de producción. Restricciones de imports entre capas en lint | Estándar; la regla de dependencia se hace cumplir en lint | — |
@@ -83,4 +83,4 @@ Excalidraw + Vite + React 19 en dev y en build de producción (texto, imagen, ex
 
 ## Cuentas (verificar antes de usar)
 
-Proyecto **personal**: no va en la cuenta de Wigilabs. Antes de desplegar se comprueban `vercel whoami`/equipo y la cuenta de Google del proyecto Firebase. Firebase Storage requiere plan Blaze (facturación aparte de Vercel).
+Proyecto **personal**: no va en la cuenta de Wigilabs. Antes de desplegar se comprueban `vercel whoami`/equipo y la cuenta de Google del proyecto Firebase. Sin Storage, el proyecto Firebase no necesita el plan Blaze.
