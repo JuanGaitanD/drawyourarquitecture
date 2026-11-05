@@ -5,11 +5,20 @@
 
     // Espejo de acceso: Realtime Database no lee Firestore, así que el dueño publica aquí quién puede entrar.
     // Todo cuelga del uid del dueño del proyecto (`acl/$owner/$pid`): solo él escribe bajo su rama, así nadie
-    // puede «reclamar» el proyecto de otro. Firestore sigue siendo la fuente de verdad.
+    // puede «reclamar» el proyecto de otro. Firestore sigue siendo la fuente de verdad; este espejo es una copia
+    // autoritativa y versionada: `{ version, members, invites }`.
     "acl": {
       "$owner": {
         "$pid": {
-          ".write": "auth != null && auth.uid === $owner",
+          // El dueño publica el espejo entero y versionado (`version` = `aclRev` del proyecto en Firestore): una
+          // escritura con versión anterior a la publicada se rechaza (una pestaña con datos viejos no restaura
+          // permisos revocados). Se evalúa también en escrituras parciales, con el valor ya combinado.
+          ".write": "auth != null && auth.uid === $owner && (!newData.exists() || (newData.child('version').isNumber() && (!data.child('version').exists() || newData.child('version').val() >= data.child('version').val())))",
+
+          // Lectura del dueño: la transacción de publicación compara con lo publicado antes de escribir.
+          ".read": "auth != null && auth.uid === $owner",
+
+          "version": { ".validate": "newData.isNumber() && newData.val() >= 0" },
 
           // Invitaciones vigentes (las publica el dueño al crearlas y las borra al revocarlas).
           "invites": {
@@ -31,7 +40,9 @@
               "token": { ".validate": "newData.isString() && newData.val().length <= 64" },
               "$other": { ".validate": false }
             }
-          }
+          },
+
+          "$other": { ".validate": false }
         }
       }
     },

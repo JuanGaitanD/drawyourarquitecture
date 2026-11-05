@@ -1,16 +1,15 @@
 import { Copy, Link2, Trash2, UserMinus, UserX } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { MemberJoin } from '@/application/ports';
 import type { Invite } from '@/domain/invite';
 import type { Role } from '@/domain/project';
 import { Button, IconButton, useToast } from '@/ui';
-import { identity, inviteRepo, presenceAcl, projectRepo } from '../services';
+import { identity, inviteRepo, projectRepo } from '../services';
 import styles from './SharePanel.module.css';
+import { syncAcl } from './syncAcl';
 
 const ROLE_LABEL: Record<Role, string> = { editor: 'Editor', viewer: 'Solo lectura' };
 export const inviteUrl = (token: string) => `${location.origin}/invite/${token}`;
-/** Espejo de acceso de la presencia: mejor esfuerzo, Firestore manda. */
-const mirror = (p: Promise<unknown>) => p.catch(() => undefined);
 const day = (t: number) => new Date(t).toLocaleDateString('es', { day: 'numeric', month: 'short' });
 
 /** Compartir con personas (solo el dueño): enlaces de invitación con rol y lista de miembros. */
@@ -21,8 +20,19 @@ export function SharePanel({ projectId }: { projectId: string }) {
   const [members, setMembers] = useState<[string, Role][]>([]);
   const [joins, setJoins] = useState<Record<string, MemberJoin>>({});
   const [busy, setBusy] = useState(false);
+  // Enlaces ya revocados a los que falta quitar a quienes entraron (la limpieza falló): se reintenta desde aquí.
+  const [cleanup, setCleanup] = useState<string[]>([]);
+  // El espejo de presencia no se pudo actualizar: quien perdió el acceso aún podría ver cursores hasta reintentarlo.
+  const [aclFailed, setAclFailed] = useState(false);
   const uid = identity.current()?.uid ?? '';
-  const room = useMemo(() => ({ ownerId: uid, projectId }), [uid, projectId]);
+  const sync = useCallback(
+    () =>
+      syncAcl(projectId, uid).then(
+        () => setAclFailed(false),
+        () => setAclFailed(true),
+      ),
+    [projectId, uid],
+  );
 
   const load = useCallback(
     () =>
@@ -49,16 +59,15 @@ export function SharePanel({ projectId }: { projectId: string }) {
       (r) => {
         if (cancelled) return;
         apply(r);
-        // Las invitaciones creadas antes de la presencia se publican en el espejo al abrir el panel.
-        for (const i of r[1])
-          void mirror(presenceAcl.setInvite(room, i.token, { role: i.role, expiresAt: i.expiresAt }));
+        // Al abrir el panel se vuelve a publicar el acceso vigente (reintenta lo que hubiera fallado antes).
+        void sync();
       },
       () => undefined,
     );
     return () => {
       cancelled = true;
     };
-  }, [load, apply, room]);
+  }, [load, apply, sync]);
 
   const copy = async (token: string) => {
     try {
@@ -79,6 +88,21 @@ export function SharePanel({ projectId }: { projectId: string }) {
       setBusy(false);
     }
   };
+
+  // Cierra el enlace y quita a quienes entraron con él. Si la limpieza falla, el enlace ya está cerrado y queda un
+  // aviso con «Reintentar» (la operación es idempotente).
+  const revokeAndRemove = (token: string) =>
+    act(async () => {
+      try {
+        await inviteRepo.revokeAndRemove(projectId, token);
+        setCleanup((c) => c.filter((t) => t !== token));
+      } catch (e) {
+        setCleanup((c) => (c.includes(token) ? c : [...c, token]));
+        void refresh();
+        throw e;
+      }
+      await sync();
+    }, 'No se pudo quitar a quienes entraron con el enlace');
 
   return (
     <div className={styles.panel}>
@@ -105,9 +129,7 @@ export function SharePanel({ projectId }: { projectId: string }) {
           onClick={() =>
             void act(async () => {
               const inv = await inviteRepo.create(projectId, role, uid);
-              await mirror(
-                presenceAcl.setInvite(room, inv.token, { role: inv.role, expiresAt: inv.expiresAt }),
-              );
+              await sync();
               await copy(inv.token);
             }, 'No se pudo crear la invitación')
           }
@@ -115,6 +137,24 @@ export function SharePanel({ projectId }: { projectId: string }) {
           Crear enlace
         </Button>
       </div>
+
+      {aclFailed ? (
+        <p className={styles.hint} role="alert">
+          No se pudo actualizar el acceso a la presencia en tiempo real: quien perdió el acceso aún podría ver
+          cursores.{' '}
+          <Button size="sm" disabled={busy} onClick={() => void act(sync, 'No se pudo reintentar')}>
+            Reintentar
+          </Button>
+        </p>
+      ) : null}
+      {cleanup.map((token) => (
+        <p key={token} className={styles.hint} role="alert">
+          Enlace revocado, pero falta quitar a quienes entraron con él.{' '}
+          <Button size="sm" disabled={busy} onClick={() => void revokeAndRemove(token)}>
+            Reintentar
+          </Button>
+        </p>
+      ))}
 
       {invites.length > 0 ? (
         <ul className={styles.list} aria-label="Invitaciones vigentes">
@@ -143,8 +183,8 @@ export function SharePanel({ projectId }: { projectId: string }) {
                   icon={<Trash2 size={14} />}
                   onClick={() =>
                     void act(async () => {
-                      await inviteRepo.revoke(i.token);
-                      await mirror(presenceAcl.setInvite(room, i.token, null));
+                      await inviteRepo.revoke(projectId, i.token);
+                      await sync();
                     }, 'No se pudo revocar')
                   }
                 />
@@ -153,15 +193,7 @@ export function SharePanel({ projectId }: { projectId: string }) {
                     label="Revocar y quitar a quienes entraron con este enlace"
                     size="sm"
                     icon={<UserX size={14} />}
-                    onClick={() =>
-                      void act(async () => {
-                        const removed = await inviteRepo.revokeAndRemove(projectId, i.token);
-                        await mirror(presenceAcl.setInvite(room, i.token, null));
-                        await mirror(
-                          presenceAcl.setMembers(room, Object.fromEntries(removed.map((u) => [u, null]))),
-                        );
-                      }, 'No se pudo revocar y quitar')
-                    }
+                    onClick={() => void revokeAndRemove(i.token)}
                   />
                 ) : null}
               </li>
@@ -187,7 +219,7 @@ export function SharePanel({ projectId }: { projectId: string }) {
                 onClick={() =>
                   void act(async () => {
                     await projectRepo.setMember(projectId, id, null);
-                    await mirror(presenceAcl.setMembers(room, { [id]: null }));
+                    await sync();
                   }, 'No se pudo quitar')
                 }
               />

@@ -1,7 +1,8 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { presenceColor, type Presence, type PresenceSession } from '@/application/ports';
 import { throttleCursor } from '@/application/presence';
-import { identity, presenceAcl, presenceRepo, projectRepo } from '../services';
+import { syncAclWithRetry } from '../invite/syncAcl';
+import { identity, presenceRepo, projectRepo } from '../services';
 
 /** Una sala por proyecto, compartida por avatares y capas de cursores (una sola conexión y un solo oyente). */
 interface Room {
@@ -34,13 +35,13 @@ function open(projectId: string): Room {
   const me = identity.current();
   if (me) {
     // El dueño del proyecto es parte de la ruta de la sala (las reglas no leen Firestore); el dueño, además,
-    // sincroniza el espejo de miembros con Firestore por si alguien entró antes de que existiera la presencia.
+    // sincroniza el espejo de acceso con Firestore (completo y versionado; reintenta si falla).
     void projectRepo.get(projectId).then(
       (p) => {
         if (closed || !p) return;
         const target = { ownerId: p.ownerId, projectId };
         if (p.ownerId === me.uid) {
-          void presenceAcl.setMembers(target, p.members ?? {}).catch(() => undefined);
+          void syncAclWithRetry(projectId, me.uid, () => !closed);
         }
         session = presenceRepo.join(
           target,

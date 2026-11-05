@@ -80,7 +80,8 @@ export interface InviteRepo {
   get(token: string): Promise<Invite | null>;
   /** Invitaciones vigentes que creó `uid` para el proyecto. */
   listFor(projectId: string, uid: string): Promise<Invite[]>;
-  revoke(token: string): Promise<void>;
+  /** Dueño: cierra la invitación y sube `aclRev` en el mismo batch (versión del espejo de presencia). */
+  revoke(projectId: string, token: string): Promise<void>;
   /** Invitado: se añade a `members` y deja su rastro en `joins/{uid}` (un batch). */
   accept(invite: Invite, user: AuthUser): Promise<void>;
   /** Dueño: quiénes entraron por invitación (nombre y token con el que entraron), por uid. */
@@ -90,6 +91,18 @@ export interface InviteRepo {
    * uid quitados.
    */
   revokeAndRemove(projectId: string, token: string): Promise<string[]>;
+  /**
+   * Dueño: instantánea del acceso para publicarla en el espejo de presencia: miembros e invitaciones vigentes, con la
+   * `aclRev` del proyecto leída antes que ambos (una instantánea nunca lleva una versión más nueva que su contenido).
+   */
+  aclSnapshot(projectId: string, ownerId: string): Promise<AclSnapshot>;
+}
+
+/** Estado completo del acceso a un proyecto, versionado con `aclRev`. */
+export interface AclSnapshot {
+  version: number;
+  members: Record<string, Role>;
+  invites: Record<string, { role: Role; expiresAt: number }>;
 }
 
 /** Quién está conectado a un proyecto y dónde tiene el cursor (coordenadas de escena o de flujo; sin él, aún no lo movió). */
@@ -133,14 +146,11 @@ export interface PresenceRepo {
  * verdad; todo es de mejor esfuerzo y nunca debe romper el compartir.
  */
 export interface PresenceAcl {
-  /** Dueño: publica o retira una invitación vigente. */
-  setInvite(
-    room: PresenceRoom,
-    token: string,
-    invite: { role: Role; expiresAt: number } | null,
-  ): Promise<void>;
-  /** Dueño: da de alta (con su rol) o quita a miembros. */
-  setMembers(room: PresenceRoom, members: Record<string, Role | null>): Promise<void>;
+  /**
+   * Dueño: reemplaza el espejo completo (miembros e invitaciones) por la instantánea, solo si su versión no es anterior
+   * a la publicada: `'stale'` si había una más nueva (ya es autoritativa), `'off'` sin Realtime Database. Si falla, lanza.
+   */
+  publish(room: PresenceRoom, snap: AclSnapshot): Promise<'ok' | 'stale' | 'off'>;
   /** Invitado: se registra con el token con el que entró. */
   joinWithInvite(room: PresenceRoom, uid: string, role: Role, token: string): Promise<void>;
 }
