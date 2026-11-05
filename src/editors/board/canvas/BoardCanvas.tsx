@@ -38,8 +38,7 @@ import { connectEdge } from './connect';
 import { toDisplayNodes } from './displayNodes';
 import flow from './flow.module.css';
 import { optimizeImage } from '@/application/imageOptimize';
-import { imageNodeSize, imageProblem, pickImage, uploadWithRetry } from './imageFile';
-import { makeNode } from '../model/board';
+import { imageNodeSize, imageProblem, pickImage } from './imageFile';
 
 export interface BoardCanvasProps {
   initialViewport: Viewport;
@@ -112,9 +111,9 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
 
   const placeImage = useCallback(
     async (point: { x: number; y: number }) => {
-      const upload = files?.upload;
+      const addImage = files?.addImage;
       store.getState().setTool('select');
-      if (!upload) return toast({ title: 'No se pueden añadir imágenes aquí', kind: 'error' });
+      if (!addImage) return toast({ title: 'No se pueden añadir imágenes aquí', kind: 'error' });
       const file = await pickImage();
       if (!file) return;
       const problem = imageProblem(file);
@@ -127,23 +126,9 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
       }
       const fileId = nanoid();
       const { width, height } = await imageNodeSize(file);
-      const attempt = async (): Promise<void> => {
-        try {
-          await uploadWithRetry((b) => upload(fileId, b), blob);
-        } catch {
-          toast({
-            title: 'No se pudo subir la imagen',
-            kind: 'error',
-            action: { label: 'Reintentar', onClick: () => void attempt() },
-          });
-          return;
-        }
-        const at = { x: point.x - width / 2, y: point.y - height / 2 };
-        insert({ ...makeNode('image', at, { fileId, label: file.name }), width, height }, false);
-      };
-      await attempt();
+      addImage(fileId, blob, { x: point.x - width / 2, y: point.y - height / 2, width, height, label: file.name });
     },
-    [files, insert, store, toast],
+    [files, store, toast],
   );
 
   const createAt = useCallback(
