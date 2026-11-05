@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeNode } from '../model/board';
 import { fixtureBoard } from '../model/fixtures';
 import { toAbsolute } from '../model/geometry';
+import { mergeBoards } from '../model/merge';
 import { validateBoardContent } from '../model/validate';
 import { createBoardStore } from './boardStore';
 import { reparentNodes } from './reparent';
@@ -301,5 +302,54 @@ describe('crear una forma con etiqueta (D12)', () => {
     expect(s.getState().editingId).toBeNull();
     move(s, 'user', 3);
     expect(past(s)).toBe(1);
+  });
+});
+
+describe('historial por referencia (D13)', () => {
+  it('escribir lo mismo que ya había no entra al historial', () => {
+    const s = loaded();
+    const label = s.getState().nodes.find((n) => n.id === 'api')!.data.label;
+    s.getState().updateNodeData(['api'], { label });
+    s.getState().updateNodeData(['api'], { style: { stroke: '#1f2937' } as never });
+    expect(past(s)).toBe(0);
+  });
+
+  it('mover un nodo y volver al mismo sitio dentro de un gesto no deja paso', () => {
+    const s = loaded();
+    s.getState().beginGesture();
+    move(s, 'user', 25);
+    move(s, 'user', -25);
+    s.getState().endGesture();
+    expect(past(s)).toBe(0);
+  });
+
+  it('el remoto borra un frame: cada paso del historial pasa sus hijos a la raíz con su posición absoluta', () => {
+    const s = loaded();
+    const absApi = toAbsolute(s.getState().nodes.find((n) => n.id === 'api')!, s.getState().nodes);
+    move(s, 'user', 10); // un paso de historial que aún contiene el frame
+    // Lo que recibe el store es la fusión (como en `sync.onRemote`): sin el frame y con sus hijos ya en la raíz.
+    const view = { x: 0, y: 0, zoom: 1 };
+    const base = fixtureBoard();
+    const remote = { ...base, nodes: base.nodes.filter((n) => n.id !== 'frame') };
+    const merged = mergeBoards(s.getState().toContent(view), remote, base);
+    s.getState().applyRemote(merged.nodes, merged.edges);
+    s.temporal.getState().undo();
+    const api = s.getState().nodes.find((n) => n.id === 'api');
+    expect(s.getState().nodes.some((n) => n.id === 'frame')).toBe(false);
+    expect(api?.parentId).toBeUndefined();
+    expect(api?.position).toEqual(absApi);
+    expect(validateBoardContent(s.getState().toContent({ x: 0, y: 0, zoom: 1 })).ok).toBe(true);
+  });
+
+  it('el remoto crea un hijo de un nodo nuevo: el paso lo recibe con su padre antes', () => {
+    const s = loaded();
+    move(s, 'user', 10);
+    const parent = { ...makeNode('frame', { x: 900, y: 900 }), id: 'rp' };
+    const kid = { ...makeNode('shape', { x: 5, y: 5 }), id: 'rk', parentId: 'rp' };
+    s.getState().applyRemote([...s.getState().nodes, kid, parent], s.getState().edges); // hijo antes que padre a propósito
+    s.temporal.getState().undo();
+    const ids = s.getState().nodes.map((n) => n.id);
+    expect(ids.indexOf('rp')).toBeLessThan(ids.indexOf('rk'));
+    expect(validateBoardContent(s.getState().toContent({ x: 0, y: 0, zoom: 1 })).ok).toBe(true);
   });
 });

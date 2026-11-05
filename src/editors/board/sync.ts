@@ -1,12 +1,12 @@
 import type { ContentMerger, ContentRecord } from '@/application/ports';
 import { decode, encode } from '@/domain/codec';
 import type { BoardContent, BoardEdge, BoardNode, Viewport } from './model/board';
-import { canon, mergeBoards } from './model/merge';
+import { deepEqual, diffById, mergeBoards } from './model/merge';
 import { validateBoardContent } from './model/validate';
 import type { BoardStore } from './store/boardStore';
 import { cleanEdges, cleanNodes } from './store/boardStore';
 
-function parse(data: string): BoardContent | null {
+function parseOnce(data: string): BoardContent | null {
   try {
     const r = validateBoardContent(decode<unknown>(data));
     return r.ok ? r.value : null;
@@ -15,7 +15,27 @@ function parse(data: string): BoardContent | null {
   }
 }
 
-const byId = <T extends { id: string }>(xs: readonly T[]) => [...xs].sort((a, b) => (a.id < b.id ? -1 : 1));
+// `boardSame` y la fusión leen una y otra vez los mismos dos textos (lo último guardado y lo último a guardar):
+// se recuerdan las dos últimas lecturas por texto. Nadie muta el resultado.
+const recent: { data: string; value: BoardContent | null }[] = [];
+function parse(data: string): BoardContent | null {
+  const hit = recent.find((r) => r.data === data);
+  if (hit) return hit.value;
+  const value = parseOnce(data);
+  recent.unshift({ data, value });
+  recent.length = Math.min(recent.length, 2);
+  return value;
+}
+
+/** Mismos elementos (por id, sin orden), comparados a fondo solo donde la referencia no coincide. */
+function sameElements<T extends { id: string }>(xs: readonly T[], ys: readonly T[]): boolean {
+  if (xs.length !== ys.length) return false;
+  const by = new Map(ys.map((e) => [e.id, e]));
+  return xs.every((x) => {
+    const y = by.get(x.id);
+    return y !== undefined && deepEqual(x, y);
+  });
+}
 
 const sameView = (a: Viewport, b: Viewport) => a.x === b.x && a.y === b.y && a.zoom === b.zoom;
 
@@ -31,8 +51,8 @@ export function boardSame(a: string, b: string): boolean {
     !!x &&
     !!y &&
     sameView(x.viewport, y.viewport) &&
-    canon(byId(x.nodes)) === canon(byId(y.nodes)) &&
-    canon(byId(x.edges)) === canon(byId(y.edges))
+    sameElements(x.nodes, y.nodes) &&
+    sameElements(x.edges, y.edges)
   );
 }
 
@@ -43,7 +63,7 @@ function reuse<T extends BoardNode | BoardEdge>(local: readonly T[], merged: rea
   return merged.map((m) => {
     const c = cur.get(m.id);
     if (!c) return m;
-    if (canon(cleaned.get(m.id)) === canon(m)) return c;
+    if (deepEqual(cleaned.get(m.id), m)) return c;
     // Cambió en remoto: se toma lo nuevo y se conserva lo que es solo de esta pestaña (selección, medida).
     const { selected, measured } = c as { selected?: boolean; measured?: unknown };
     return { ...m, ...(selected ? { selected } : {}), ...(measured ? { measured } : {}) } as T;
@@ -54,7 +74,8 @@ function reuse<T extends BoardNode | BoardEdge>(local: readonly T[], merged: rea
  * Sincronización de un board abierto con el servidor. `base` es el último contenido del servidor que se conoce (el
  * cargado, el recibido o el que esta pestaña escribió): la fusión a tres bandas compara local y remoto contra él.
  * `merge` fusiona el estado VIVO del store (no el texto encolado, que puede ser anterior a lo último recibido).
- * ponytail: la fusión recorre todo el board en cada cambio remoto (O(n)); con miles de nodos, diferenciar por id.
+ * Diferencial por id: si el remoto no cambió ningún elemento respecto de `base` (solo el viewport, o el eco de una
+ * fusión) no se fusiona nada; si cambió, se compara por id con `deepEqual` (referencias compartidas = coste cero).
  */
 export function createBoardSync(
   store: BoardStore,
@@ -94,6 +115,11 @@ export function createBoardSync(
       const remote = parse(record.data);
       if (!remote) return null;
       const s0 = store.getState();
+      if (!diffById(base.nodes, remote.nodes).size && !diffById(base.edges, remote.edges).size) {
+        seen = record.revision;
+        base = remote;
+        return sameView(remote.viewport, savedView) ? record.data : encode({ ...remote, viewport: savedView });
+      }
       const merged = mergeBoards(s0.toContent(view), remote, base);
       // Una fusión inválida no se aplica ni avanza la base: el editor nunca recibe una jerarquía rota.
       if (!validateBoardContent(merged).ok) return null;
