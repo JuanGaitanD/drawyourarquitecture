@@ -2,13 +2,17 @@
 
 ## Dónde estamos
 
-**Rama `chore/deuda-tecnica` (sin push, sin desplegar):** integra los cinco carriles de deuda técnica (`docs/deuda.md`: D1–D21 cerradas; **D22** parcial: e2e de colaboración hecho, resto en D39 y D42; la iteración 2 (M1–M5) cerró D23–D29 y D31–D36; quedan D30 y D37–D43). Orden de integración: L5 → L1 → L2 → L3 → L4 (`chore(merge): integrar deuda <Ln>`), más tres arreglos de integración: el servidor MCP usa el `contentRepo` troceado, los avisos de tamaño dicen 8 MiB y el benchmark del board mide en relación con una pasada de JSON. Gates en «Gates».
+**Rama `chore/deuda-tecnica` (sin push, sin desplegar):** tres iteraciones de deuda técnica integradas (`docs/deuda.md`). Cerradas D1–D29, D31–D50. **Abiertas**: D30 (verificar en Firebase real tras desplegar) y D51–D54 (hallazgos de la revisión GPT de la iteración 3: reabrir una invitación aceptada, `add` y `dispose` de la cola de subidas frente a Web Locks, dos aserciones flojas). Por decisión de Juan (2026-11-05) se paró de iterar aquí. Gates finales: lint, typecheck, build, `pnpm test` con emulador 544/544, `pnpm test:rules` 129/129, `pnpm test:e2e` 12/12.
+
+Lo más relevante de la iteración 3: el guardado reintenta la transacción cuando su commit pierde la carrera contra otro cliente (Firestore evalúa las reglas antes que la precondición y devuelve `permission-denied`; D49, se perdían trazos al editar a la vez); la nota entrega su handle solo tras pintar `initialData` (D48); `joins` ligado a `members` en el mismo commit (D44); el autor de un archivo lo borra mientras pueda editar (D46, D50); la carga troceada reintenta si otro cliente la reduce a mitad (D45); el dueño republica el espejo RTDB al cambiar `members`/`aclRev` (D47); cola de subidas en `application/` con bloqueo Web Locks por `fileId` (D37, D38); pruebas de componentes y e2e de imágenes (D39, D42); emulador propio por ejecución para `src/server` (D41).
+
+**Despliegue**: la meta de archivos exige ahora `createdBy`; un cliente con la versión anterior en caché no sube imágenes hasta recargar.
 
 **Producción (2026-11-05 14:16):** https://drawyourarchitecture.vercel.app lleva las fases 1, 2 y 3 **tal como estaban antes de la deuda** (presencia en Firestore, MCP con Admin SDK y `allowedUsers`). Lo de esta rama exige pasos previos de Juan: ver «Para producción».
 
 **Qué hace la app hoy:** notas (Excalidraw) y diagramas (React Flow) con autosave, imágenes en Firestore sin Storage, enlaces públicos de solo lectura, invitaciones (editor/viewer) con sincronización en vivo y fusión por elemento, **presencia y cursores en Realtime Database**, contenido de hasta **8 MiB** (troceado a partir de 900 000 bytes), lista de permitidos por **correo verificado**, y un **servidor MCP** (`/api/mcp`, `docs/mcp.md`) que opera como la propia persona bajo las reglas de Firestore.
 
-Siguen: D30 y D37–D43 (pruebas de componentes, e2e de imágenes, cola de subidas en `application/`), la revisión final con GPT-6.1-sol de lo posterior a la revisión 2 (cuando haya cuota) y el despliegue (pendiente de Juan).
+Siguen: D30 y D51–D54, y el despliegue (pendiente de Juan: «Para producción»).
 
 ## Para producción (lo hace Juan, con la cuenta correcta)
 
