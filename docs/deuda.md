@@ -4,10 +4,10 @@ Fuente: `HANDOFF.md`, comentarios `ponytail:` del código y revisiones (`.wigi/r
 
 | ID | Carril | Deuda | Cierre esperado | Estado |
 |---|---|---|---|---|
-| D1 | L1 | Servidor MCP usa Admin SDK (ignora reglas) y duplica la autorización a mano | Admin solo emite `createCustomToken(uid)`; el servidor opera con el SDK cliente autenticado (`signInWithCustomToken`, token cacheado por uid con la función caliente) y las reglas aplican tal cual; se borran `canRead/canWrite/canCreate` duplicados | abierto |
-| D2 | L1 | MCP sin límite de tasa ni auditoría | Límite por token (ventana fija en Firestore, p. ej. 60 llamadas/min, 429) y registro `mcpAudit/{id}` = `{uid, tokenHash, tool, projectId, ok, at}` con TTL; reglas: solo el propio uid lee lo suyo | abierto |
-| D3 | L1 | `read_note` ignora imágenes y embeds | Devuelve también la lista de imágenes (`fileId`, `mimeType`) y de diagramas incrustados (`boardId`, con su Mermaid si se puede leer) | abierto |
-| D4 | L1 | `allowedUsers` exige el UID a mano | Lista de permitidos por **correo verificado** (`allowedEmails/{email}`; regla con `request.auth.token.email` y `email_verified`); UI por correo; migrar `allowedUsers` y quitarlo | abierto |
+| D1 | L1 | Servidor MCP usa Admin SDK (ignora reglas) y duplica la autorización a mano | Admin solo emite `createCustomToken(uid)`; el servidor opera con el SDK cliente autenticado (`signInWithCustomToken`, token cacheado por uid con la función caliente) y las reglas aplican tal cual; se borran `canRead/canWrite/canCreate` duplicados | cerrado (commit 696993a) |
+| D2 | L1 | MCP sin límite de tasa ni auditoría | Límite por token (ventana fija en Firestore, p. ej. 60 llamadas/min, 429) y registro `mcpAudit/{id}` = `{uid, tokenHash, tool, projectId, ok, at}` con TTL; reglas: solo el propio uid lee lo suyo | cerrado (commit 6674453) |
+| D3 | L1 | `read_note` ignora imágenes y embeds | Devuelve también la lista de imágenes (`fileId`, `mimeType`) y de diagramas incrustados (`boardId`, con su Mermaid si se puede leer) | cerrado (commit e29d2d7) |
+| D4 | L1 | `allowedUsers` exige el UID a mano | Lista de permitidos por **correo verificado** (`allowedEmails/{email}`; regla con `request.auth.token.email` y `email_verified`); UI por correo; migrar `allowedUsers` y quitarlo | cerrado (commit 7c5a0c8) |
 | D5 | L2 | Sin cursores en vivo; presencia en Firestore (escrituras de cuota) | Presencia y cursores en **Realtime Database** (`onDisconnect`, throttle 50–100 ms, solo miembros por reglas RTDB); Firestore deja de recibir latidos | abierto |
 | D6 | L2 | El visor del board se reencuadra con cada cambio remoto | Encuadre solo en la primera carga o a petición | abierto |
 | D7 | L2 | Revocar una invitación ya aceptada no expulsa | La UI lo explica en la lista de enlaces y ofrece «Revocar y quitar a quienes entraron con él» (guardar `inviteToken` en el miembro) | abierto |

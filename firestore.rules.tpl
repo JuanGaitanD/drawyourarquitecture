@@ -9,10 +9,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == '__OWNER_UID__';
     }
 
-    // Quién puede crear proyectos: el dueño o quien él haya añadido en allowedUsers (fase 3).
+    // Quién puede crear proyectos: el dueño o quien él haya añadido por correo en allowedEmails/{email}
+    // (id = correo en minúsculas). Solo cuenta un correo verificado por el proveedor de acceso.
     function canCreate() {
       return isOwner()
-        || (request.auth != null && exists(/databases/$(database)/documents/allowedUsers/$(request.auth.uid)));
+        || (request.auth != null
+          && request.auth.token.email_verified == true
+          && exists(/databases/$(database)/documents/allowedEmails/$(request.auth.token.email.lower())));
     }
 
     function projectDoc(id) {
@@ -203,22 +206,26 @@ service cloud.firestore {
       }
     }
 
-    // Lista de permitidos (fase 3): solo el dueño la escribe; cada persona lee su propia entrada.
-    match /allowedUsers/{uid} {
-      allow get: if request.auth != null && (request.auth.uid == uid || isOwner());
+    // Lista de permitidos por correo: solo el dueño la escribe y la lista; cada persona (con correo verificado)
+    // puede leer su propia entrada. El id es el correo en minúsculas.
+    match /allowedEmails/{email} {
+      allow get: if request.auth != null
+        && (isOwner()
+          || (request.auth.token.email_verified == true && request.auth.token.email.lower() == email));
       allow list: if isOwner();
       allow create, update: if isOwner()
+        && email == email.lower()
+        && email.size() <= 254
+        && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
         && request.resource.data.keys().hasOnly(['email', 'addedAt'])
         && request.resource.data.keys().hasAll(['email', 'addedAt'])
-        && request.resource.data.email is string
-        && request.resource.data.email.size() > 0
-        && request.resource.data.email.size() <= 254
+        && request.resource.data.email == email
         && request.resource.data.addedAt is number;
       allow delete: if isOwner();
     }
 
     // Tokens del servidor MCP (fase 3): el id es el sha256 (hex) del token; el valor nunca se guarda.
-    // El cliente crea y revoca los suyos; `lastUsedAt` y la lectura por hash los hace el servidor (Admin).
+    // El cliente crea y revoca los suyos; `lastUsedAt` y la búsqueda por hash los hace el servidor (Admin).
     match /mcpTokens/{hash} {
       allow get, list: if request.auth != null && resource.data.uid == request.auth.uid;
       allow create: if request.auth != null
@@ -238,6 +245,49 @@ service cloud.firestore {
         && resource.data.revoked == false
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revoked'])
         && request.resource.data.revoked == true;
+    }
+
+    // Límite de tasa del servidor MCP: ventana fija de 1 min por token (id = sha256 del token). Lo escribe el
+    // propio usuario autenticado (el servidor opera como él): `window` = minuto desde el epoch. Solo se puede
+    // empezar con count 1, sumar de uno en uno dentro de la ventana (máx. 60) o abrir una ventana posterior.
+    function ownsToken(hash) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/mcpTokens/$(hash)).data.uid == request.auth.uid;
+    }
+    match /rateLimits/{hash} {
+      allow get: if ownsToken(hash);
+      allow create: if ownsToken(hash)
+        && request.resource.data.keys().hasOnly(['uid', 'window', 'count'])
+        && request.resource.data.keys().hasAll(['uid', 'window', 'count'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.window is int
+        && request.resource.data.count == 1;
+      allow update: if ownsToken(hash)
+        && request.resource.data.keys().hasOnly(['uid', 'window', 'count'])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.window is int
+        && ((request.resource.data.window == resource.data.window
+              && request.resource.data.count == resource.data.count + 1
+              && request.resource.data.count <= 60)
+          || (request.resource.data.window > resource.data.window
+              && request.resource.data.count == 1));
+    }
+
+    // Auditoría del servidor MCP: una entrada por llamada a una herramienta, escrita por el usuario autenticado
+    // (el servidor opera como él). Solo se crea (no se edita ni se borra) y cada quien lee solo las suyas.
+    // `expireAt` es un Timestamp: activa la política TTL de Firestore sobre ese campo (docs/mcp.md).
+    match /mcpAudit/{id} {
+      allow get, list: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if ownsToken(request.resource.data.get('tokenHash', ''))
+        && request.resource.data.keys().hasOnly(['uid', 'tokenHash', 'tool', 'projectId', 'ok', 'at', 'expireAt'])
+        && request.resource.data.keys().hasAll(['uid', 'tokenHash', 'tool', 'ok', 'at', 'expireAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.tokenHash is string
+        && request.resource.data.tool in ['list_projects', 'read_note', 'read_board', 'create_note', 'create_board', 'update_board']
+        && (!('projectId' in request.resource.data) || (request.resource.data.projectId is string && request.resource.data.projectId.size() <= 128))
+        && request.resource.data.ok is bool
+        && request.resource.data.at is number
+        && request.resource.data.expireAt is timestamp;
     }
 
     // Invitaciones: el token (id) es el secreto. Se lee con get; solo se listan las propias. Las crea y borra el

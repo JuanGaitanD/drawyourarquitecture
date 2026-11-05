@@ -5,14 +5,24 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 
 // src/server/admin.ts
 import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
-var db = null;
-function getDb() {
-  if (db) return db;
-  const app = getApps()[0] ?? (process.env.FIRESTORE_EMULATOR_HOST ? initializeApp({ projectId: process.env.GCLOUD_PROJECT ?? "demo-dya" }) : initializeApp({ credential: cert(parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT)) }));
-  db = getFirestore(app);
-  return db;
+var EMULATOR_PROJECT = "demo-dya";
+var EMULATOR_AUTH = "127.0.0.1:9099";
+var usingEmulator = () => Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+var app = null;
+function getApp() {
+  if (app) return app;
+  if (usingEmulator()) {
+    process.env.FIREBASE_AUTH_EMULATOR_HOST ??= EMULATOR_AUTH;
+    app = getApps()[0] ?? initializeApp({ projectId: process.env.GCLOUD_PROJECT ?? EMULATOR_PROJECT });
+  } else {
+    app = getApps()[0] ?? initializeApp({ credential: cert(parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT)) });
+  }
+  return app;
 }
+var getAdminDb = () => getFirestore(getApp());
+var getAdminAuth = () => getAuth(getApp());
 function parseServiceAccount(raw) {
   if (!raw) throw new Error("Falta la variable de entorno FIREBASE_SERVICE_ACCOUNT.");
   try {
@@ -32,37 +42,25 @@ async function sha256Hex(text) {
 // src/server/authz.ts
 var ToolError = class extends Error {
   status;
-  constructor(status, message) {
+  /** Segundos hasta poder reintentar (429). */
+  retryAfter;
+  constructor(status, message, retryAfter) {
     super(message);
     this.name = "ToolError";
     this.status = status;
+    this.retryAfter = retryAfter;
   }
 };
-function roleOf(p, uid) {
-  const m = p.members;
-  if (typeof m !== "object" || m === null || !Object.hasOwn(m, uid)) return void 0;
-  const r = m[uid];
-  return r === "editor" || r === "viewer" ? r : void 0;
-}
-function canRead(p, uid) {
-  return p.ownerId === uid || roleOf(p, uid) !== void 0 || p.isPublic === true;
-}
-function canWrite(p, uid) {
-  return p.ownerId === uid || roleOf(p, uid) === "editor";
-}
-async function canCreate(db2, uid, ownerUid = process.env.OWNER_UID) {
-  if (ownerUid && uid === ownerUid) return true;
-  return (await db2.collection("allowedUsers").doc(uid).get()).exists;
-}
+var isPermissionDenied = (e) => typeof e === "object" && e !== null && e.code === "permission-denied";
 var LAST_USED_EVERY_MS = 36e5;
-async function authenticate(db2, header) {
+async function authenticate(db, header) {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? "");
   if (!m) throw new ToolError(401, "Falta el encabezado Authorization: Bearer <token>.");
   const token = m[1];
   if (!token.startsWith(TOKEN_PREFIX) || token.length > 200) throw new ToolError(401, "Token no v\xE1lido.");
-  const ref = db2.collection("mcpTokens").doc(await sha256Hex(token));
-  const snap = await ref.get();
-  const data = snap.data();
+  const tokenHash = await sha256Hex(token);
+  const ref = db.collection("mcpTokens").doc(tokenHash);
+  const data = (await ref.get()).data();
   if (!data || data.revoked === true || typeof data.uid !== "string" || data.uid === "") {
     throw new ToolError(401, "Token no v\xE1lido o revocado.");
   }
@@ -70,7 +68,52 @@ async function authenticate(db2, header) {
   if (typeof data.lastUsedAt !== "number" || now2 - data.lastUsedAt >= LAST_USED_EVERY_MS) {
     await ref.update({ lastUsedAt: now2 }).catch(() => void 0);
   }
-  return data.uid;
+  return { uid: data.uid, tokenHash };
+}
+
+// src/server/limits.ts
+import { Timestamp, addDoc, collection, doc, runTransaction } from "firebase/firestore";
+var RATE_LIMIT = 60;
+var RATE_WINDOW_MS = 6e4;
+var AUDIT_TTL_MS = 30 * 864e5;
+async function consumeRate(db, id2, nowMs = Date.now()) {
+  const ref = doc(db, "rateLimits", id2.tokenHash);
+  const window = Math.floor(nowMs / RATE_WINDOW_MS);
+  const allowed = await runTransaction(db, async (tx) => {
+    const d = (await tx.get(ref)).data();
+    if (!d) {
+      tx.set(ref, { uid: id2.uid, window, count: 1 });
+    } else if (d.window === window) {
+      if (d.count >= RATE_LIMIT) return false;
+      tx.update(ref, { window, count: d.count + 1 });
+    } else {
+      tx.update(ref, { window, count: 1 });
+    }
+    return true;
+  });
+  if (!allowed) {
+    const retryAfter = Math.max(1, Math.ceil(((window + 1) * RATE_WINDOW_MS - nowMs) / 1e3));
+    throw new ToolError(
+      429,
+      `Demasiadas peticiones (m\xE1ximo ${RATE_LIMIT} por minuto por token).`,
+      retryAfter
+    );
+  }
+}
+async function recordAudit(db, id2, e, at = Date.now()) {
+  try {
+    await addDoc(collection(db, "mcpAudit"), {
+      uid: id2.uid,
+      tokenHash: id2.tokenHash,
+      tool: e.tool,
+      ...e.projectId ? { projectId: e.projectId } : {},
+      ok: e.ok,
+      at,
+      expireAt: Timestamp.fromMillis(at + AUDIT_TTL_MS)
+    });
+  } catch (err) {
+    console.error("mcp: no se pudo registrar la auditor\xEDa", err);
+  }
 }
 
 // src/server/mcpServer.ts
@@ -78,7 +121,18 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 // src/server/tools.ts
-import { FieldPath } from "firebase-admin/firestore";
+import {
+  FieldPath,
+  collection as collection2,
+  doc as doc2,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  runTransaction as runTransaction2,
+  where,
+  writeBatch
+} from "firebase/firestore";
 
 // src/domain/codec.ts
 var MAX_CONTENT_BYTES = 8 * 1024 * 1024;
@@ -660,8 +714,8 @@ function build(src) {
     }
   }
   if (direction === null) throw new ParseError("el texto est\xE1 vac\xEDo.", 1);
-  const open = stack[stack.length - 1];
-  if (open) throw new ParseError("subgraph sin \xABend\xBB.", open.line);
+  const open2 = stack[stack.length - 1];
+  if (open2) throw new ParseError("subgraph sin \xABend\xBB.", open2.line);
   const v = validateBoardContent({ ...emptyBoard(), nodes: [...nodes.values()], edges });
   return v.ok ? { ok: true, value: v.value, direction } : { ok: false, error: v.error };
 }
@@ -822,6 +876,31 @@ function noteSummary(elements) {
   }
   return { total, byType };
 }
+function noteImages(note) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const e of note.elements) {
+    if (e.type !== "image" || e.isDeleted === true || typeof e.fileId !== "string" || seen.has(e.fileId))
+      continue;
+    seen.add(e.fileId);
+    out.push({ fileId: e.fileId, mimeType: note.files[e.fileId]?.mimeType ?? null });
+  }
+  return out;
+}
+var BOARD_PATH = /^\/embed\/board\/([\w-]+)\/?$/;
+function noteEmbeds(elements) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const e of elements) {
+    if (e.type !== "embeddable" || e.isDeleted === true || typeof e.link !== "string") continue;
+    try {
+      const u = new URL(e.link);
+      const m = BOARD_PATH.exec(u.pathname);
+      if (m && !u.search && !u.hash) ids.add(m[1]);
+    } catch {
+    }
+  }
+  return [...ids];
+}
 
 // src/server/tools.ts
 var MAX_TITLE = 120;
@@ -830,19 +909,22 @@ var LIST_LIMIT = 200;
 var APPEND_GAP = 80;
 var ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 var now = (ctx) => (ctx.now ?? Date.now)();
-async function loadProject(ctx, id2, need, type) {
+var DENIED = "Sin permiso: el proyecto no existe, no tienes acceso o no puedes editarlo.";
+function denied(fn) {
+  return async (ctx, args) => {
+    try {
+      return await fn(ctx, args);
+    } catch (e) {
+      if (isPermissionDenied(e)) throw new ToolError(403, DENIED);
+      throw e;
+    }
+  };
+}
+async function loadProject(ctx, id2, type) {
   if (!ID_RE.test(id2)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
-  const ref = ctx.db.collection("projects").doc(id2);
-  const snap = await ref.get();
-  const project = snap.data();
+  const ref = doc2(ctx.db, "projects", id2);
+  const project = (await getDoc(ref)).data();
   if (!project) throw new ToolError(404, "El proyecto no existe.");
-  const allowed = need === "read" ? canRead(project, ctx.uid) : canWrite(project, ctx.uid);
-  if (!allowed) {
-    throw new ToolError(
-      403,
-      need === "read" ? "No tienes acceso a este proyecto." : "No tienes permiso de edici\xF3n en este proyecto."
-    );
-  }
   if (type && project.type !== type) {
     throw new ToolError(
       400,
@@ -852,8 +934,7 @@ async function loadProject(ctx, id2, need, type) {
   return { ref, project };
 }
 async function loadContent(ref) {
-  const snap = await ref.collection("content").doc("main").get();
-  const c = snap.data();
+  const c = (await getDoc(doc2(ref, "content", "main"))).data();
   if (!c || typeof c.data !== "string") throw new ToolError(404, "El proyecto no tiene contenido.");
   return { data: c.data, revision: Number(c.revision) || 0 };
 }
@@ -871,15 +952,22 @@ function checkTitle(title2) {
   return normalizeTitle(title2);
 }
 async function createProject(ctx, type, title2, data) {
-  if (!await canCreate(ctx.db, ctx.uid)) {
-    throw new ToolError(403, "Tu cuenta no puede crear proyectos (el due\xF1o debe a\xF1adirte en Ajustes).");
-  }
   const t = now(ctx);
-  const ref = ctx.db.collection("projects").doc();
-  const batch = ctx.db.batch();
+  const ref = doc2(collection2(ctx.db, "projects"));
+  const batch = writeBatch(ctx.db);
   batch.set(ref, { ownerId: ctx.uid, type, title: title2, isPublic: false, createdAt: t, updatedAt: t });
-  batch.set(ref.collection("content").doc("main"), { data, schemaVersion: 1, revision: 0, updatedAt: t });
-  await batch.commit();
+  batch.set(doc2(ref, "content", "main"), { data, schemaVersion: 1, revision: 0, updatedAt: t });
+  try {
+    await batch.commit();
+  } catch (e) {
+    if (isPermissionDenied(e)) {
+      throw new ToolError(
+        403,
+        "Tu cuenta no puede crear proyectos (el due\xF1o debe a\xF1adir tu correo verificado en Ajustes)."
+      );
+    }
+    throw e;
+  }
   return ref.id;
 }
 async function boardFromMermaid(src) {
@@ -896,16 +984,18 @@ async function boardFromMermaid(src) {
   if (!checked.ok) throw new ToolError(400, `Diagrama no v\xE1lido: ${checked.error}`);
   return checked.value;
 }
-async function listProjects(ctx, args) {
-  const col = ctx.db.collection("projects");
+var listProjects = denied(async (ctx, args) => {
+  const col = collection2(ctx.db, "projects");
   const [own, shared] = await Promise.all([
-    col.where("ownerId", "==", ctx.uid).limit(LIST_LIMIT).get(),
-    col.where(new FieldPath("members", ctx.uid), "in", ["editor", "viewer"]).limit(LIST_LIMIT).get()
+    getDocs(query(col, where("ownerId", "==", ctx.uid), limit(LIST_LIMIT))),
+    getDocs(
+      query(col, where(new FieldPath("members", ctx.uid), "in", ["editor", "viewer"]), limit(LIST_LIMIT))
+    )
   ]);
   const seen = /* @__PURE__ */ new Set();
   const projects = [...own.docs, ...shared.docs].filter((d) => !seen.has(d.id) && seen.add(d.id)).map((d) => {
     const p = d.data();
-    const role = p.ownerId === ctx.uid ? "owner" : p.members[ctx.uid] ?? "viewer";
+    const role = p.ownerId === ctx.uid ? "owner" : p.members?.[ctx.uid] ?? "viewer";
     return {
       id: d.id,
       type: p.type,
@@ -917,30 +1007,9 @@ async function listProjects(ctx, args) {
   }).filter((p) => !args.type || p.type === args.type).sort((a, b) => b.updatedAt - a.updatedAt);
   const text = projects.length ? projects.map((p) => `- ${p.id} \xB7 ${p.type} \xB7 ${p.title} (${p.role})`).join("\n") : "No hay proyectos.";
   return { text, data: { projects } };
-}
-async function readNote(ctx, args) {
-  const { ref, project } = await loadProject(ctx, args.id, "read", "note");
-  const { data, revision } = await loadContent(ref);
-  let note;
-  try {
-    note = decodeNote(data);
-  } catch (e) {
-    throw new ToolError(400, e instanceof Error ? e.message : "La nota est\xE1 da\xF1ada.");
-  }
-  const text = noteText(note.elements);
-  const summary = { id: args.id, title: project.title, revision, ...noteSummary(note.elements) };
-  return {
-    text: `# ${project.title}
-
-${text || "(sin texto)"}
-
----
-${JSON.stringify(summary)}`,
-    data: { ...summary, text }
-  };
-}
-async function readBoard(ctx, args) {
-  const { ref, project } = await loadProject(ctx, args.id, "read", "board");
+});
+async function loadBoard(ctx, id2) {
+  const { ref, project } = await loadProject(ctx, id2, "board");
   const { data, revision } = await loadContent(ref);
   let parsed;
   try {
@@ -950,7 +1019,60 @@ async function readBoard(ctx, args) {
   }
   const checked = validateBoardContent(parsed);
   if (!checked.ok) throw new ToolError(400, `El diagrama no es v\xE1lido: ${checked.error}`);
-  const board = checked.value;
+  return { project, revision, board: checked.value };
+}
+var MAX_EMBEDS = 10;
+var readNote = denied(async (ctx, args) => {
+  const { ref, project } = await loadProject(ctx, args.id, "note");
+  const { data, revision } = await loadContent(ref);
+  let note;
+  try {
+    note = decodeNote(data);
+  } catch (e) {
+    throw new ToolError(400, e instanceof Error ? e.message : "La nota est\xE1 da\xF1ada.");
+  }
+  const text = noteText(note.elements);
+  const images = noteImages(note);
+  const embeds = await Promise.all(
+    noteEmbeds(note.elements).slice(0, MAX_EMBEDS).map(async (boardId) => {
+      try {
+        const b = await loadBoard(ctx, boardId);
+        return { boardId, title: b.project.title, mermaid: toFlowchart(b.board, "LR") };
+      } catch (e) {
+        if (e instanceof ToolError || isPermissionDenied(e)) return { boardId };
+        throw e;
+      }
+    })
+  );
+  const summary = { id: args.id, title: project.title, revision, ...noteSummary(note.elements) };
+  const lines = (items) => items.join("\n");
+  const extras = [
+    images.length ? `## Im\xE1genes
+${lines(images.map((i) => `- ${i.fileId} (${i.mimeType ?? "tipo desconocido"})`))}` : "",
+    embeds.length ? `## Diagramas incrustados
+${lines(
+      embeds.map(
+        (e) => e.mermaid ? `- ${e.boardId} \xAB${e.title}\xBB
+
+\`\`\`mermaid
+${e.mermaid}\`\`\`` : `- ${e.boardId} (sin acceso o ilegible)`
+      )
+    )}` : ""
+  ].filter(Boolean);
+  return {
+    text: `# ${project.title}
+
+${text || "(sin texto)"}
+
+${extras.map((x) => `${x}
+
+`).join("")}---
+${JSON.stringify(summary)}`,
+    data: { ...summary, text, images, embeds }
+  };
+});
+var readBoard = denied(async (ctx, args) => {
+  const { project, revision, board } = await loadBoard(ctx, args.id);
   const mermaid2 = toFlowchart(board, "LR");
   const nodes = board.nodes.map((n) => ({
     id: n.id,
@@ -978,8 +1100,8 @@ ${mermaid2}\`\`\`
 ${JSON.stringify({ nodes, edges })}`,
     data: { ...json, mermaid: mermaid2 }
   };
-}
-async function createNote(ctx, args) {
+});
+var createNote = denied(async (ctx, args) => {
   const title2 = checkTitle(args.title);
   if (args.text.length > MAX_NOTE_TEXT)
     throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como m\xE1ximo.`);
@@ -992,8 +1114,8 @@ async function createNote(ctx, args) {
   }
   const id2 = await createProject(ctx, "note", title2, data);
   return { text: `Nota creada: ${id2} (\xAB${title2}\xBB). \xC1brela en /note/${id2}.`, data: { id: id2, title: title2 } };
-}
-async function createBoard(ctx, args) {
+});
+var createBoard = denied(async (ctx, args) => {
   const title2 = checkTitle(args.title);
   const board = await boardFromMermaid(args.mermaid);
   const id2 = await createProject(ctx, "board", title2, encodeOrFail(board));
@@ -1001,7 +1123,7 @@ async function createBoard(ctx, args) {
     text: `Diagrama creado: ${id2} (\xAB${title2}\xBB, ${board.nodes.length} nodos, ${board.edges.length} aristas). \xC1brelo en /board/${id2}.`,
     data: { id: id2, title: title2, nodes: board.nodes.length, edges: board.edges.length }
   };
-}
+});
 function placeBelow(base, add) {
   if (base.nodes.length === 0) return add.nodes;
   let left = Infinity;
@@ -1020,54 +1142,65 @@ function placeBelow(base, add) {
     (n) => n.parentId ? n : { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }
   );
 }
-async function updateBoard(ctx, args) {
+var MAX_CONFLICT_RETRIES = 5;
+var updateBoard = denied(async (ctx, args) => {
   if (!ID_RE.test(args.id)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
   const incoming = await boardFromMermaid(args.mermaid);
-  const projectRef = ctx.db.collection("projects").doc(args.id);
-  const contentRef = projectRef.collection("content").doc("main");
-  return ctx.db.runTransaction(async (tx) => {
-    const [pSnap, cSnap] = await Promise.all([tx.get(projectRef), tx.get(contentRef)]);
-    const project = pSnap.data();
-    if (!project) throw new ToolError(404, "El proyecto no existe.");
-    if (!canWrite(project, ctx.uid)) {
-      throw new ToolError(403, "No tienes permiso de edici\xF3n en este proyecto.");
-    }
-    if (project.type !== "board") throw new ToolError(400, "El proyecto es una nota, no un diagrama.");
-    const current = cSnap.data();
-    if (!current || typeof current.data !== "string")
-      throw new ToolError(404, "El proyecto no tiene contenido.");
-    let existing;
+  const projectRef = doc2(ctx.db, "projects", args.id);
+  const contentRef = doc2(projectRef, "content", "main");
+  for (let attempt = 1; ; attempt++) {
+    let readRevision = -1;
     try {
-      existing = decode(current.data);
-    } catch {
-      throw new ToolError(400, "El diagrama actual est\xE1 da\xF1ado (no es JSON).");
+      return await runTransaction2(ctx.db, async (tx) => {
+        const [pSnap, cSnap] = await Promise.all([tx.get(projectRef), tx.get(contentRef)]);
+        const project = pSnap.data();
+        if (!project) throw new ToolError(404, "El proyecto no existe.");
+        if (project.type !== "board") throw new ToolError(400, "El proyecto es una nota, no un diagrama.");
+        const current = cSnap.data();
+        if (!current || typeof current.data !== "string")
+          throw new ToolError(404, "El proyecto no tiene contenido.");
+        readRevision = Number(current.revision) || 0;
+        let existing;
+        try {
+          existing = decode(current.data);
+        } catch {
+          throw new ToolError(400, "El diagrama actual est\xE1 da\xF1ado (no es JSON).");
+        }
+        const checked = validateBoardContent(existing);
+        if (!checked.ok) throw new ToolError(400, `El diagrama actual no es v\xE1lido: ${checked.error}`);
+        const merged = validateBoardContent({
+          ...checked.value,
+          nodes: [...checked.value.nodes, ...placeBelow(checked.value, incoming)],
+          edges: [...checked.value.edges, ...incoming.edges]
+        });
+        if (!merged.ok) throw new ToolError(400, `El resultado no es v\xE1lido: ${merged.error}`);
+        const next = merged.value;
+        const revision = readRevision + 1;
+        const t = now(ctx);
+        tx.update(contentRef, { data: encodeOrFail(next), revision, updatedAt: t });
+        tx.update(projectRef, { updatedAt: t });
+        return {
+          text: `Diagrama ampliado: revisi\xF3n ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
+          data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length }
+        };
+      });
+    } catch (e) {
+      if (!isPermissionDenied(e) || readRevision < 0 || attempt >= MAX_CONFLICT_RETRIES) throw e;
+      const latest = (await getDoc(contentRef)).data();
+      if (Number(latest?.revision) === readRevision) throw e;
     }
-    const checked = validateBoardContent(existing);
-    if (!checked.ok) throw new ToolError(400, `El diagrama actual no es v\xE1lido: ${checked.error}`);
-    const merged = validateBoardContent({
-      ...checked.value,
-      nodes: [...checked.value.nodes, ...placeBelow(checked.value, incoming)],
-      edges: [...checked.value.edges, ...incoming.edges]
-    });
-    if (!merged.ok) throw new ToolError(400, `El resultado no es v\xE1lido: ${merged.error}`);
-    const next = merged.value;
-    const revision = (Number(current.revision) || 0) + 1;
-    const t = now(ctx);
-    tx.update(contentRef, { data: encodeOrFail(next), revision, updatedAt: t });
-    tx.update(projectRef, { updatedAt: t });
-    return {
-      text: `Diagrama ampliado: revisi\xF3n ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
-      data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length }
-    };
-  });
-}
+  }
+});
 
 // src/server/mcpServer.ts
-async function run(fn) {
+async function run(ctx, tool, args, fn) {
+  const audit = (ok, projectId) => recordAudit(ctx.db, ctx.identity, { tool, projectId: projectId ?? args.id, ok });
   try {
     const r = await fn();
+    await audit(true, r.data?.id);
     return { content: [{ type: "text", text: r.text }] };
   } catch (e) {
+    await audit(false);
     if (e instanceof ToolError)
       return { isError: true, content: [{ type: "text", text: `${e.status}: ${e.message}` }] };
     console.error("mcp: error inesperado en una herramienta", e);
@@ -1077,7 +1210,8 @@ async function run(fn) {
 var id = z.string().min(1).max(128).describe("Id del proyecto (de list_projects).");
 var title = z.string().min(1).max(MAX_TITLE).describe("T\xEDtulo del proyecto.");
 var mermaid = z.string().min(1).max(MAX_MERMAID).describe("Flowchart de Mermaid (flowchart/graph con LR, TD\u2026; admite subgraph).");
-function createMcpServer(ctx) {
+function createMcpServer(mcp) {
+  const ctx = { db: mcp.db, uid: mcp.identity.uid };
   const server = new McpServer({ name: "drawyourarchitecture", version: "0.1.0" });
   server.registerTool(
     "list_projects",
@@ -1085,15 +1219,15 @@ function createMcpServer(ctx) {
       description: "Lista los proyectos propios y los compartidos contigo (notas y diagramas).",
       inputSchema: { type: z.enum(["note", "board"]).optional().describe("Filtra por tipo.") }
     },
-    (a) => run(() => listProjects(ctx, a))
+    (a) => run(mcp, "list_projects", {}, () => listProjects(ctx, a))
   );
   server.registerTool(
     "read_note",
     {
-      description: "Lee una nota: el texto de sus elementos en orden de lectura y un resumen.",
+      description: "Lee una nota: el texto de sus elementos en orden de lectura, un resumen, sus im\xE1genes (fileId, mimeType) y los diagramas incrustados (boardId, con su Mermaid si puedes leerlos).",
       inputSchema: { id }
     },
-    (a) => run(() => readNote(ctx, a))
+    (a) => run(mcp, "read_note", a, () => readNote(ctx, a))
   );
   server.registerTool(
     "read_board",
@@ -1101,7 +1235,7 @@ function createMcpServer(ctx) {
       description: "Lee un diagrama: su Mermaid (flowchart) y el JSON de nodos y aristas.",
       inputSchema: { id }
     },
-    (a) => run(() => readBoard(ctx, a))
+    (a) => run(mcp, "read_board", a, () => readBoard(ctx, a))
   );
   server.registerTool(
     "create_note",
@@ -1109,7 +1243,7 @@ function createMcpServer(ctx) {
       description: "Crea una nota con bloques de texto (separados por una l\xEDnea en blanco; \xAB# \xBB, \xAB## \xBB y \xAB### \xBB al inicio hacen t\xEDtulos).",
       inputSchema: { title, text: z.string().max(MAX_NOTE_TEXT).describe("Texto de la nota.") }
     },
-    (a) => run(() => createNote(ctx, a))
+    (a) => run(mcp, "create_note", {}, () => createNote(ctx, a))
   );
   server.registerTool(
     "create_board",
@@ -1117,7 +1251,7 @@ function createMcpServer(ctx) {
       description: "Crea un diagrama desde un flowchart de Mermaid y lo ordena autom\xE1ticamente.",
       inputSchema: { title, mermaid }
     },
-    (a) => run(() => createBoard(ctx, a))
+    (a) => run(mcp, "create_board", {}, () => createBoard(ctx, a))
   );
   server.registerTool(
     "update_board",
@@ -1125,9 +1259,75 @@ function createMcpServer(ctx) {
       description: "Ampl\xEDa un diagrama desde Mermaid: a\xF1ade lo nuevo debajo de lo existente y conserva lo que ya hay (posiciones, estilos, frames e im\xE1genes).",
       inputSchema: { id, mermaid }
     },
-    (a) => run(() => updateBoard(ctx, a))
+    (a) => run(mcp, "update_board", a, () => updateBoard(ctx, a))
   );
   return server;
+}
+
+// src/server/userDb.ts
+import { deleteApp, initializeApp as initializeApp2 } from "firebase/app";
+import { connectAuthEmulator, getAuth as getAuth2, signInWithCustomToken } from "firebase/auth";
+import { connectFirestoreEmulator, getFirestore as getFirestore2 } from "firebase/firestore";
+var MAX_APPS = 20;
+var TTL_MS = 50 * 6e4;
+var cache = /* @__PURE__ */ new Map();
+function webConfig() {
+  if (usingEmulator()) {
+    return {
+      apiKey: "demo",
+      authDomain: `${EMULATOR_PROJECT}.firebaseapp.com`,
+      projectId: process.env.GCLOUD_PROJECT ?? EMULATOR_PROJECT,
+      appId: "demo"
+    };
+  }
+  const e = process.env;
+  if (!e.VITE_FIREBASE_API_KEY || !e.VITE_FIREBASE_PROJECT_ID) {
+    throw new Error("Faltan VITE_FIREBASE_API_KEY y VITE_FIREBASE_PROJECT_ID en el entorno del servidor.");
+  }
+  return {
+    apiKey: e.VITE_FIREBASE_API_KEY,
+    authDomain: e.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: e.VITE_FIREBASE_PROJECT_ID,
+    messagingSenderId: e.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: e.VITE_FIREBASE_APP_ID
+  };
+}
+function drop(uid) {
+  const entry = cache.get(uid);
+  if (!entry) return Promise.resolve();
+  cache.delete(uid);
+  return deleteApp(entry.app).catch(() => void 0);
+}
+function open(uid) {
+  const app2 = initializeApp2(webConfig(), `dya-${uid}-${Date.now()}`);
+  const db = (async () => {
+    const auth = getAuth2(app2);
+    if (usingEmulator()) {
+      connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST ?? EMULATOR_AUTH}`, {
+        disableWarnings: true
+      });
+    }
+    await signInWithCustomToken(auth, await getAdminAuth().createCustomToken(uid));
+    const fs = getFirestore2(app2);
+    if (usingEmulator()) {
+      const [host, port] = process.env.FIRESTORE_EMULATOR_HOST.split(":");
+      connectFirestoreEmulator(fs, host, Number(port));
+    }
+    return fs;
+  })();
+  return { app: app2, db, at: Date.now() };
+}
+function getUserDb(uid) {
+  const hit = cache.get(uid);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.db;
+  void drop(uid);
+  if (cache.size >= MAX_APPS) void drop(cache.keys().next().value);
+  const entry = open(uid);
+  cache.set(uid, entry);
+  entry.db.catch(() => {
+    if (cache.get(uid) === entry) void drop(uid);
+  });
+  return entry.db;
 }
 
 // src/server/handler.ts
@@ -1157,10 +1357,11 @@ async function readBody(req) {
 async function handler(req, res) {
   if (req.method !== "POST") return send(res, 405, "Solo se admite POST.", { Allow: "POST" });
   try {
-    const db2 = getDb();
-    const uid = await authenticate(db2, req.headers.authorization);
+    const identity = await authenticate(getAdminDb(), req.headers.authorization);
+    const db = await getUserDb(identity.uid);
+    await consumeRate(db, identity);
     const body = await readBody(req);
-    const server = createMcpServer({ db: db2, uid });
+    const server = createMcpServer({ db, identity });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: void 0,
       enableJsonResponse: true
@@ -1178,7 +1379,7 @@ async function handler(req, res) {
         res,
         e.status,
         e.message,
-        e.status === 401 ? { "WWW-Authenticate": 'Bearer realm="drawyourarchitecture"' } : {}
+        e.status === 401 ? { "WWW-Authenticate": 'Bearer realm="drawyourarchitecture"' } : e.status === 429 ? { "Retry-After": String(e.retryAfter ?? 60) } : {}
       );
     }
     console.error("mcp: error inesperado", e);
