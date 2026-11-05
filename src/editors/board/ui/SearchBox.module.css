@@ -1,0 +1,47 @@
+.box {
+  top: var(--space-3);
+  right: var(--space-3);
+}
+
+.open {
+  gap: var(--space-1);
+  padding-left: var(--space-3);
+  animation: rise var(--duration) var(--ease);
+}
+
+.glyph {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.input {
+  width: 11rem;
+  height: var(--control-h-sm);
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.input::placeholder {
+  color: var(--text-faint);
+}
+/* El foco lo marca el contorno global de :focus-visible; se quita solo la cruz nativa del input search. */
+.input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.status {
+  min-width: 5.5rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: right;
+  white-space: nowrap;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
