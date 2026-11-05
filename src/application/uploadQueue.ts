@@ -65,21 +65,30 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
   const onDisk = new Set<string>(); // con copia en disco (ahí se queda hasta `release`)
   const locks = opts.locks === undefined ? defaultLocks() : opts.locks;
   const holds = new Map<string, () => void>(); // pendientes que esta pestaña se encarga de reponer y subir
+  let closed = false; // tras `dispose` no se adquiere ningún bloqueo (D53)
 
   /**
    * D38: el pendiente en disco es de una sola pestaña. El bloqueo `dya-pending:<fileId>` se mantiene hasta
    * `release`, `discard` o `dispose` (o hasta que la pestaña muere: entonces otra lo recoge). `false`: otra pestaña
-   * ya se encarga. Sin Web Locks siempre es `true` (comportamiento anterior).
+   * ya se encarga, o la cola está cerrada (un bloqueo que cruza el cierre se suelta en el acto; el pendiente queda
+   * en disco para otra cola). Sin Web Locks `true` salvo cerrada.
    */
   function claim(id: string): Promise<boolean> {
+    if (closed) return Promise.resolve(false);
     if (!locks) return Promise.resolve(true);
     if (holds.has(id)) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
       void locks
         .request(`dya-pending:${id}`, { ifAvailable: true }, (lock) =>
-          lock ? new Promise<void>((free) => (holds.set(id, free), resolve(true))) : void resolve(false),
+          lock
+            ? new Promise<void>((free) => {
+                if (closed) return void (free(), resolve(false));
+                holds.set(id, free);
+                resolve(true);
+              })
+            : void resolve(false),
         )
-        .catch(() => resolve(true)); // el bloqueo falló por otra razón: mejor reponer que perder la imagen
+        .catch(() => resolve(!closed)); // el bloqueo falló por otra razón: mejor reponer que perder la imagen
     });
   }
   function unclaim(id: string) {
@@ -118,28 +127,34 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
       blobs.set(id, blob);
       if (!store) return void run(id);
       // Primero a disco, luego a subir: así `release` nunca llega antes que el `put`. Si el disco falla se sube igual.
-      void store
-        .put({ projectId: opts.projectId, fileId: id, blob, meta })
-        .then(() => claim(id).then(() => void onDisk.add(id)))
-        .catch(() => undefined)
-        .then(() => {
-          if (blobs.has(id)) return run(id);
-          // Descartada mientras se escribía en disco: la copia recién creada sobra.
-          if (onDisk.delete(id)) void store.remove(opts.projectId, id).catch(() => undefined);
-          unclaim(id);
-        });
+      void (async () => {
+        let lost = false; // otra pestaña tomó el bloqueo (D52) o la cola se cerró (D53): esta no sube
+        try {
+          await store.put({ projectId: opts.projectId, fileId: id, blob, meta });
+          if (!(await claim(id))) lost = true;
+          else if (!closed) onDisk.add(id);
+        } catch {
+          /* el disco falló: se sube igual */
+        }
+        if (lost || closed) return void blobs.delete(id); // el pendiente queda en disco para quien lo tenga
+        if (blobs.has(id)) return run(id);
+        // Descartada mientras se escribía en disco: la copia recién creada sobra.
+        if (onDisk.delete(id)) void store.remove(opts.projectId, id).catch(() => undefined);
+        unclaim(id);
+      })();
     },
     async resume(published, restore) {
       if (!store) return;
       const files = await store.list(opts.projectId).catch(() => []);
       for (const f of files) {
+        if (closed) return;
         if (published(f.fileId)) {
           void store.remove(opts.projectId, f.fileId).catch(() => undefined);
         } else if (!blobs.has(f.fileId)) {
           if (!(await claim(f.fileId))) continue; // otra pestaña la repone
           // Dentro del bloqueo se vuelve a leer: la otra pestaña pudo borrarla mientras tanto.
           const fresh = (await store.list(opts.projectId).catch(() => [])).find((x) => x.fileId === f.fileId);
-          if (!fresh || blobs.has(f.fileId)) {
+          if (closed || !fresh || blobs.has(f.fileId)) {
             if (!blobs.has(f.fileId)) unclaim(f.fileId);
             continue;
           }
@@ -165,7 +180,10 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
         unclaim(id);
       }
     },
-    dispose: () => [...holds.keys()].forEach(unclaim),
+    dispose() {
+      closed = true;
+      [...holds.keys()].forEach(unclaim);
+    },
     whenDone(cb) {
       listeners.add(cb);
       return () => void listeners.delete(cb);
@@ -176,4 +194,3 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
     pending: () => [...blobs.keys()].filter((id) => !onDisk.has(id)).length,
   };
 }
-
