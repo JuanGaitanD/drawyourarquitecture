@@ -226,7 +226,9 @@ function Loaded({
 
   const files = useMemo<BoardFiles>(
     () => ({
+      projectId: id,
       load: (fileId) => fileStore.load(id, fileId),
+      loadFrom: (from, fileId) => fileStore.load(from, fileId),
       upload: (fileId, blob) => fileStore.upload(id, fileId, blob),
       remove: (fileId) => fileStore.remove(id, fileId),
     }),
