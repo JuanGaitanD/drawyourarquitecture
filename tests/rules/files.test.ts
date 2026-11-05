@@ -195,6 +195,22 @@ describe('archivos · autoría (D46)', () => {
     expect((await getDoc(chunkRef(asOwner(), P))).exists()).toBe(false);
   });
 
+  it('expulsado o degradado a visor, el autor ya no borra lo que subió', async () => {
+    for (const role of [null, 'viewer'] as const) {
+      await upload(ED_A);
+      await env.withSecurityRulesDisabled((ctx) =>
+        sdk.updateDoc(doc(ctx.firestore(), 'projects', P), {
+          [`members.${ED_A}`]: role ?? sdk.deleteField(),
+        }),
+      );
+      await assertFails(deleteDoc(fileRef(as(ED_A), P)));
+      await assertFails(deleteDoc(chunkRef(as(ED_A), P)));
+      await env.withSecurityRulesDisabled((ctx) =>
+        sdk.updateDoc(doc(ctx.firestore(), 'projects', P), { [`members.${ED_A}`]: 'editor' }),
+      );
+    }
+  });
+
   it('el dueño sigue borrando lo de cualquiera y lo anterior a D46 (sin createdBy)', async () => {
     await upload(ED_A);
     await legacy();

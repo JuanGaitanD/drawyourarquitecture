@@ -218,8 +218,9 @@ service cloud.firestore {
             ? request.auth.uid
             : resource.data.get('createdBy', projectDoc(id).ownerId));
 
+        // El autor solo mientras siga pudiendo editar: expulsado o degradado a visor ya no borra (GPT deuda-3 #1).
         allow delete: if isProjectOwner(projectDoc(id))
-          || (request.auth != null && resource.data.get('createdBy', '') == request.auth.uid);
+          || (canWrite(projectDoc(id)) && resource.data.get('createdBy', '') == request.auth.uid);
 
         match /chunks/{i} {
           allow get: if canRead(projectDoc(id));
@@ -234,7 +235,7 @@ service cloud.firestore {
           // Dueño; quien subió el archivo; y, sin meta (subida que murió antes de escribirla), cualquier editor:
           // ya puede sobrescribir esos trozos, y así una importación fallida no deja huérfanos.
           allow delete: if isProjectOwner(projectDoc(id))
-            || (request.auth != null && exists(/databases/$(database)/documents/projects/$(id)/files/$(fileId))
+            || (canWrite(projectDoc(id)) && exists(/databases/$(database)/documents/projects/$(id)/files/$(fileId))
               && fileCreator(id, fileId) == request.auth.uid)
             || (canWrite(projectDoc(id))
               && !exists(/databases/$(database)/documents/projects/$(id)/files/$(fileId)));
