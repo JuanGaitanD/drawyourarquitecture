@@ -161,11 +161,6 @@ test.describe('colaboración e2e', () => {
     browser,
     baseURL,
   }) => {
-    // BUG CONOCIDO (hallado por este e2e): `onHandle` vacía la bandeja (`inbox.flush`) en cuanto Excalidraw entrega su
-    // API, pero `initialData` se aplica después y pisa lo remoto: la nota recién abierta se queda con la revisión
-    // vieja. Con el volcado diferido 500 ms la prueba pasa. `test.fail` hace que esta prueba avise (falle) el día que
-    // se arregle: entonces se quita esta línea.
-    test.fail(true, 'La bandeja remota se vuelca antes de que initialData se aplique y queda pisada');
     await newNote(page);
     await drawRectangle(page, { x: 300, y: 300 });
     await expect.poll(() => rectangles(page)).toBe(1);

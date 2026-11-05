@@ -80,6 +80,9 @@ export default function NoteCanvasInner({
   // Estado del puente con Excalidraw. Vive en refs: no pinta nada y no debe re-renderizar el lienzo.
   const known = useRef<NoteFiles>({ ...content.files }); // archivos ya registrados en la nota
   const ready = useRef(false); // abierto cuando initialData ya se aplicó: antes no se emite nada
+  // La escena inicial ya está pintada (primer onChange tras initialData). Hasta entonces no se entrega el handle:
+  // un remoto aplicado antes lo pisaría initialData.
+  const [hydrated, setHydrated] = useState(false);
   const alive = useRef(true);
   const scene = useRef<Scene | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -315,6 +318,7 @@ export default function NoteCanvasInner({
   const handleChange = useCallback(
     (elements: readonly unknown[], appState: SceneState, files: BinaryFiles) => {
       setLibraryOpen(appState.openSidebar?.name === 'default');
+      if (ready.current) setHydrated(true);
       if (!ready.current || readonly) return;
       const { fresh, rejected: bad } = diffNewFiles(
         elements,
@@ -370,7 +374,7 @@ export default function NoteCanvasInner({
 
   // Control imperativo para «Recuperar cambios no guardados».
   useEffect(() => {
-    if (!api || !onHandle) return;
+    if (!api || !onHandle || !hydrated) return;
     onHandle({
       drain,
       merge: (l, r) => mergeNoteData(knownBg.current)(l, r),
@@ -418,7 +422,7 @@ export default function NoteCanvasInner({
       },
     });
     return () => onHandle(null);
-  }, [api, onHandle, loadFiles, drain, uploads]);
+  }, [api, onHandle, hydrated, loadFiles, drain, uploads]);
 
   const insertBoard = useCallback(
     (boardId: string) => {
