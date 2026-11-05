@@ -1,9 +1,10 @@
 import { Eye, Pencil } from 'lucide-react';
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { Link } from 'wouter';
 import type { ProjectType } from '@/domain/project';
 import { useAuth, useNoindex } from '../hooks';
 import { PageFallback } from '../PageFallback';
+import { fileStore } from '../services';
 import { LogoMark } from '../shell/Logo';
 import { ThemeToggle } from '../shell/Shell';
 import { MissingMessage, NetworkErrorMessage } from './ViewerMessage';
@@ -21,6 +22,7 @@ export function Viewer({ type, id }: { type: ProjectType; id: string }) {
   useNoindex();
   const view = useProjectView(type, id);
   const { user } = useAuth();
+  const files = useMemo(() => ({ load: (fileId: string) => fileStore.load(id, fileId) }), [id]);
   const title = view.status === 'ready' ? view.project.title : null;
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export function Viewer({ type, id }: { type: ProjectType; id: string }) {
             {parsed.type === 'note' ? (
               <NoteCanvas projectId={id} content={parsed.content} readonly />
             ) : (
-              <BoardViewer content={parsed.content} />
+              <BoardViewer content={parsed.content} files={files} />
             )}
           </Suspense>
         </div>
