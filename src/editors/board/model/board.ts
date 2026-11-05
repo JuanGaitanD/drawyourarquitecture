@@ -202,7 +202,15 @@ export function makeEdge(
     target,
     sourceHandle,
     targetHandle,
-    data: { path: 'bezier', markerStart: false, markerEnd: true, dashed: false, color: '#475569', width: 2, ...rest },
+    data: {
+      path: 'bezier',
+      markerStart: false,
+      markerEnd: true,
+      dashed: false,
+      color: '#475569',
+      width: 2,
+      ...rest,
+    },
   };
 }
 

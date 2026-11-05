@@ -17,7 +17,9 @@ if (!emulator) {
   }
   uid = process.env.OWNER_UID ?? '';
   if (!uid) {
-    console.error('Falta OWNER_UID (en .env o en el entorno). Es el uid del único dueño con permiso de escritura.');
+    console.error(
+      'Falta OWNER_UID (en .env o en el entorno). Es el uid del único dueño con permiso de escritura.',
+    );
     process.exit(1);
   }
 }

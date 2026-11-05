@@ -30,9 +30,20 @@ export function Button({
     .filter(Boolean)
     .join(' ');
   return (
-    <button ref={ref} type={type} className={cls} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
+    <button
+      ref={ref}
+      type={type}
+      className={cls}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...rest}
+    >
       <span className={styles.content}>
-        {icon ? <span className={styles.icon} aria-hidden="true">{icon}</span> : null}
+        {icon ? (
+          <span className={styles.icon} aria-hidden="true">
+            {icon}
+          </span>
+        ) : null}
         {children}
       </span>
       {loading ? <LoaderCircle className={styles.spinner} size={16} aria-hidden="true" /> : null}

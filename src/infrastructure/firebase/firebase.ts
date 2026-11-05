@@ -11,7 +11,13 @@ export const EMULATOR_PORTS = { auth: 9099, firestore: 8080, storage: 9199 } as 
 
 const env = import.meta.env;
 const config = USE_EMULATORS
-  ? { apiKey: 'demo', authDomain: `${EMULATOR_PROJECT}.firebaseapp.com`, projectId: EMULATOR_PROJECT, storageBucket: `${EMULATOR_PROJECT}.appspot.com`, appId: 'demo' }
+  ? {
+      apiKey: 'demo',
+      authDomain: `${EMULATOR_PROJECT}.firebaseapp.com`,
+      projectId: EMULATOR_PROJECT,
+      storageBucket: `${EMULATOR_PROJECT}.appspot.com`,
+      appId: 'demo',
+    }
   : {
       apiKey: env.VITE_FIREBASE_API_KEY,
       authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,

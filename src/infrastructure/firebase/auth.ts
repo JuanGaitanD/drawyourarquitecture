@@ -27,7 +27,13 @@ async function signInEmulator(): Promise<void> {
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },
-      body: JSON.stringify({ localId: EMULATOR_OWNER_UID, email: TEST_EMAIL, password: TEST_PASSWORD, displayName: 'Dueño de prueba', emailVerified: true }),
+      body: JSON.stringify({
+        localId: EMULATOR_OWNER_UID,
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        displayName: 'Dueño de prueba',
+        emailVerified: true,
+      }),
     },
   ).catch(() => undefined); // si ya existe responde 400: da igual
   await signInWithEmailAndPassword(auth, TEST_EMAIL, TEST_PASSWORD);

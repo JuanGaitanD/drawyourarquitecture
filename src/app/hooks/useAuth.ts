@@ -13,7 +13,10 @@ export interface AuthState {
 }
 
 export function useAuth(): AuthState {
-  const [session, setSession] = useState<{ loading: boolean; user: AuthUser | null }>({ loading: true, user: null });
+  const [session, setSession] = useState<{ loading: boolean; user: AuthUser | null }>({
+    loading: true,
+    user: null,
+  });
   const [signingIn, setSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +31,11 @@ export function useAuth(): AuthState {
       const code = (e as { code?: string } | null)?.code;
       // Cerrar la ventana de Google no es un error que haya que enseñar.
       if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
-        setError(code === 'auth/network-request-failed' ? 'No hay conexión con Google. Reintenta.' : 'No se pudo iniciar sesión. Reintenta.');
+        setError(
+          code === 'auth/network-request-failed'
+            ? 'No hay conexión con Google. Reintenta.'
+            : 'No se pudo iniciar sesión. Reintenta.',
+        );
       }
     } finally {
       setSigningIn(false);

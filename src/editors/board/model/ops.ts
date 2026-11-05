@@ -12,7 +12,11 @@ const pendiente = (nombre: string): never => {
 export function align(_nodes: readonly BoardNode[], _ids: readonly string[], _mode: AlignMode): BoardNode[] {
   return pendiente('align');
 }
-export function distribute(_nodes: readonly BoardNode[], _ids: readonly string[], _axis: 'x' | 'y'): BoardNode[] {
+export function distribute(
+  _nodes: readonly BoardNode[],
+  _ids: readonly string[],
+  _axis: 'x' | 'y',
+): BoardNode[] {
   return pendiente('distribute');
 }
 /** Los padres siempre quedan antes que sus hijos. */

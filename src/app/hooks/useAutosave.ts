@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import { createSaveQueue, readDraft, type SaveQueue, type SaveState, type SaveStatus } from '@/application/saveQueue';
+import {
+  createSaveQueue,
+  readDraft,
+  type SaveQueue,
+  type SaveState,
+  type SaveStatus,
+} from '@/application/saveQueue';
 import { contentRepo, projectRepo, saveAsCopy } from '../services';
 
 export interface Autosave {

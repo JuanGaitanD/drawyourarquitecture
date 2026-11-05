@@ -2,7 +2,8 @@ import type { BoardContent } from './board';
 
 // STUB de T0 (firma final). Lo implementa el carril D con su test (`mermaid.test.ts`).
 
-export type MermaidParseResult = { ok: true; value: BoardContent } | { ok: false; error: string; line?: number };
+export type MermaidParseResult =
+  { ok: true; value: BoardContent } | { ok: false; error: string; line?: number };
 
 /** Importa un flowchart/graph de Mermaid. Construye con makeNode/makeEdge y valida con validateBoardContent. */
 export function parseFlowchart(_src: string): MermaidParseResult {

@@ -11,8 +11,14 @@ export const contentRepo: ContentRepo = {
       const snap = await getDoc(contentRef(id));
       if (!snap.exists()) return null;
       const d = snap.data();
-      if (typeof d.data !== 'string' || d.schemaVersion !== 1) throw new Error('El contenido guardado tiene un formato desconocido.');
-      return { data: d.data, schemaVersion: 1, revision: Number(d.revision) || 0, updatedAt: Number(d.updatedAt) || 0 } satisfies ContentRecord;
+      if (typeof d.data !== 'string' || d.schemaVersion !== 1)
+        throw new Error('El contenido guardado tiene un formato desconocido.');
+      return {
+        data: d.data,
+        schemaVersion: 1,
+        revision: Number(d.revision) || 0,
+        updatedAt: Number(d.updatedAt) || 0,
+      } satisfies ContentRecord;
     } catch (e) {
       if (isPermissionDenied(e)) return null;
       throw e;
@@ -24,7 +30,8 @@ export const contentRepo: ContentRepo = {
     return runTransaction(db, async (tx) => {
       const ref = contentRef(id);
       const snap = await tx.get(ref);
-      if (!snap.exists() || Number(snap.data().revision) !== expectedRevision) return { conflict: true as const };
+      if (!snap.exists() || Number(snap.data().revision) !== expectedRevision)
+        return { conflict: true as const };
       const updatedAt = Date.now();
       const revision = expectedRevision + 1;
       tx.update(ref, { data, schemaVersion: 1, revision, updatedAt });

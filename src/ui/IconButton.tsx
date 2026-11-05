@@ -2,7 +2,10 @@ import type { ButtonHTMLAttributes, ReactNode, Ref } from 'react';
 import styles from './IconButton.module.css';
 import { Tooltip } from './Tooltip';
 
-export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label' | 'children'> {
+export interface IconButtonProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  'aria-label' | 'children'
+> {
   /** Obligatoria: es el `aria-label` y el texto del tooltip. */
   label: string;
   icon: ReactNode;

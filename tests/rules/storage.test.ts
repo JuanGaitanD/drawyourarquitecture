@@ -30,19 +30,29 @@ async function seedFile(id: string, file = 'f1') {
 describe('storage · subida', () => {
   it('el dueño sube PNG, JPEG, GIF y WebP', async () => {
     for (const [i, type] of ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].entries()) {
-      await assertSucceeds(uploadBytes(ref(owner(), path('privado', `f${i}`)), bytes(100), { contentType: type }));
+      await assertSucceeds(
+        uploadBytes(ref(owner(), path('privado', `f${i}`)), bytes(100), { contentType: type }),
+      );
     }
   });
 
   it('rechaza SVG y otros tipos', async () => {
-    await assertFails(uploadBytes(ref(owner(), path('privado')), bytes(100), { contentType: 'image/svg+xml' }));
+    await assertFails(
+      uploadBytes(ref(owner(), path('privado')), bytes(100), { contentType: 'image/svg+xml' }),
+    );
     await assertFails(uploadBytes(ref(owner(), path('privado')), bytes(100), { contentType: 'text/html' }));
-    await assertFails(uploadBytes(ref(owner(), path('privado')), bytes(100), { contentType: 'application/octet-stream' }));
+    await assertFails(
+      uploadBytes(ref(owner(), path('privado')), bytes(100), { contentType: 'application/octet-stream' }),
+    );
   });
 
   it('admite 4 MiB justos y rechaza 5 MiB', async () => {
-    await assertSucceeds(uploadBytes(ref(owner(), path('privado', 'justo')), bytes(4 * MiB), { contentType: 'image/png' }));
-    await assertFails(uploadBytes(ref(owner(), path('privado', 'grande')), bytes(5 * MiB), { contentType: 'image/png' }));
+    await assertSucceeds(
+      uploadBytes(ref(owner(), path('privado', 'justo')), bytes(4 * MiB), { contentType: 'image/png' }),
+    );
+    await assertFails(
+      uploadBytes(ref(owner(), path('privado', 'grande')), bytes(5 * MiB), { contentType: 'image/png' }),
+    );
   });
 
   it('otra cuenta y el anónimo no suben', async () => {

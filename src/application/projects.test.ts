@@ -9,8 +9,22 @@ function setup(opts: { signedIn?: boolean } = {}) {
   const contents = new Map<string, string>();
   const files = new Map<string, Map<string, Blob>>();
   let n = 0;
-  files.set('src', new Map([['f1', new Blob(['a'])], ['f2', new Blob(['b'])]]));
-  projects.set('src', { id: 'src', ownerId: 'u', type: 'board', title: 'Mi board', isPublic: true, createdAt: 1, updatedAt: 1 });
+  files.set(
+    'src',
+    new Map([
+      ['f1', new Blob(['a'])],
+      ['f2', new Blob(['b'])],
+    ]),
+  );
+  projects.set('src', {
+    id: 'src',
+    ownerId: 'u',
+    type: 'board',
+    title: 'Mi board',
+    isPublic: true,
+    createdAt: 1,
+    updatedAt: 1,
+  });
   contents.set('src', '{"orig":true}');
 
   const projectRepo: ProjectRepo = {
@@ -31,7 +45,8 @@ function setup(opts: { signedIn?: boolean } = {}) {
     },
   };
   const contentRepo: ContentRepo = {
-    load: async (id) => (contents.has(id) ? { data: contents.get(id)!, schemaVersion: 1, revision: 0, updatedAt: 1 } : null),
+    load: async (id) =>
+      contents.has(id) ? { data: contents.get(id)!, schemaVersion: 1, revision: 0, updatedAt: 1 } : null,
     async save(id, data) {
       contents.set(id, data);
       log.push(`content:${id}`);
@@ -72,7 +87,13 @@ describe('casos de uso de proyectos', () => {
   it('createProject crea privado, con el contenido inicial del tipo y título normalizado', async () => {
     const { uc, projects, contents } = setup();
     const id = await uc.createProject('note', '  ');
-    expect(projects.get(id)).toMatchObject({ ownerId: 'u', type: 'note', title: 'Sin título', isPublic: false, createdAt: 99 });
+    expect(projects.get(id)).toMatchObject({
+      ownerId: 'u',
+      type: 'note',
+      title: 'Sin título',
+      isPublic: false,
+      createdAt: 99,
+    });
     expect(contents.get(id)).toBe('{"empty":"note"}');
   });
 

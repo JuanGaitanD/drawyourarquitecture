@@ -19,7 +19,14 @@ export function createProjectUseCases(deps: ProjectDeps) {
     if (!user) throw new Error('Hace falta iniciar sesión.');
     const t = now();
     return deps.projects.create(
-      { ownerId: user.uid, type, title: normalizeTitle(title ?? DEFAULT_TITLE), isPublic: false, createdAt: t, updatedAt: t },
+      {
+        ownerId: user.uid,
+        type,
+        title: normalizeTitle(title ?? DEFAULT_TITLE),
+        isPublic: false,
+        createdAt: t,
+        updatedAt: t,
+      },
       deps.emptyContent(type),
     );
   }

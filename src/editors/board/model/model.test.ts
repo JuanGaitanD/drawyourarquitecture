@@ -40,7 +40,11 @@ describe('makeNode / makeEdge', () => {
   });
 
   it('mezcla el estilo parcial sobre el estilo por defecto del tipo', () => {
-    const n = makeNode('sticky', { x: 0, y: 0 }, { label: 'hola', style: { fill: STICKY_COLORS.blue } as BoardNode['data']['style'] });
+    const n = makeNode(
+      'sticky',
+      { x: 0, y: 0 },
+      { label: 'hola', style: { fill: STICKY_COLORS.blue } as BoardNode['data']['style'] },
+    );
     expect(n.data.label).toBe('hola');
     expect(n.data.style.fill).toBe(STICKY_COLORS.blue);
     expect(n.data.style.fontSize).toBe(14);
@@ -54,7 +58,13 @@ describe('makeNode / makeEdge', () => {
   });
 
   it('makeEdge respeta lo que se le pasa', () => {
-    const e = makeEdge('a', 'b', { label: 'x', path: 'step', sourceHandle: 't', targetHandle: 'b', markerStart: true });
+    const e = makeEdge('a', 'b', {
+      label: 'x',
+      path: 'step',
+      sourceHandle: 't',
+      targetHandle: 'b',
+      markerStart: true,
+    });
     expect(e.sourceHandle).toBe('t');
     expect(e.targetHandle).toBe('b');
     expect(e.data).toMatchObject({ label: 'x', path: 'step', markerStart: true });
@@ -64,7 +74,12 @@ describe('makeNode / makeEdge', () => {
     expect(SHAPES).toHaveLength(14);
     expect(ICONS).toHaveLength(15);
     expect(Object.keys(STICKY_COLORS)).toHaveLength(16);
-    expect(emptyBoard()).toEqual({ schemaVersion: 1, nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } });
+    expect(emptyBoard()).toEqual({
+      schemaVersion: 1,
+      nodes: [],
+      edges: [],
+      viewport: { x: 0, y: 0, zoom: 1 },
+    });
   });
 });
 
@@ -113,7 +128,13 @@ describe('geometry', () => {
 
   it('nodeAtPoint devuelve el frame más interior (el último)', () => {
     const outer = { ...makeNode('frame', { x: 0, y: 0 }), id: 'outer' };
-    const inner = { ...makeNode('frame', { x: 50, y: 50 }), id: 'inner', parentId: 'outer', width: 100, height: 100 };
+    const inner = {
+      ...makeNode('frame', { x: 50, y: 50 }),
+      id: 'inner',
+      parentId: 'outer',
+      width: 100,
+      height: 100,
+    };
     expect(nodeAtPoint({ x: 100, y: 100 }, [outer, inner])?.id).toBe('inner');
   });
 

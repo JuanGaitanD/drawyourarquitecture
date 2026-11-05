@@ -39,12 +39,19 @@ export function useProject(id: string): ProjectState {
     Promise.all([projectRepo.get(id), contentRepo.load(id)])
       .then(([project, content]) => {
         if (cancelled) return;
-        if (!project || !content) return setState({ status: 'missing', project: null, content: null, error: null, draft: null });
+        if (!project || !content)
+          return setState({ status: 'missing', project: null, content: null, error: null, draft: null });
         setState({ status: 'ready', project, content, error: null, draft: recoverableDraft(id, content) });
       })
       .catch((e: unknown) => {
         if (cancelled) return;
-        setState({ status: 'error', project: null, content: null, error: e instanceof Error ? e : new Error(String(e)), draft: null });
+        setState({
+          status: 'error',
+          project: null,
+          content: null,
+          error: e instanceof Error ? e : new Error(String(e)),
+          draft: null,
+        });
       });
     return () => {
       cancelled = true;

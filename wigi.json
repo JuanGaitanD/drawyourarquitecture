@@ -27,5 +27,20 @@
       "app": "src/app"
     }
   },
-  "ambitos_commit": ["base", "domain", "application", "infra", "ui", "app", "dashboard", "viewer", "note", "board", "rules", "e2e", "docs", "deps"]
+  "ambitos_commit": [
+    "base",
+    "domain",
+    "application",
+    "infra",
+    "ui",
+    "app",
+    "dashboard",
+    "viewer",
+    "note",
+    "board",
+    "rules",
+    "e2e",
+    "docs",
+    "deps"
+  ]
 }

@@ -11,7 +11,9 @@ const Dashboard = lazy(() => import('./dashboard/Dashboard').then((m) => ({ defa
 const Viewer = lazy(() => import('./viewer/Viewer').then((m) => ({ default: m.Viewer })));
 const EmbedPage = lazy(() => import('./viewer/EmbedPage').then((m) => ({ default: m.EmbedPage })));
 const NoteEditor = lazy(() => import('@/editors/note/NoteEditor').then((m) => ({ default: m.NoteEditor })));
-const BoardEditor = lazy(() => import('@/editors/board/BoardEditor').then((m) => ({ default: m.BoardEditor })));
+const BoardEditor = lazy(() =>
+  import('@/editors/board/BoardEditor').then((m) => ({ default: m.BoardEditor })),
+);
 
 /**
  * Cinco rutas + 404. Los editores se montan con `key={id}` (invariante 2) y exigen sesión;

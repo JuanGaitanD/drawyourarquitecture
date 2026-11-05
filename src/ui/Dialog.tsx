@@ -21,7 +21,10 @@ export function DialogContent({ title, description, children, footer, size = 'md
   return (
     <RadixDialog.Portal>
       <RadixDialog.Overlay className={styles.overlay} />
-      <RadixDialog.Content className={`${styles.content} ${styles[size]}`} {...(description ? {} : { 'aria-describedby': undefined })}>
+      <RadixDialog.Content
+        className={`${styles.content} ${styles[size]}`}
+        {...(description ? {} : { 'aria-describedby': undefined })}
+      >
         <header className={styles.header}>
           <RadixDialog.Title className={styles.title}>{title}</RadixDialog.Title>
           <RadixDialog.Close className={styles.close} aria-label="Cerrar">

@@ -11,7 +11,11 @@ export interface ContentRecord {
 export interface ContentRepo {
   load(id: string): Promise<ContentRecord | null>;
   /** Escribe en transacción: si `expectedRevision` no coincide con la guardada, devuelve `{ conflict: true }`. */
-  save(id: string, data: string, expectedRevision: number): Promise<{ revision: number } | { conflict: true }>;
+  save(
+    id: string,
+    data: string,
+    expectedRevision: number,
+  ): Promise<{ revision: number } | { conflict: true }>;
 }
 
 export interface ProjectRepo {

@@ -1,14 +1,5 @@
 import { assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  updateDoc,
-  where,
-  writeBatch,
-} from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 import { OWNER, STRANGER, contentData, createEnv, projectData, seedProject } from './env';
 
@@ -34,7 +25,9 @@ describe('firestore · el dueño', () => {
     await assertSucceeds(
       updateDoc(doc(fs, 'projects', 'p1', 'content', 'main'), { data: '{"v":2}', revision: 1, updatedAt: 2 }),
     );
-    await assertSucceeds(updateDoc(doc(fs, 'projects', 'p1'), { title: 'Otro', isPublic: true, updatedAt: 3 }));
+    await assertSucceeds(
+      updateDoc(doc(fs, 'projects', 'p1'), { title: 'Otro', isPublic: true, updatedAt: 3 }),
+    );
   });
 
   it('lista solo lo suyo (con el filtro ownerId)', async () => {
@@ -138,7 +131,9 @@ describe('firestore · otra cuenta', () => {
     const fs = asStranger();
     await assertSucceeds(getDoc(doc(fs, 'projects', 'publico')));
     await assertFails(updateDoc(doc(fs, 'projects', 'publico'), { title: 'x', updatedAt: 2 }));
-    await assertFails(updateDoc(doc(fs, 'projects', 'publico', 'content', 'main'), { revision: 1, updatedAt: 2 }));
+    await assertFails(
+      updateDoc(doc(fs, 'projects', 'publico', 'content', 'main'), { revision: 1, updatedAt: 2 }),
+    );
     const b = writeBatch(fs);
     b.delete(doc(fs, 'projects', 'publico', 'content', 'main'));
     b.delete(doc(fs, 'projects', 'publico'));

@@ -25,11 +25,22 @@ export interface DropdownMenuItemProps extends ComponentProps<typeof RadixMenu.I
   danger?: boolean;
 }
 
-export function DropdownMenuItem({ icon, shortcut, danger, children, className, ...rest }: DropdownMenuItemProps) {
+export function DropdownMenuItem({
+  icon,
+  shortcut,
+  danger,
+  children,
+  className,
+  ...rest
+}: DropdownMenuItemProps) {
   const cls = [styles.item, danger ? styles.danger : '', className ?? ''].filter(Boolean).join(' ');
   return (
     <RadixMenu.Item className={cls} {...rest}>
-      {icon ? <span className={styles.icon} aria-hidden="true">{icon}</span> : null}
+      {icon ? (
+        <span className={styles.icon} aria-hidden="true">
+          {icon}
+        </span>
+      ) : null}
       <span className={styles.label}>{children}</span>
       {shortcut ? <kbd className={styles.kbd}>{shortcut}</kbd> : null}
     </RadixMenu.Item>

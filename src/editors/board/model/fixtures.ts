@@ -14,11 +14,11 @@ const withId = <T extends BoardNode | BoardEdge>(x: T, id: string): T => ({ ...x
  */
 export function fixtureBoard(): BoardContent {
   const frame = withId(makeNode('frame', { x: 100, y: 100 }, { label: 'Backend' }), 'frame');
-  const api = withId(
-    makeNode('shape', { x: 40, y: 60 }, { label: 'API', shape: 'round_rectangle' }),
-    'api',
+  const api = withId(makeNode('shape', { x: 40, y: 60 }, { label: 'API', shape: 'round_rectangle' }), 'api');
+  const db = withId(
+    makeNode('shape', { x: 280, y: 60 }, { label: 'Base de datos', shape: 'cylinder' }),
+    'db',
   );
-  const db = withId(makeNode('shape', { x: 280, y: 60 }, { label: 'Base de datos', shape: 'cylinder' }), 'db');
   api.parentId = 'frame';
   db.parentId = 'frame';
   const user = withId(makeNode('icon', { x: -200, y: 120 }, { label: 'Usuario', icon: 'user' }), 'user');
@@ -31,7 +31,10 @@ export function fixtureBoard(): BoardContent {
     edges: [
       withId(makeEdge('user', 'api', { label: 'HTTPS' }), 'e-user-api'),
       withId(makeEdge('api', 'db', { dashed: true }), 'e-api-db'),
-      withId(makeEdge('note', 'frame', { path: 'step', sourceHandle: 't', targetHandle: 'b' }), 'e-note-frame'),
+      withId(
+        makeEdge('note', 'frame', { path: 'step', sourceHandle: 't', targetHandle: 'b' }),
+        'e-note-frame',
+      ),
     ],
   };
 }

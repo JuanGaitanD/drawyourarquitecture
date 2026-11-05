@@ -16,7 +16,8 @@ import { db } from './firebase';
 
 const col = collection(db, 'projects');
 
-export const isPermissionDenied = (e: unknown) => (e as { code?: string } | null)?.code === 'permission-denied';
+export const isPermissionDenied = (e: unknown) =>
+  (e as { code?: string } | null)?.code === 'permission-denied';
 
 function toProject(id: string, d: DocumentData): Project | null {
   if (!isProjectType(d.type) || typeof d.ownerId !== 'string' || typeof d.title !== 'string') return null;
@@ -57,7 +58,12 @@ export const projectRepo: ProjectRepo = {
     const ref = doc(col);
     const batch = writeBatch(db);
     batch.set(ref, p);
-    batch.set(doc(ref, 'content', 'main'), { data: initialData, schemaVersion: 1, revision: 0, updatedAt: p.updatedAt });
+    batch.set(doc(ref, 'content', 'main'), {
+      data: initialData,
+      schemaVersion: 1,
+      revision: 0,
+      updatedAt: p.updatedAt,
+    });
     await batch.commit();
     return ref.id;
   },
