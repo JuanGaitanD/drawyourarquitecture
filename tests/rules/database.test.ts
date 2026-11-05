@@ -16,7 +16,7 @@ const [host = '127.0.0.1', port = '9000'] = (
 let env: RulesTestEnvironment;
 beforeAll(async () => {
   env = await initializeTestEnvironment({
-    projectId: 'demo-dya-rtdb',
+    projectId: `${process.env.RULES_PROJECT ?? 'demo-dya-rules'}-rtdb`,
     database: { rules: readFileSync('database.rules.json', 'utf8'), host, port: Number(port) },
   });
 });

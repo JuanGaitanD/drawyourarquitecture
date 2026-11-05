@@ -8,7 +8,8 @@ export default defineConfig({
   test: {
     include: ['tests/rules/**/*.test.ts'],
     environment: 'node',
-    env: { VITE_USE_EMULATORS: '1' }, // firebase.ts apunta a los emuladores y no exige claves
+    // firebase.ts apunta a los emuladores y no exige claves; el proyecto es el de la ejecución (RULES_PROJECT).
+    env: { VITE_USE_EMULATORS: '1', VITE_EMULATOR_PROJECT: process.env.RULES_PROJECT ?? 'demo-dya-rules' },
     fileParallelism: false,
     testTimeout: 20000,
     hookTimeout: 30000,

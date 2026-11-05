@@ -1,12 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
+import { E2E_PROJECT } from './tests/e2e/global-setup';
 
-// Pruebas e2e (tests/e2e). El dev server usa los emuladores de Firebase (proyecto demo-dya):
-// `pnpm emulators` debe estar corriendo; la config no los arranca ni los detiene.
-const PORT = 5185;
+// Pruebas e2e (tests/e2e). El dev server usa los emuladores de Firebase (proyecto demo-dya): Auth y Firestore los
+// lleva `pnpm emulators` (deben estar corriendo). `global-setup.ts` carga las reglas de este repo en Firestore y
+// arranca (y cierra al terminar) un emulador de Realtime Database si no hay uno en 9000.
+const PORT = Number(process.env.E2E_PORT ?? 5185); // E2E_PORT si otro carril ocupa el 5185
 
 export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '**/*.spec.ts',
+  globalSetup: './tests/e2e/global-setup.ts',
   // Un solo worker: los escenarios comparten la cuenta de prueba del emulador y su lista de proyectos.
   fullyParallel: false,
   workers: 1,
@@ -28,7 +31,7 @@ export default defineConfig({
   ],
   webServer: {
     command: `pnpm dev --port ${PORT} --strictPort`,
-    env: { VITE_USE_EMULATORS: '1' },
+    env: { VITE_USE_EMULATORS: '1', VITE_EMULATOR_PROJECT: E2E_PROJECT },
     url: `http://localhost:${PORT}`,
     reuseExistingServer: false,
   },

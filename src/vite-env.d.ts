@@ -12,6 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
   /** «1» conecta Auth y Firestore a los emuladores locales (proyecto demo-dya). */
   readonly VITE_USE_EMULATORS?: string;
+  /** Solo con emuladores: proyecto del emulador (por defecto demo-dya); el e2e usa uno propio para no pisar el compartido. */
+  readonly VITE_EMULATOR_PROJECT?: string;
 }
 interface ImportMeta {
   readonly env: ImportMetaEnv;
