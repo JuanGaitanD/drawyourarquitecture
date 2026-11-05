@@ -43,7 +43,7 @@ import { makeNode } from '../model/board';
 
 export interface BoardCanvasProps {
   initialViewport: Viewport;
-  /** Se llama al terminar de mover o hacer zoom (el editor lo guarda con el siguiente cambio de contenido). */
+  /** Se llama al terminar de mover o hacer zoom (el editor lo guarda con retraso, aunque el contenido no cambie). */
   onViewportChange: (v: Viewport) => void;
 }
 

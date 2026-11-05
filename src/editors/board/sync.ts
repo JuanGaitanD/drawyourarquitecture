@@ -17,11 +17,23 @@ function parse(data: string): BoardContent | null {
 
 const byId = <T extends { id: string }>(xs: readonly T[]) => [...xs].sort((a, b) => (a.id < b.id ? -1 : 1));
 
-/** Igualdad semántica de dos contenidos codificados: mismos nodos y aristas, sin mirar el orden ni el viewport. */
+const sameView = (a: Viewport, b: Viewport) => a.x === b.x && a.y === b.y && a.zoom === b.zoom;
+
+/**
+ * Igualdad semántica de dos contenidos codificados: mismos nodos y aristas (sin mirar el orden) y mismo viewport:
+ * hacer solo pan o zoom es un cambio que se guarda. El viewport ajeno no ensucia: `onRemote` entrega el contenido
+ * remoto con el viewport propio.
+ */
 export function boardSame(a: string, b: string): boolean {
   const x = parse(a);
   const y = parse(b);
-  return !!x && !!y && canon(byId(x.nodes)) === canon(byId(y.nodes)) && canon(byId(x.edges)) === canon(byId(y.edges));
+  return (
+    !!x &&
+    !!y &&
+    sameView(x.viewport, y.viewport) &&
+    canon(byId(x.nodes)) === canon(byId(y.nodes)) &&
+    canon(byId(x.edges)) === canon(byId(y.edges))
+  );
 }
 
 /** Conserva el objeto local cuando el elemento fusionado es igual (así no se pierde selección ni medida). */
@@ -51,6 +63,8 @@ export function createBoardSync(
 ) {
   let base: BoardContent = initial;
   let view: Viewport = initial.viewport;
+  /** Viewport del último contenido que esta pestaña cargó o escribió (el que el servidor tiene de ella). */
+  let savedView: Viewport = initial.viewport;
   let seen = initialRevision;
 
   /** Un solo camino: lo usa el reintento de la transacción de guardado. */
@@ -71,16 +85,18 @@ export function createBoardSync(
 
     /**
      * Llega el contenido del servidor: se fusiona con lo local y se aplica al store sin tocar el historial.
-     * Devuelve `false` si ya estaba visto (eco de lo propio o instantánea antigua).
+     * Devuelve `null` si ya estaba visto (eco de lo propio o instantánea antigua) y, si no, el contenido que la cola
+     * debe tomar como lo último del servidor: el remoto con el viewport propio (el pan de otra persona no es un
+     * cambio pendiente de esta pestaña).
      */
-    onRemote(record: ContentRecord): boolean {
-      if (record.revision <= seen) return false;
+    onRemote(record: ContentRecord): string | null {
+      if (record.revision <= seen) return null;
       const remote = parse(record.data);
-      if (!remote) return false;
+      if (!remote) return null;
       const s0 = store.getState();
       const merged = mergeBoards(s0.toContent(view), remote, base);
       // Una fusión inválida no se aplica ni avanza la base: el editor nunca recibe una jerarquía rota.
-      if (!validateBoardContent(merged).ok) return false;
+      if (!validateBoardContent(merged).ok) return null;
       seen = record.revision;
       base = remote;
       const nodes = reuse(s0.nodes, merged.nodes, cleanNodes);
@@ -91,7 +107,7 @@ export function createBoardSync(
         nodes.every((n, i) => n === s0.nodes[i]) &&
         edges.every((e, i) => e === s0.edges[i]);
       if (!same) s0.applyRemote(nodes, edges);
-      return true;
+      return sameView(remote.viewport, savedView) ? record.data : encode({ ...remote, viewport: savedView });
     },
 
     /**
@@ -99,8 +115,9 @@ export function createBoardSync(
      * no se toca: el local aún no lo tiene y lo recibirá en la instantánea de esa revisión (`onRemote`).
      */
     onSaved(r: { data: string; revision: number; merged?: string }): void {
-      if (r.merged !== undefined) return;
       const saved = parse(r.data);
+      if (saved) savedView = saved.viewport;
+      if (r.merged !== undefined) return;
       if (saved && r.revision > seen) {
         base = saved;
         seen = r.revision;
