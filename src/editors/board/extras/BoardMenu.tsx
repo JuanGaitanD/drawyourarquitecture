@@ -148,7 +148,11 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
   const exportJson = () => {
     downloadText(JSON.stringify(getContent(), null, 2), `${slug(title)}.json`);
     track({ name: 'export', params: { format: 'json' } });
-    toast({ title: 'JSON exportado', kind: 'success' });
+    toast({
+      title: 'JSON exportado',
+      description: 'Las imágenes no se incluyen: no es una copia de seguridad completa.',
+      kind: 'success',
+    });
   };
 
   const importJson = async (file: File) => {
@@ -234,7 +238,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
             Copiar como Mermaid…
           </DropdownMenuItem>
           <DropdownMenuItem icon={<FileDown size={16} />} disabled={empty} onSelect={exportJson}>
-            Descargar JSON
+            Descargar JSON (sin imágenes)
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
