@@ -6,9 +6,12 @@ import {
   DYA_VERSION,
   base64ToBlob,
   blobToBase64,
+  MAX_DYA_BYTES,
   buildDya,
+  dyaToText,
   imageFileIds,
   parseImport,
+  readDya,
   uploadImages,
 } from './dyaFile';
 
@@ -117,5 +120,52 @@ describe('.dya.json · formato (D14)', () => {
   it('una imagen que no venía en el archivo se deja como estaba', async () => {
     const out = await uploadImages(withImages(), {}, async () => undefined);
     expect(imageFileIds(out).sort()).toEqual(['file-a', 'file-b']);
+  });
+});
+
+describe('.dya.json · topes de exportación e importación (D35)', () => {
+  const MIB = 1024 * 1024;
+  /** Una imagen de 4 MiB (el tope por imagen), distinta de las demás. */
+  const bigImage = (n: number) => {
+    const bytes = new Uint8Array(4 * MIB);
+    for (let i = 0; i < bytes.length; i += 4096) bytes[i] = n;
+    return new Blob([bytes], { type: 'image/gif' });
+  };
+  const many = (n: number): BoardContent => ({
+    ...fixtureBoard(),
+    nodes: [...fixtureBoard().nodes, ...Array.from({ length: n }, (_, i) => image(`i${i}`, `f${i}`))],
+  });
+
+  it('el tope es el mismo en las dos direcciones y cubre los GIF de 4 MiB que la app admite', () => {
+    expect(MAX_DYA_BYTES).toBeGreaterThanOrEqual(Math.ceil((12 * 4 * MIB * 4) / 3));
+  });
+
+  it('un diagrama de 11 GIF de 4 MiB (>40 MiB en base64) se exporta y se vuelve a importar entero', async () => {
+    const n = 11;
+    const { file } = await buildDya(many(n), async (id) => bigImage(Number(id.slice(1)) + 1));
+    const text = dyaToText(file);
+    expect(text.length).toBeGreaterThan(40 * MIB);
+    const back = await readDya(new File([text], 'grande.dya.json'));
+    if (!back.ok) throw new Error(back.error);
+    expect(Object.keys(back.files)).toHaveLength(n);
+    const blob = base64ToBlob(back.files['f7'].base64, back.files['f7'].mimeType);
+    expect(blob.size).toBe(4 * MIB);
+    expect(new Uint8Array(await blob.arrayBuffer())[0]).toBe(8);
+  });
+
+  it('exportar lo que no se podría importar falla en vez de descargar el archivo', async () => {
+    const { file } = await buildDya(withImages(), async () => png([1, 2, 3]));
+    expect(() => dyaToText(file, 100)).toThrow(/solo importa archivos de hasta/);
+    expect(() => dyaToText(file)).not.toThrow();
+  });
+
+  it('importar un archivo por encima del tope avisa con su título y el tope', async () => {
+    const r = await readDya(new File(['x'.repeat(2 * MIB + 1)], 'a.json'), 2 * MIB);
+    expect(r).toMatchObject({ ok: false, title: 'El archivo es demasiado grande', error: 'El máximo es 2 MiB.' });
+  });
+
+  it('readDya distingue un JSON roto de un diagrama inválido', async () => {
+    expect(await readDya(new File(['{'], 'roto.json'))).toMatchObject({ ok: false, title: 'No es un JSON válido', error: 'roto.json' });
+    expect(await readDya(new File(['{"a":1}'], 'otro.json'))).toMatchObject({ ok: false, title: 'No es un diagrama válido' });
   });
 });
