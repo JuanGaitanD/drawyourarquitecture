@@ -1,0 +1,154 @@
+/*
+ * Tokens semánticos: única fuente de verdad del tema (claro, oscuro, sistema).
+ * El tema activo vive en <html data-theme="light|dark"> (lo fija ui/theme.tsx) y se adapta a
+ * Excalidraw (prop `theme`) y a React Flow (`colorMode`). Los colores del dibujo persistidos
+ * (rellenos, trazos de formas y stickies) NO usan estos tokens: no cambian con el tema.
+ * Contraste: texto y bordes de controles ≥ AA (4.5:1 / 3:1) sobre su superficie.
+ */
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  /* Superficies */
+  --surface-app: #f5f6f8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eceef2;
+  --surface-hover: #eef0f4;
+  --surface-active: #e3e6ec;
+  --surface-inverse: #14181f;
+
+  /* Texto */
+  --text: #14181f;
+  --text-muted: #566070;
+  --text-faint: #6b7483;
+  --text-inverse: #f5f6f8;
+  --text-link: #2543b3;
+
+  /* Bordes */
+  --border: #dde1e8;
+  --border-strong: #b9c0cc;
+
+  /* Acento, selección y foco */
+  --accent: #2f54d6;
+  --accent-hover: #2543b3;
+  --accent-active: #1e3694;
+  --accent-soft: #e8edfd;
+  --on-accent: #ffffff;
+  --selection: #2f54d6;
+  --selection-soft: rgb(47 84 214 / 0.14);
+  --focus-ring: #2f54d6;
+
+  /* Estados */
+  --danger: #c62828;
+  --danger-hover: #a81f1f;
+  --danger-soft: #fdeaea;
+  --on-danger: #ffffff;
+  --success: #17764a;
+  --success-soft: #e4f5ec;
+  --warning: #8a5a00;
+  --warning-soft: #fff3d6;
+
+  --shadow-color: 20 24 31;
+  --scrim: rgb(20 24 31 / 0.45);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --surface-app: #0e1116;
+  --surface: #161a21;
+  --surface-raised: #1c212a;
+  --surface-sunken: #11151b;
+  --surface-hover: #212733;
+  --surface-active: #2a3140;
+  --surface-inverse: #e8ebf0;
+
+  --text: #e8ebf0;
+  --text-muted: #a3acba;
+  --text-faint: #8d97a6;
+  --text-inverse: #14181f;
+  --text-link: #9fb3ff;
+
+  --border: #2a313d;
+  --border-strong: #4a5466;
+
+  --accent: #7c98ff;
+  --accent-hover: #98aeff;
+  --accent-active: #b3c3ff;
+  --accent-soft: #1d2748;
+  --on-accent: #0a1022;
+  --selection: #7c98ff;
+  --selection-soft: rgb(124 152 255 / 0.2);
+  --focus-ring: #9fb3ff;
+
+  --danger: #ff8a80;
+  --danger-hover: #ffa8a0;
+  --danger-soft: #3a1e1e;
+  --on-danger: #1a0808;
+  --success: #62d49a;
+  --success-soft: #16301f;
+  --warning: #f0c25a;
+  --warning-soft: #33280f;
+
+  --shadow-color: 0 0 0;
+  --scrim: rgb(0 0 0 / 0.6);
+}
+
+:root {
+  /* Tipografía: pila del sistema (sin fuentes remotas). */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --leading: 1.5;
+
+  /* Espaciado (escala de 4 px) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  /* Radios */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* Sombras (el color base cambia con el tema) */
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.08), 0 1px 1px rgb(var(--shadow-color) / 0.04);
+  --shadow-md: 0 4px 12px rgb(var(--shadow-color) / 0.1), 0 1px 3px rgb(var(--shadow-color) / 0.08);
+  --shadow-lg: 0 16px 40px rgb(var(--shadow-color) / 0.18), 0 4px 12px rgb(var(--shadow-color) / 0.1);
+
+  /* z-index (de menos a más) */
+  --z-canvas-ui: 10;
+  --z-header: 50;
+  --z-dropdown: 1000;
+  --z-overlay: 1100;
+  --z-modal: 1200;
+  --z-toast: 1300;
+  --z-tooltip: 1400;
+
+  /* Movimiento */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --duration-fast: 120ms;
+  --duration: 180ms;
+
+  --control-h-sm: 2rem;
+  --control-h-md: 2.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration: 0ms;
+  }
+}
