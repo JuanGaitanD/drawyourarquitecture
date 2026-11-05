@@ -81,3 +81,32 @@ export interface InviteRepo {
   /** Dueño: nombres de quienes entraron por invitación, por uid. */
   memberNames(projectId: string): Promise<Record<string, string>>;
 }
+
+/** Quién está conectado a un proyecto. Latido cada 60 s; caduca a los 2 min. Los cursores no se persisten. */
+export interface Presence {
+  uid: string;
+  name: string;
+  color: string;
+  at: number;
+}
+export const PRESENCE_BEAT_MS = 60_000;
+export const PRESENCE_TTL_MS = 120_000;
+
+export interface PresenceRepo {
+  beat(projectId: string, me: Omit<Presence, 'at'>): Promise<void>;
+  /** Mejor esfuerzo al salir: si la pestaña se cierra de golpe, el latido simplemente caduca. */
+  leave(projectId: string, uid: string): Promise<void>;
+  subscribe(projectId: string, cb: (list: Presence[]) => void, onError?: (e: Error) => void): () => void;
+}
+
+/** Color estable por persona, de una paleta legible en claro y oscuro. */
+const PALETTE = ['#e11d48', '#d97706', '#16a34a', '#0891b2', '#2563eb', '#7c3aed', '#c026d3', '#4b5563'];
+export function presenceColor(uid: string): string {
+  let h = 0;
+  for (const ch of uid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length]!;
+}
+
+/** Los conectados: los que latieron hace menos de `PRESENCE_TTL_MS`, sin contar a `exceptUid`. */
+export const onlineNow = (list: readonly Presence[], now: number, exceptUid?: string): Presence[] =>
+  list.filter((p) => p.uid !== exceptUid && now - p.at <= PRESENCE_TTL_MS);

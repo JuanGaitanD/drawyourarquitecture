@@ -2,6 +2,7 @@ import { ArrowLeft, Check, CloudOff, Copy, Globe, Library, LoaderCircle, Share2,
 import { useState } from 'react';
 import type { SaveStatus } from '@/application/saveQueue';
 import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
+import { PresenceAvatars } from '@/app/invite/PresenceAvatars';
 import { SharePanel } from '@/app/invite/SharePanel';
 import type { CanvasUi } from './NoteCanvas';
 import styles from './TopBar.module.css';
@@ -71,6 +72,7 @@ export function TopBar(p: TopBarProps) {
         {p.tooLarge ? <TriangleAlert size={14} aria-hidden="true" /> : <StatusIcon status={p.status} />}
         <span className={styles.statusText}>{s.label}</span>
       </span>
+      <PresenceAvatars projectId={p.projectId} />
       {p.library ? (
         <IconButton
           label="Biblioteca"

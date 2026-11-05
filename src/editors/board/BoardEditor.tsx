@@ -10,7 +10,15 @@ import { roleOf } from '@/domain/project';
 import { Button, useToast } from '@/ui';
 import { BoardViewer } from './BoardViewer';
 import { BoardCanvas } from './canvas/BoardCanvas';
-import { BackButton, SaveBadge, ShareButton, ThemeToggle, TitleField, UserMenu } from './canvas/EditorChrome';
+import {
+  BackButton,
+  PresenceAvatars,
+  SaveBadge,
+  ShareButton,
+  ThemeToggle,
+  TitleField,
+  UserMenu,
+} from './canvas/EditorChrome';
 import { useEncodedContent } from './canvas/useEncodedContent';
 import styles from './canvas/editor.module.css';
 import { BoardMenu } from './extras/BoardMenu';
@@ -145,6 +153,7 @@ function ReadOnly({ id, title, initial }: { id: string; title: string; initial: 
         <TitleField value={title} onCommit={() => undefined} readOnly />
         <span className={styles.status}>Solo lectura</span>
         <div className={styles.spacer} />
+        <PresenceAvatars projectId={id} />
         <ThemeToggle />
         <UserMenu />
       </header>
@@ -257,6 +266,7 @@ function Loaded({
               <BackButton />
               <TitleField value={title} onCommit={rename} readOnly={!isOwner} />
               <div className={styles.spacer} />
+              <PresenceAvatars projectId={id} />
               <SaveBadge status={status} onRetry={() => void flush()} />
               <EditorMenu title={title} stageRef={stageRef} />
               {isOwner ? <ShareButton id={id} isPublic={isPublic} onChange={share} /> : null}

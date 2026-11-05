@@ -2,6 +2,7 @@ import { ArrowLeft, CircleAlert, CloudOff, Link2, LoaderCircle, Check, Copy, Glo
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import type { SaveStatus } from '@/application/saveQueue';
+import { PresenceAvatars } from '@/app/invite/PresenceAvatars';
 import { SharePanel } from '@/app/invite/SharePanel';
 import { ThemeToggle, UserMenu } from '@/app/shell/Shell';
 import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
@@ -160,4 +161,4 @@ export function BackButton() {
   return <IconButton label="Volver al panel" icon={<ArrowLeft size={18} />} onClick={() => navigate('/')} />;
 }
 
-export { ThemeToggle, UserMenu };
+export { PresenceAvatars, ThemeToggle, UserMenu };
