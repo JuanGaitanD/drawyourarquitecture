@@ -143,9 +143,11 @@ service cloud.firestore {
         && request.resource.data.label.size() <= 60
         && request.resource.data.createdAt is number
         && request.resource.data.revoked == false;
-      // Solo se puede pasar revoked a true (no se reactiva ni se borra).
+      // Única actualización del cliente: revoked de false a true (no se reactiva, no se borra);
+      // `lastUsedAt` lo escribe solo el servidor (Admin), como mucho una vez por hora.
       allow update: if request.auth != null
         && resource.data.uid == request.auth.uid
+        && resource.data.revoked == false
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revoked'])
         && request.resource.data.revoked == true;
     }

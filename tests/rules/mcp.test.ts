@@ -66,10 +66,18 @@ describe('mcpTokens', () => {
     const ref = doc(asStranger(), 'mcpTokens', HASH);
     await assertFails(updateDoc(ref, { label: 'otro' }));
     await assertFails(updateDoc(ref, { revoked: false }));
+    await assertFails(updateDoc(ref, { revoked: true, lastUsedAt: 1 }));
+    await assertFails(updateDoc(ref, { revoked: true, uid: OWNER }));
+    await assertFails(updateDoc(ref, { lastUsedAt: 1 }));
     await assertFails(deleteDoc(ref));
     await assertFails(updateDoc(doc(asOwner(), 'mcpTokens', HASH), { revoked: true }));
     await assertSucceeds(updateDoc(ref, { revoked: true }));
     await assertFails(updateDoc(ref, { revoked: false }));
+  });
+
+  it('un token ya revocado no admite más cambios del cliente', async () => {
+    await seedToken(HASH, { revoked: true });
+    await assertFails(updateDoc(doc(asStranger(), 'mcpTokens', HASH), { revoked: true }));
   });
 });
 
