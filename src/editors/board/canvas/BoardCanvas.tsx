@@ -10,6 +10,7 @@ import {
   ReactFlow,
   reconnectEdge,
   useReactFlow,
+  useStoreApi,
   type Connection,
   type Node,
   type OnEdgesChange,
@@ -18,7 +19,13 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Grid3x3, Magnet } from 'lucide-react';
-import { useCallback, useMemo, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
 import { nanoid } from 'nanoid';
 import { useTheme, useToast } from '@/ui';
 import { edgeTypes } from '../edges';
@@ -54,7 +61,8 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
   const gridOn = useBoard((s) => s.gridOn);
   const snapOn = useBoard((s) => s.snapOn);
   const { resolved } = useTheme();
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getViewport } = useReactFlow();
+  const flowStore = useStoreApi();
   const files = useBoardFiles();
   const { toast } = useToast();
 
@@ -117,9 +125,9 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
   const placeImage = useCallback(
     async (point: { x: number; y: number }) => {
       const upload = files?.upload;
+      store.getState().setTool('select');
       if (!upload) return toast({ title: 'No se pueden añadir imágenes aquí', kind: 'error' });
       const file = await pickImage();
-      store.getState().setTool('select');
       if (!file) return;
       const problem = imageProblem(file);
       if (problem) return toast({ title: 'Imagen no válida', description: problem, kind: 'error' });
@@ -148,7 +156,6 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
     (e: { clientX: number; clientY: number }) => {
       const s = store.getState();
       const point = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      if (s.tool === 'image') return void placeImage(point);
       const node = nodeForTool(
         { tool: s.tool, shape: s.pendingShape, icon: s.pendingIcon, snapOn: s.snapOn },
         point,
@@ -156,10 +163,19 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
       );
       if (node) insert(node, node.data.kind !== 'icon');
     },
-    [insert, placeImage, screenToFlowPosition, store],
+    [insert, screenToFlowPosition, store],
   );
 
-  const creating = isCreateTool(tool) || tool === 'image';
+  // La herramienta «imagen» abre el selector al elegirla (el clic del botón es el gesto del usuario) y coloca
+  // la imagen en el centro de lo que se ve.
+  useEffect(() => {
+    if (tool !== 'image') return;
+    const { width, height } = flowStore.getState();
+    const v = getViewport();
+    void placeImage({ x: (width / 2 - v.x) / v.zoom, y: (height / 2 - v.y) / v.zoom });
+  }, [tool, placeImage, flowStore, getViewport]);
+
+  const creating = isCreateTool(tool);
   const onPaneClick = useCallback((e: ReactMouseEvent) => creating && createAt(e), [creating, createAt]);
   // Un frame cubre el lienzo bajo él: el clic de una herramienta de creación también cuenta ahí.
   const onNodeClick = useCallback(
@@ -211,13 +227,9 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
       onNodeClick={onNodeClick}
       onNodeDoubleClick={(_, n) => !noEdit(n) && startEdit(n.id)}
       onEdgeDoubleClick={(_, e) => startEdit(e.id)}
-      onBeforeDelete={async () => {
-        store.getState().removeSelected(); // un solo paso de historial
-        return false;
-      }}
       onMoveEnd={(_, v) => onViewportChange(v)}
       onKeyDown={onKeyDown}
-      deleteKeyCode={['Backspace', 'Delete']}
+      deleteKeyCode={null} // borra `useShortcuts` (removeSelected: respeta `locked`, un solo paso de historial)
       defaultViewport={initialViewport}
       minZoom={0.1}
       maxZoom={4}

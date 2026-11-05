@@ -1,6 +1,6 @@
-import { ReactFlowProvider, type Viewport } from '@xyflow/react';
+import { ReactFlowProvider, useReactFlow, type Viewport } from '@xyflow/react';
 import { TriangleAlert } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useLocation } from 'wouter';
 import { useAutosave, useProject } from '@/app/hooks';
 import { fileStore, projectRepo } from '@/app/services';
@@ -21,7 +21,7 @@ import { ActionBar } from './ui/ActionBar';
 import { SearchBox } from './ui/SearchBox';
 import { StylePanel } from './ui/StylePanel';
 import { Toolbar } from './ui/Toolbar';
-import { useShortcuts } from './ui/useShortcuts';
+import { Shortcuts } from './ui/useShortcuts';
 
 export interface BoardEditorProps {
   id: string;
@@ -109,6 +109,19 @@ function Full({
   );
 }
 
+/** `BoardMenu` con el viewport y el encuadre de React Flow (necesita estar dentro de su provider). */
+function EditorMenu({ title, stageRef }: { title: string; stageRef: RefObject<HTMLElement | null> }) {
+  const rf = useReactFlow();
+  return (
+    <BoardMenu
+      title={title}
+      viewportRef={stageRef}
+      getViewport={rf.getViewport}
+      onContentChanged={() => void rf.fitView({ padding: 0.15, duration: 0 })}
+    />
+  );
+}
+
 interface LoadedProps {
   id: string;
   title: string;
@@ -143,8 +156,6 @@ function Loaded({
   const [draftOpen, setDraftOpen] = useState(draft !== null);
   const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-
-  useShortcuts(rootRef);
 
   // Solo en desarrollo: el store a mano para probar mientras la barra de herramientas es de otro carril.
   useEffect(() => {
@@ -195,12 +206,13 @@ function Loaded({
       <BoardFilesContext.Provider value={files}>
         <ReactFlowProvider>
           <div className={styles.root} ref={rootRef} tabIndex={-1}>
+            <Shortcuts container={rootRef} />
             <header className={styles.header}>
               <BackButton />
               <TitleField value={title} onCommit={rename} />
               <div className={styles.spacer} />
               <SaveBadge status={status} onRetry={() => void flush()} />
-              <BoardMenu title={title} viewportRef={stageRef} />
+              <EditorMenu title={title} stageRef={stageRef} />
               <ShareButton id={id} isPublic={isPublic} onChange={share} />
               <ThemeToggle />
               <UserMenu />
