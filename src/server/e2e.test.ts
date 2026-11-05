@@ -3,13 +3,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Firestore } from 'firebase-admin/firestore';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { getDb } from './admin';
-import { EMULATOR, seedProject, seedToken, uniq } from './testkit';
+import { getAdminDb } from './admin';
+import { EMULATOR, OWNER, loadRules, seedProject, seedToken, uniq } from './testkit';
 
 // De extremo a extremo: el bundle de producción (api/_mcp.mjs) en un proceso Node aparte, hablado con un
 // cliente MCP del SDK por Streamable HTTP. Necesita el emulador de Firestore.
 describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
-  const OWNER = uniq('dueno');
   const STRANGER = uniq('ajeno');
   let db: Firestore;
   let child: ChildProcess;
@@ -33,10 +32,10 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
   };
 
   beforeAll(async () => {
-    process.env.OWNER_UID = OWNER;
-    db = getDb();
+    await loadRules();
+    db = getAdminDb();
     child = spawn(process.execPath, ['scripts/mcp-serve.mjs', '0'], {
-      env: { ...process.env, OWNER_UID: OWNER },
+      env: { ...process.env },
       stdio: ['ignore', 'pipe', 'inherit'],
     });
     url = await new Promise<URL>((resolve, reject) => {

@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { getDb } from './admin';
+import { getAdminDb } from './admin';
 import { ToolError, authenticate } from './authz';
 import { createMcpServer } from './mcpServer';
+import { getUserDb } from './userDb';
 
 const MAX_BODY = 1_000_000;
 
@@ -33,13 +34,13 @@ async function readBody(req: IncomingMessage & { body?: unknown }): Promise<unkn
 
 /**
  * Endpoint MCP (Streamable HTTP sin estado, respuestas JSON). Un POST = un servidor y un transporte nuevos.
- * 401 si falta el token, es inválido o está revocado; los 403 los devuelven las herramientas.
+ * 401 si falta el token, es inválido o está revocado; los 403 (`permission-denied` de las reglas) los devuelven las herramientas.
  */
 export async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse): Promise<void> {
   if (req.method !== 'POST') return send(res, 405, 'Solo se admite POST.', { Allow: 'POST' });
   try {
-    const db = getDb();
-    const uid = await authenticate(db, req.headers.authorization);
+    const { uid } = await authenticate(getAdminDb(), req.headers.authorization);
+    const db = await getUserDb(uid);
     const body = await readBody(req);
 
     const server = createMcpServer({ db, uid });

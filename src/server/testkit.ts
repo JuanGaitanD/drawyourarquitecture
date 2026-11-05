@@ -1,14 +1,40 @@
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import type { Firestore } from 'firebase-admin/firestore';
 import { generateToken, sha256Hex } from '../application/tokens';
 import { emptyBoard } from '../editors/board/model/board';
 import { buildNote, encodeNote } from './note';
+import type { ToolContext } from './tools';
+import { getUserDb } from './userDb';
 
 // Utilidades de los tests de integración: datos únicos por ejecución (el emulador es compartido con otros
 // carriles, así que no se limpia: cada prueba crea lo suyo con ids propios).
 
 /** Los tests de integración solo corren con el emulador de Firestore (FIRESTORE_EMULATOR_HOST). */
 export const EMULATOR = process.env.FIRESTORE_EMULATOR_HOST;
+
+/** uid del dueño de las reglas renderizadas con `--emulator` (`owner-test`): crea proyectos sin estar en la lista. */
+export const OWNER = 'owner-test';
+
+/**
+ * El emulador es compartido con otros carriles y cada uno carga SUS reglas: antes de probar se renderizan y se
+ * vuelven a cargar las de este repo (misma llamada que usa `@firebase/rules-unit-testing`).
+ */
+export async function loadRules(): Promise<void> {
+  execFileSync(process.execPath, ['scripts/render-rules.mjs', '--emulator'], { stdio: 'ignore' });
+  const env = await initializeTestEnvironment({
+    projectId: 'demo-dya',
+    firestore: { rules: readFileSync('firestore.rules', 'utf8') },
+  });
+  await env.cleanup();
+}
+
+/** Contexto de herramientas autenticado como `uid` (SDK web + custom token del emulador de Auth). */
+export async function userCtx(uid: string): Promise<ToolContext> {
+  return { db: await getUserDb(uid), uid };
+}
 
 export const uniq = (prefix: string) => `${prefix}-${randomUUID().slice(0, 8)}`;
 
