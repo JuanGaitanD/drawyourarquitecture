@@ -32,6 +32,8 @@ export interface BoardState {
   snapOn: boolean;
   /** Id del nodo o la arista cuyo texto se edita (superset del contrato: lo usan nodos y canvas). */
   editingId: string | null;
+  /** Conector por clic: id del nodo de origen ya elegido (runtime: ni se guarda ni entra al historial). */
+  connectFrom: string | null;
 
   /** Reemplaza el contenido y limpia el historial. */
   load(content: BoardContent): void;
@@ -54,7 +56,9 @@ export interface BoardState {
   setEdges(fn: (edges: BoardEdge[]) => BoardEdge[]): void;
   /** Borra lo seleccionado, los hijos de un frame y las aristas colgantes, en un solo paso. Lo bloqueado no. */
   removeSelected(): void;
+  /** Cambiar de herramienta cancela el origen pendiente del conector. */
   setTool(tool: Tool): void;
+  setConnectFrom(id: string | null): void;
   /** Al dejar de editar el nodo recién creado se cierra el paso de historial de su creación. */
   setEditingId(id: string | null): void;
   /** Guarda el snapshot y pausa el historial. */
@@ -156,6 +160,7 @@ export function createBoardStore(): BoardStore {
         gridOn: true,
         snapOn: true,
         editingId: null,
+        connectFrom: null,
 
         load(content) {
           const t = store.temporal.getState();
@@ -166,6 +171,7 @@ export function createBoardStore(): BoardStore {
             nodes: sortParentsFirst(content.nodes),
             edges: content.edges,
             editingId: null,
+            connectFrom: null,
             tool: 'select',
           });
           t.clear();
@@ -247,7 +253,8 @@ export function createBoardStore(): BoardStore {
             const edges = s.edges.filter((e) => !e.selected && !gone.has(e.source) && !gone.has(e.target));
             return nodes.length === s.nodes.length && edges.length === s.edges.length ? s : { nodes, edges };
           }),
-        setTool: (tool) => set({ tool }),
+        setTool: (tool) => set({ tool, connectFrom: null }),
+        setConnectFrom: (connectFrom) => set({ connectFrom }),
         setEditingId(editingId) {
           set({ editingId });
           if (creating !== null && editingId !== creating) {

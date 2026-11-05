@@ -72,7 +72,9 @@ export function createBoardActions(store: BoardStore, flow: () => ReactFlowInsta
         s.setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)));
     },
     escape() {
-      if (get().tool !== 'select') get().setTool('select');
+      // Conector por clic: el primer Esc cancela el origen elegido, el siguiente sale de la herramienta.
+      if (get().connectFrom) get().setConnectFrom(null);
+      else if (get().tool !== 'select') get().setTool('select');
       else api.clearSelection();
     },
 
