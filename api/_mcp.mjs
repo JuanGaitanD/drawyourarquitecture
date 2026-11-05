@@ -121,6 +121,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 // src/server/tools.ts
+import * as firestoreSdk from "firebase/firestore";
 import {
   FieldPath,
   collection as collection2,
@@ -129,12 +130,12 @@ import {
   getDocs,
   limit,
   query,
-  runTransaction as runTransaction2,
   where,
   writeBatch
 } from "firebase/firestore";
 
 // src/domain/codec.ts
+var DOC_CONTENT_BYTES = 9e5;
 var MAX_CONTENT_BYTES = 8 * 1024 * 1024;
 var ContentTooLargeError = class extends Error {
   bytes;
@@ -768,6 +769,158 @@ function toFlowchart(content, direction = "LR") {
   return out.join("\n") + "\n";
 }
 
+// src/application/contentChunks.ts
+var MAX_CHUNKS = 12;
+var MIN_CHUNKS = 2;
+var enc = new TextEncoder();
+var dec = new TextDecoder();
+function splitContent(data, size = DOC_CONTENT_BYTES) {
+  const bytes = enc.encode(data);
+  if (bytes.length <= size) return [data];
+  if (bytes.length > MAX_CONTENT_BYTES) {
+    throw new RangeError(`El contenido ocupa ${bytes.length} bytes y el tope es ${MAX_CONTENT_BYTES}.`);
+  }
+  const out = [];
+  let start = 0;
+  while (start < bytes.length) {
+    let end = Math.min(start + size, bytes.length);
+    while (end < bytes.length && (bytes[end] & 192) === 128) end--;
+    out.push(dec.decode(bytes.subarray(start, end)));
+    start = end;
+  }
+  return out;
+}
+var joinContent = (parts) => parts.join("");
+function chunkCount(meta) {
+  const n = meta.chunks;
+  if (n === void 0) return null;
+  if (typeof n !== "number" || !Number.isInteger(n) || n < MIN_CHUNKS || n > MAX_CHUNKS) {
+    throw new Error("El contenido guardado tiene un formato desconocido.");
+  }
+  return n;
+}
+
+// src/infrastructure/firebase/errors.ts
+var isPermissionDenied2 = (e) => e?.code === "permission-denied";
+
+// src/infrastructure/firebase/contentRepo.ts
+var FORMAT_ERROR = "El contenido guardado tiene un formato desconocido.";
+function toRecord(d, data) {
+  return {
+    data,
+    schemaVersion: 1,
+    revision: Number(d.revision) || 0,
+    updatedAt: Number(d.updatedAt) || 0
+  };
+}
+async function readChunks(fs, tx, main, n) {
+  const snaps = await Promise.all(
+    Array.from({ length: n }, (_, i) => tx.get(fs.doc(main, "chunks", String(i))))
+  );
+  return joinContent(
+    snaps.map((s) => {
+      const part = s.data()?.data;
+      if (typeof part !== "string") throw new Error("Faltan trozos del contenido.");
+      return part;
+    })
+  );
+}
+async function recompose({ fs, db }, main, d) {
+  if (d.schemaVersion !== 1) throw new Error(FORMAT_ERROR);
+  if (typeof d.data === "string") return toRecord(d, d.data);
+  if (chunkCount(d) === null) throw new Error(FORMAT_ERROR);
+  return fs.runTransaction(db, async (tx) => {
+    const meta = (await tx.get(main)).data();
+    const n = meta && chunkCount(meta);
+    if (!meta || meta.schemaVersion !== 1 || !n) throw new Error(FORMAT_ERROR);
+    return toRecord(meta, await readChunks(fs, tx, main, n));
+  });
+}
+function createContentRepo(load) {
+  return {
+    async load(id2) {
+      const m = await load();
+      try {
+        const main = m.fs.doc(m.db, "projects", id2, "content", "main");
+        const snap = await m.fs.getDoc(main);
+        return snap.exists() ? await recompose(m, main, snap.data()) : null;
+      } catch (e) {
+        if (isPermissionDenied2(e)) return null;
+        throw e;
+      }
+    },
+    /**
+     * Transacción. Con la revisión esperada escribe `data`; si cambió y hay `merge`, escribe la fusión contra el
+     * remoto sobre la revisión actual (el guardado ya no falla por conflicto). Actualiza `projects/{id}.updatedAt`.
+     * Si el contenido no cabe en un documento, escribe `chunks` + los trozos y borra los sobrantes de antes.
+     */
+    async save(id2, data, expectedRevision, merge) {
+      const { fs, db } = await load();
+      const main = fs.doc(db, "projects", id2, "content", "main");
+      const chunk = (i) => fs.doc(main, "chunks", String(i));
+      return fs.runTransaction(db, async (tx) => {
+        const snap = await tx.get(main);
+        if (!snap.exists()) return { conflict: true };
+        const meta = snap.data();
+        const current = Number(meta.revision);
+        const oldChunks = chunkCount(meta) ?? 0;
+        let out = data;
+        if (current !== expectedRevision) {
+          if (!merge) return { conflict: true };
+          const remote = oldChunks ? await readChunks(fs, tx, main, oldChunks) : meta.data;
+          if (typeof remote !== "string") return { conflict: true };
+          out = merge(data, remote);
+        }
+        const parts = splitContent(out);
+        const updatedAt = Date.now();
+        const revision = current + 1;
+        if (parts.length === 1) {
+          tx.set(main, { data: out, schemaVersion: 1, revision, updatedAt });
+        } else {
+          tx.set(main, { schemaVersion: 1, revision, updatedAt, chunks: parts.length });
+          parts.forEach((p, i) => tx.set(chunk(i), { data: p }));
+        }
+        for (let i = parts.length > 1 ? parts.length : 0; i < oldChunks; i++) tx.delete(chunk(i));
+        tx.update(fs.doc(db, "projects", id2), { updatedAt });
+        return out === data ? { revision } : { revision, merged: out };
+      });
+    },
+    subscribe(id2, cb, onError) {
+      let off = null;
+      let closed = false;
+      let seq = 0;
+      load().then(
+        (m) => {
+          if (closed) return;
+          const main = m.fs.doc(m.db, "projects", id2, "content", "main");
+          off = m.fs.onSnapshot(
+            main,
+            (snap) => {
+              const d = snap.data();
+              if (!d || d.schemaVersion !== 1) return;
+              const mine = ++seq;
+              recompose(m, main, d).then(
+                (rec) => {
+                  if (!closed && mine === seq) cb(rec);
+                },
+                (e) => {
+                  if (!closed && mine === seq) onError?.(e instanceof Error ? e : new Error(String(e)));
+                }
+              );
+            },
+            (e) => onError?.(e)
+          );
+        },
+        (e) => onError?.(e)
+      );
+      return () => {
+        closed = true;
+        off?.();
+      };
+    }
+  };
+}
+
 // src/server/note.ts
 var MAX_NOTE_TEXT = 2e5;
 var MAX_NOTE_BLOCKS = 2e3;
@@ -909,6 +1062,15 @@ var LIST_LIMIT = 200;
 var APPEND_GAP = 80;
 var ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 var now = (ctx) => (ctx.now ?? Date.now)();
+var repos = /* @__PURE__ */ new WeakMap();
+function contentOf(ctx) {
+  let repo = repos.get(ctx.db);
+  if (!repo) {
+    repo = createContentRepo(async () => ({ fs: firestoreSdk, db: ctx.db }));
+    repos.set(ctx.db, repo);
+  }
+  return repo;
+}
 var DENIED = "Sin permiso: el proyecto no existe, no tienes acceso o no puedes editarlo.";
 function denied(fn) {
   return async (ctx, args) => {
@@ -933,10 +1095,10 @@ async function loadProject(ctx, id2, type) {
   }
   return { ref, project };
 }
-async function loadContent(ref) {
-  const c = (await getDoc(doc2(ref, "content", "main"))).data();
-  if (!c || typeof c.data !== "string") throw new ToolError(404, "El proyecto no tiene contenido.");
-  return { data: c.data, revision: Number(c.revision) || 0 };
+async function loadContent(ctx, id2) {
+  const c = await contentOf(ctx).load(id2);
+  if (!c) throw new ToolError(404, "El proyecto no tiene contenido.");
+  return { data: c.data, revision: c.revision };
 }
 function encodeOrFail(obj) {
   try {
@@ -955,10 +1117,16 @@ async function createProject(ctx, type, title2, data) {
   const t = now(ctx);
   const ref = doc2(collection2(ctx.db, "projects"));
   const batch = writeBatch(ctx.db);
+  const big = byteLength(data) > DOC_CONTENT_BYTES;
+  const initial = big ? encode(type === "note" ? buildNote("", t) : emptyBoard()) : data;
   batch.set(ref, { ownerId: ctx.uid, type, title: title2, isPublic: false, createdAt: t, updatedAt: t });
-  batch.set(doc2(ref, "content", "main"), { data, schemaVersion: 1, revision: 0, updatedAt: t });
+  batch.set(doc2(ref, "content", "main"), { data: initial, schemaVersion: 1, revision: 0, updatedAt: t });
   try {
     await batch.commit();
+    if (big) {
+      const saved = await contentOf(ctx).save(ref.id, data, 0);
+      if ("conflict" in saved) throw new ToolError(400, "No se pudo guardar el contenido del proyecto.");
+    }
   } catch (e) {
     if (isPermissionDenied(e)) {
       throw new ToolError(
@@ -1009,8 +1177,8 @@ var listProjects = denied(async (ctx, args) => {
   return { text, data: { projects } };
 });
 async function loadBoard(ctx, id2) {
-  const { ref, project } = await loadProject(ctx, id2, "board");
-  const { data, revision } = await loadContent(ref);
+  const { project } = await loadProject(ctx, id2, "board");
+  const { data, revision } = await loadContent(ctx, id2);
   let parsed;
   try {
     parsed = decode(data);
@@ -1023,8 +1191,8 @@ async function loadBoard(ctx, id2) {
 }
 var MAX_EMBEDS = 10;
 var readNote = denied(async (ctx, args) => {
-  const { ref, project } = await loadProject(ctx, args.id, "note");
-  const { data, revision } = await loadContent(ref);
+  const { project } = await loadProject(ctx, args.id, "note");
+  const { data, revision } = await loadContent(ctx, args.id);
   let note;
   try {
     note = decodeNote(data);
@@ -1146,50 +1314,29 @@ var MAX_CONFLICT_RETRIES = 5;
 var updateBoard = denied(async (ctx, args) => {
   if (!ID_RE.test(args.id)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
   const incoming = await boardFromMermaid(args.mermaid);
-  const projectRef = doc2(ctx.db, "projects", args.id);
-  const contentRef = doc2(projectRef, "content", "main");
-  for (let attempt = 1; ; attempt++) {
-    let readRevision = -1;
+  for (let attempt = 1; attempt <= MAX_CONFLICT_RETRIES; attempt++) {
+    const { revision: read, board: base } = await loadBoard(ctx, args.id);
+    const merged = validateBoardContent({
+      ...base,
+      nodes: [...base.nodes, ...placeBelow(base, incoming)],
+      edges: [...base.edges, ...incoming.edges]
+    });
+    if (!merged.ok) throw new ToolError(400, `El resultado no es v\xE1lido: ${merged.error}`);
+    const next = merged.value;
+    let saved;
     try {
-      return await runTransaction2(ctx.db, async (tx) => {
-        const [pSnap, cSnap] = await Promise.all([tx.get(projectRef), tx.get(contentRef)]);
-        const project = pSnap.data();
-        if (!project) throw new ToolError(404, "El proyecto no existe.");
-        if (project.type !== "board") throw new ToolError(400, "El proyecto es una nota, no un diagrama.");
-        const current = cSnap.data();
-        if (!current || typeof current.data !== "string")
-          throw new ToolError(404, "El proyecto no tiene contenido.");
-        readRevision = Number(current.revision) || 0;
-        let existing;
-        try {
-          existing = decode(current.data);
-        } catch {
-          throw new ToolError(400, "El diagrama actual est\xE1 da\xF1ado (no es JSON).");
-        }
-        const checked = validateBoardContent(existing);
-        if (!checked.ok) throw new ToolError(400, `El diagrama actual no es v\xE1lido: ${checked.error}`);
-        const merged = validateBoardContent({
-          ...checked.value,
-          nodes: [...checked.value.nodes, ...placeBelow(checked.value, incoming)],
-          edges: [...checked.value.edges, ...incoming.edges]
-        });
-        if (!merged.ok) throw new ToolError(400, `El resultado no es v\xE1lido: ${merged.error}`);
-        const next = merged.value;
-        const revision = readRevision + 1;
-        const t = now(ctx);
-        tx.update(contentRef, { data: encodeOrFail(next), revision, updatedAt: t });
-        tx.update(projectRef, { updatedAt: t });
-        return {
-          text: `Diagrama ampliado: revisi\xF3n ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
-          data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length }
-        };
-      });
+      saved = await contentOf(ctx).save(args.id, encodeOrFail(next), read);
     } catch (e) {
-      if (!isPermissionDenied(e) || readRevision < 0 || attempt >= MAX_CONFLICT_RETRIES) throw e;
-      const latest = (await getDoc(contentRef)).data();
-      if (Number(latest?.revision) === readRevision) throw e;
+      if (!isPermissionDenied(e) || (await contentOf(ctx).load(args.id))?.revision === read) throw e;
+      continue;
     }
+    if ("conflict" in saved) continue;
+    return {
+      text: `Diagrama ampliado: revisi\xF3n ${saved.revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
+      data: { id: args.id, revision: saved.revision, nodes: next.nodes.length, edges: next.edges.length }
+    };
   }
+  throw new ToolError(409, "El diagrama cambia sin parar: reintenta en unos segundos.");
 });
 
 // src/server/mcpServer.ts

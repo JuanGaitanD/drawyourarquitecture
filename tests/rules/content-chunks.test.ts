@@ -2,7 +2,7 @@ import { assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebas
 import * as sdk from 'firebase/firestore';
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, writeBatch } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createContentRepo } from '../../src/infrastructure/firebase/content';
+import { createContentRepo } from '../../src/infrastructure/firebase/contentRepo';
 import { OWNER, STRANGER, createEnv, seedProject } from './env';
 
 let env: RulesTestEnvironment;

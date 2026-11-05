@@ -1,3 +1,4 @@
+import * as firestoreSdk from 'firebase/firestore';
 import {
   FieldPath,
   collection,
@@ -6,19 +7,20 @@ import {
   getDocs,
   limit,
   query,
-  runTransaction,
   where,
   writeBatch,
   type DocumentReference,
   type Firestore,
 } from 'firebase/firestore';
-import { ContentTooLargeError, encode, decode } from '../domain/codec';
+import type { ContentRepo } from '../application/ports';
+import { ContentTooLargeError, DOC_CONTENT_BYTES, byteLength, encode, decode } from '../domain/codec';
 import { normalizeTitle, type ProjectType } from '../domain/project';
-import type { BoardContent, BoardNode } from '../editors/board/model/board';
+import { emptyBoard, type BoardContent, type BoardNode } from '../editors/board/model/board';
 import { nodeSize, toAbsolute } from '../editors/board/model/geometry';
 import { autoLayout } from '../editors/board/model/layout';
 import { parseFlowchart, toFlowchart } from '../editors/board/model/mermaid';
 import { validateBoardContent } from '../editors/board/model/validate';
+import { createContentRepo } from '../infrastructure/firebase/contentRepo';
 import { ToolError, isPermissionDenied } from './authz';
 import { MAX_NOTE_TEXT, buildNote, decodeNote, noteEmbeds, noteImages, noteSummary, noteText } from './note';
 
@@ -42,6 +44,18 @@ const APPEND_GAP = 80;
 
 const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const now = (ctx: ToolContext) => (ctx.now ?? Date.now)();
+
+// El contenido se lee y escribe con el mismo repositorio que la app (troceado a partir de 900 000 bytes, revisión
+// monótona, transacción): sobre el Firestore autenticado de la persona, así que las reglas aplican igual.
+const repos = new WeakMap<Firestore, ContentRepo>();
+function contentOf(ctx: ToolContext): ContentRepo {
+  let repo = repos.get(ctx.db);
+  if (!repo) {
+    repo = createContentRepo(async () => ({ fs: firestoreSdk, db: ctx.db }));
+    repos.set(ctx.db, repo);
+  }
+  return repo;
+}
 
 interface ProjectDoc {
   ownerId: string;
@@ -85,10 +99,11 @@ async function loadProject(
   return { ref, project };
 }
 
-async function loadContent(ref: DocumentReference): Promise<{ data: string; revision: number }> {
-  const c = (await getDoc(doc(ref, 'content', 'main'))).data();
-  if (!c || typeof c.data !== 'string') throw new ToolError(404, 'El proyecto no tiene contenido.');
-  return { data: c.data, revision: Number(c.revision) || 0 };
+/** Contenido ya recompuesto (también el troceado). `null` solo si no existe: el acceso lo comprobó `loadProject`. */
+async function loadContent(ctx: ToolContext, id: string): Promise<{ data: string; revision: number }> {
+  const c = await contentOf(ctx).load(id);
+  if (!c) throw new ToolError(404, 'El proyecto no tiene contenido.');
+  return { data: c.data, revision: c.revision };
 }
 
 function encodeOrFail(obj: unknown): string {
@@ -115,10 +130,18 @@ async function createProject(
   const t = now(ctx);
   const ref = doc(collection(ctx.db, 'projects'));
   const batch = writeBatch(ctx.db);
+  // Las reglas exigen `data` ≤ 900 000 al crear `content/main`: un contenido mayor nace vacío y se amplía a
+  // continuación con `save` (troceado), como hace la app al guardar.
+  const big = byteLength(data) > DOC_CONTENT_BYTES;
+  const initial = big ? encode(type === 'note' ? buildNote('', t) : emptyBoard()) : data;
   batch.set(ref, { ownerId: ctx.uid, type, title, isPublic: false, createdAt: t, updatedAt: t });
-  batch.set(doc(ref, 'content', 'main'), { data, schemaVersion: 1, revision: 0, updatedAt: t });
+  batch.set(doc(ref, 'content', 'main'), { data: initial, schemaVersion: 1, revision: 0, updatedAt: t });
   try {
     await batch.commit();
+    if (big) {
+      const saved = await contentOf(ctx).save(ref.id, data, 0);
+      if ('conflict' in saved) throw new ToolError(400, 'No se pudo guardar el contenido del proyecto.');
+    }
   } catch (e) {
     if (isPermissionDenied(e)) {
       throw new ToolError(
@@ -185,8 +208,8 @@ async function loadBoard(
   ctx: ToolContext,
   id: string,
 ): Promise<{ project: ProjectDoc; revision: number; board: BoardContent }> {
-  const { ref, project } = await loadProject(ctx, id, 'board');
-  const { data, revision } = await loadContent(ref);
+  const { project } = await loadProject(ctx, id, 'board');
+  const { data, revision } = await loadContent(ctx, id);
   let parsed: unknown;
   try {
     parsed = decode(data);
@@ -202,8 +225,8 @@ async function loadBoard(
 const MAX_EMBEDS = 10;
 
 export const readNote = denied(async (ctx: ToolContext, args: { id: string }) => {
-  const { ref, project } = await loadProject(ctx, args.id, 'note');
-  const { data, revision } = await loadContent(ref);
+  const { project } = await loadProject(ctx, args.id, 'note');
+  const { data, revision } = await loadContent(ctx, args.id);
   let note;
   try {
     note = decodeNote(data);
@@ -323,54 +346,32 @@ const MAX_CONFLICT_RETRIES = 5;
 export const updateBoard = denied(async (ctx: ToolContext, args: { id: string; mermaid: string }) => {
   if (!ID_RE.test(args.id)) throw new ToolError(400, 'Id de proyecto no válido.');
   const incoming = await boardFromMermaid(args.mermaid);
-  const projectRef = doc(ctx.db, 'projects', args.id);
-  const contentRef = doc(projectRef, 'content', 'main');
 
-  // Quien solo puede leer (viewer) llega al commit y las reglas rechazan la escritura: 403. Pero el SDK web es
-  // optimista: si otra escritura se cuela entre la lectura y el commit, la regla `revision == anterior + 1` falla
-  // y también sale `permission-denied`. Se distingue releyendo la revisión: cambió = conflicto, se reintenta.
-  for (let attempt = 1; ; attempt++) {
-    let readRevision = -1;
+  // Leer → ampliar → `save` con la revisión leída. Si otra escritura se coló, `save` devuelve conflicto y se
+  // vuelve a leer. Quien solo puede leer (viewer) llega al commit y las reglas lo rechazan: 403 (`denied`).
+  for (let attempt = 1; attempt <= MAX_CONFLICT_RETRIES; attempt++) {
+    const { revision: read, board: base } = await loadBoard(ctx, args.id);
+    const merged = validateBoardContent({
+      ...base,
+      nodes: [...base.nodes, ...placeBelow(base, incoming)],
+      edges: [...base.edges, ...incoming.edges],
+    });
+    if (!merged.ok) throw new ToolError(400, `El resultado no es válido: ${merged.error}`);
+    const next: BoardContent = merged.value;
+    let saved;
     try {
-      return await runTransaction(ctx.db, async (tx): Promise<ToolResult> => {
-        const [pSnap, cSnap] = await Promise.all([tx.get(projectRef), tx.get(contentRef)]);
-        const project = pSnap.data() as ProjectDoc | undefined;
-        if (!project) throw new ToolError(404, 'El proyecto no existe.');
-        if (project.type !== 'board') throw new ToolError(400, 'El proyecto es una nota, no un diagrama.');
-        const current = cSnap.data();
-        if (!current || typeof current.data !== 'string')
-          throw new ToolError(404, 'El proyecto no tiene contenido.');
-        readRevision = Number(current.revision) || 0;
-
-        let existing: unknown;
-        try {
-          existing = decode(current.data);
-        } catch {
-          throw new ToolError(400, 'El diagrama actual está dañado (no es JSON).');
-        }
-        const checked = validateBoardContent(existing);
-        if (!checked.ok) throw new ToolError(400, `El diagrama actual no es válido: ${checked.error}`);
-        const merged = validateBoardContent({
-          ...checked.value,
-          nodes: [...checked.value.nodes, ...placeBelow(checked.value, incoming)],
-          edges: [...checked.value.edges, ...incoming.edges],
-        });
-        if (!merged.ok) throw new ToolError(400, `El resultado no es válido: ${merged.error}`);
-        const next: BoardContent = merged.value;
-
-        const revision = readRevision + 1;
-        const t = now(ctx);
-        tx.update(contentRef, { data: encodeOrFail(next), revision, updatedAt: t });
-        tx.update(projectRef, { updatedAt: t });
-        return {
-          text: `Diagrama ampliado: revisión ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
-          data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length },
-        };
-      });
+      saved = await contentOf(ctx).save(args.id, encodeOrFail(next), read);
     } catch (e) {
-      if (!isPermissionDenied(e) || readRevision < 0 || attempt >= MAX_CONFLICT_RETRIES) throw e;
-      const latest = (await getDoc(contentRef)).data();
-      if (Number(latest?.revision) === readRevision) throw e; // misma revisión: denegación de verdad
+      // El SDK web es optimista: si otra escritura se coló entre la lectura y el commit, la regla
+      // `revision == anterior + 1` falla y sale `permission-denied`. Cambió la revisión = conflicto; si no, 403.
+      if (!isPermissionDenied(e) || (await contentOf(ctx).load(args.id))?.revision === read) throw e;
+      continue;
     }
+    if ('conflict' in saved) continue;
+    return {
+      text: `Diagrama ampliado: revisión ${saved.revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
+      data: { id: args.id, revision: saved.revision, nodes: next.nodes.length, edges: next.edges.length },
+    };
   }
+  throw new ToolError(409, 'El diagrama cambia sin parar: reintenta en unos segundos.');
 });

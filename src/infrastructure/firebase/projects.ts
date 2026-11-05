@@ -1,10 +1,10 @@
 import type { DocumentData } from 'firebase/firestore';
 import type { ProjectRepo } from '@/application/ports';
 import { isProjectType, type Project, type Role } from '@/domain/project';
+import { isPermissionDenied } from './errors';
 import { loadFirestore } from './firestore';
 
-export const isPermissionDenied = (e: unknown) =>
-  (e as { code?: string } | null)?.code === 'permission-denied';
+export { isPermissionDenied };
 
 function toProject(id: string, d: DocumentData): Project | null {
   if (!isProjectType(d.type) || typeof d.ownerId !== 'string' || typeof d.title !== 'string') return null;

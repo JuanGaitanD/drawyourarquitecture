@@ -5,7 +5,7 @@ import { TOKEN_PREFIX, sha256Hex } from '../application/tokens';
 // SDK web autenticado como la persona (userDb.ts). Aquí solo se resuelve quién llama (token → uid) y se traduce
 // `permission-denied` a 403.
 
-export type ErrorStatus = 400 | 401 | 403 | 404 | 413 | 429;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 429;
 
 /** Error con código HTTP que las herramientas devuelven al cliente MCP como `isError`. */
 export class ToolError extends Error {

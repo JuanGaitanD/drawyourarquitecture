@@ -311,4 +311,47 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
       expect(await status(updateBoard(await as(OWNER), { ...args, id: note }))).toBe(400);
     });
   });
+
+  describe('contenido troceado (> 900 000 bytes)', () => {
+    // 1 500 líneas `a-->b` = 3 000 nodos y 1 500 aristas: ≈ 1,2 MB codificados, y el Mermaid cabe en el tope de 100 000.
+    const bigMermaid = (tag: string, n: number) =>
+      'flowchart LR\n' +
+      Array.from({ length: n }, (_, i) => `${tag}${i}[Nodo ${tag}${i}]-->${tag}x${i}[Otro ${tag}${i}]`).join('\n');
+
+    it('create_board, read_board y update_board admiten un board troceado y la revisión sube de uno en uno', async () => {
+      const owner = await as(OWNER);
+      const created = await createBoard(owner, { title: 'grande', mermaid: bigMermaid('a', 1500) });
+      const { id, nodes: n0 } = created.data as { id: string; nodes: number };
+      expect(n0).toBe(3000);
+
+      // En Firestore: sin `data` y con trozos (lo escribe contentRepo, no una escritura propia del servidor).
+      const main = db.collection('projects').doc(id).collection('content').doc('main');
+      const meta = (await main.get()).data() as { data?: string; chunks?: number; revision: number };
+      expect(meta.data).toBeUndefined();
+      expect(meta.chunks).toBeGreaterThanOrEqual(2);
+      expect(meta.revision).toBe(1);
+      expect((await main.collection('chunks').get()).size).toBe(meta.chunks);
+
+      const read = (await readBoard(owner, { id })).data as { nodes: unknown[]; revision: number };
+      expect(read.nodes).toHaveLength(3000);
+
+      const updated = await updateBoard(owner, { id, mermaid: 'flowchart LR\nZ[Final]-->Y[Fin]' });
+      expect((updated.data as { nodes: number }).nodes).toBe(3002);
+      const after = (await readBoard(owner, { id })).data as { nodes: unknown[]; revision: number };
+      expect(after.nodes).toHaveLength(3002);
+      expect(after.revision).toBe(meta.revision + 1);
+    });
+
+    it('un viewer lee el board troceado pero no lo amplía (403)', async () => {
+      const id = (
+        (await createBoard(await as(OWNER), { title: 'grande', mermaid: bigMermaid('b', 1500) })).data as {
+          id: string;
+        }
+      ).id;
+      await db.collection('projects').doc(id).update({ members: { [VIEWER]: 'viewer' } });
+      const viewer = await as(VIEWER);
+      expect(((await readBoard(viewer, { id })).data as { nodes: unknown[] }).nodes).toHaveLength(3000);
+      expect(await status(updateBoard(viewer, { id, mermaid: 'flowchart LR\nA-->B' }))).toBe(403);
+    });
+  });
 });
