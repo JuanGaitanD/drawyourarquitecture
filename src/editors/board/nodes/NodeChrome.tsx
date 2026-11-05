@@ -6,10 +6,10 @@ import { useBoardReadonly } from '../store/readonly';
 import styles from './nodes.module.css';
 
 const HANDLES = [
-  ['t', Position.Top],
-  ['r', Position.Right],
-  ['b', Position.Bottom],
-  ['l', Position.Left],
+  ['t', Position.Top, 'superior'],
+  ['r', Position.Right, 'derecho'],
+  ['b', Position.Bottom, 'inferior'],
+  ['l', Position.Left, 'izquierdo'],
 ] as const;
 
 export interface NodeChromeProps {
@@ -56,12 +56,15 @@ export function NodeChrome({
     >
       {children}
       {/* Los handles siempre existen (React Flow los necesita para trazar las aristas); sin edición no se ven ni se tocan. */}
-      {HANDLES.map(([hid, pos]) => (
+      {HANDLES.map(([hid, pos, side]) => (
         <Handle
           key={hid}
           id={hid}
           type="source"
           position={pos}
+          {...(interactive
+            ? { role: 'button', 'aria-label': `Conectar desde el lado ${side}` }
+            : { 'aria-hidden': true })}
           isConnectable={interactive}
           className={[styles.handle, interactive ? '' : styles.handleOff].filter(Boolean).join(' ')}
         />
