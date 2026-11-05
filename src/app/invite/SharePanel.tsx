@@ -6,7 +6,7 @@ import type { Role } from '@/domain/project';
 import { Button, IconButton, useToast } from '@/ui';
 import { identity, inviteRepo, projectRepo } from '../services';
 import styles from './SharePanel.module.css';
-import { syncAcl } from './syncAcl';
+import { syncAcl, syncAclWithRetry } from './syncAcl';
 
 const ROLE_LABEL: Record<Role, string> = { editor: 'Editor', viewer: 'Solo lectura' };
 export const inviteUrl = (token: string) => `${location.origin}/invite/${token}`;
@@ -32,6 +32,20 @@ export function SharePanel({ projectId }: { projectId: string }) {
         () => setAclFailed(true),
       ),
     [projectId, uid],
+  );
+  // Publica el espejo sin bloquear a nadie: reintenta y, si falla del todo, avisa (y deja el «Reintentar» del panel).
+  const syncInBackground = useCallback(
+    () =>
+      syncAclWithRetry(projectId, uid, () => true).then((ok) => {
+        setAclFailed(!ok);
+        if (!ok)
+          toast({
+            kind: 'error',
+            title: 'No se pudo publicar el acceso a la presencia',
+            description: 'El enlace funciona, pero quien entre no verá cursores hasta que se reintente.',
+          });
+      }),
+    [projectId, uid, toast],
   );
 
   const load = useCallback(
@@ -129,7 +143,8 @@ export function SharePanel({ projectId }: { projectId: string }) {
           onClick={() =>
             void act(async () => {
               const inv = await inviteRepo.create(projectId, role, uid);
-              await sync();
+              // D43: el enlace sale de Firestore al instante; el espejo de presencia se publica aparte, con reintento.
+              void syncInBackground();
               await copy(inv.token);
             }, 'No se pudo crear la invitación')
           }
