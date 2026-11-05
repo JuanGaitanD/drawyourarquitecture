@@ -1,0 +1,59 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    // Espejo de acceso: Realtime Database no lee Firestore, así que el dueño publica aquí quién puede entrar.
+    // Todo cuelga del uid del dueño del proyecto (`acl/$owner/$pid`): solo él escribe bajo su rama, así nadie
+    // puede «reclamar» el proyecto de otro. Firestore sigue siendo la fuente de verdad.
+    "acl": {
+      "$owner": {
+        "$pid": {
+          ".write": "auth != null && auth.uid === $owner",
+
+          // Invitaciones vigentes (las publica el dueño al crearlas y las borra al revocarlas).
+          "invites": {
+            "$token": {
+              ".validate": "$token.length >= 20 && $token.length <= 64 && newData.hasChildren(['role', 'expiresAt']) && (newData.child('role').val() === 'editor' || newData.child('role').val() === 'viewer') && newData.child('expiresAt').isNumber()",
+              "role": {},
+              "expiresAt": {},
+              "$other": { ".validate": false }
+            }
+          },
+
+          // Miembros. El dueño sincroniza los que ya existen; un invitado se registra a sí mismo solo con el
+          // token de una invitación vigente y con el rol exacto de esa invitación (puede salir cuando quiera).
+          "members": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (newData.child('token').isString() && root.child('acl').child($owner).child($pid).child('invites').child(newData.child('token').val()).child('role').val() === newData.child('role').val() && root.child('acl').child($owner).child($pid).child('invites').child(newData.child('token').val()).child('expiresAt').val() > now))",
+              ".validate": "newData.hasChild('role') && (newData.child('role').val() === 'editor' || newData.child('role').val() === 'viewer')",
+              "role": {},
+              "token": { ".validate": "newData.isString() && newData.val().length <= 64" },
+              "$other": { ".validate": false }
+            }
+          }
+        }
+      }
+    },
+
+    // Presencia y cursores: solo el dueño y los miembros leen la sala; cada uno escribe únicamente su nodo.
+    // El nodo existe mientras haya conexión (`onDisconnect().remove()`): sin latidos ni caducidad.
+    "presence": {
+      "$owner": {
+        "$pid": {
+          ".read": "auth != null && (auth.uid === $owner || root.child('acl').child($owner).child($pid).child('members').child(auth.uid).exists())",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && (!newData.exists() || auth.uid === $owner || root.child('acl').child($owner).child($pid).child('members').child(auth.uid).exists())",
+            ".validate": "newData.hasChildren(['name', 'color', 'at']) && newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('color').isString() && newData.child('color').val().matches(/^#[0-9a-fA-F]{6}$/) && newData.child('at').isNumber()",
+            "name": {},
+            "color": {},
+            "at": {},
+            "x": { ".validate": "newData.isNumber()" },
+            "y": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        }
+      }
+    }
+  }
+}
