@@ -17,11 +17,14 @@ El token actúa **como tú**: ve lo que tú ves y escribe donde tú escribes.
 
 ## 2. Conectarlo
 
-Claude Code:
+Claude Code (el token va en una variable de entorno, no escrito en el comando):
 
 ```
-claude mcp add --transport http dya https://drawyourarchitecture.vercel.app/api/mcp --header "Authorization: Bearer <token>"
+export DYA_TOKEN=...   # pégalo en tu perfil de la shell o léelo de un gestor de secretos
+claude mcp add --transport http dya https://drawyourarchitecture.vercel.app/api/mcp --header "Authorization: Bearer $DYA_TOKEN"
 ```
+
+**No pegues el token literal en la línea de comandos**: quedaría en el historial de la shell (`~/.bash_history`, PSReadLine…). Con `$DYA_TOKEN` la shell lo expande y el historial guarda solo el nombre de la variable. Ojo: Claude Code guarda la cabecera ya expandida en su propia configuración (`~/.claude.json`); trátalo como un secreto del equipo y revoca el token si lo expones.
 
 Otros clientes con configuración JSON:
 
@@ -67,12 +70,14 @@ Si el board está abierto en el editor mientras un agente lo cambia, el editor v
 
 ## 4. Seguridad
 
-- **Firebase Admin se salta las reglas de Firestore.** Por eso la autorización está en el servidor, en `src/server/authz.ts`, y **cada herramienta la aplica antes de leer o escribir**:
+- **Firebase Admin se salta las reglas de Firestore.** Por eso la autorización está en el servidor, en `src/server/authz.ts`, y **cada herramienta la aplica antes de leer o escribir** (las reglas de `firestore.rules` **no** protegen este camino):
   - `canRead(proyecto, uid)`: dueño (`ownerId`), `members[uid]` (editor o viewer) o `isPublic`.
   - `canWrite(proyecto, uid)`: dueño o `members[uid] == 'editor'`.
   - Crear proyectos: `OWNER_UID` o existe `allowedUsers/{uid}`; el proyecto se crea siempre con `ownerId = uid` del token.
-- El token solo se guarda como `sha256`; el valor en claro no existe en ningún sitio tras mostrarse. Un token revocado se rechaza en la siguiente petición. Cada uso actualiza `lastUsedAt`.
-- Las reglas de `mcpTokens` dejan a cada persona crear, listar y revocar **solo los suyos** (campos cerrados; el cliente no puede escribir `lastUsedAt` ni reactivar). `allowedUsers` solo la escribe el dueño.
+- **Deuda (revisión h8):** las comprobaciones explícitas (`canRead`/`canWrite`/`canCreate`) duplican a mano las reglas y los invariantes de escritura (campos cerrados, `ownerId` y `type` inmutables, `revision + 1`, ≤ 900 000 bytes), así que pueden divergir. Camino previsto: Admin solo verifica el token y emite `createCustomToken(uid)`; el servidor entra con el SDK cliente (`signInWithCustomToken`) y las reglas aplican tal cual. Hasta entonces, todo cambio de reglas de `projects/**` exige revisar `authz.ts` y `tools.ts`.
+- **El endpoint nunca registra la cabecera `Authorization`** ni el token: solo `console.error` de errores inesperados (el objeto de error, sin la petición). Revisado en `api/` y `src/server/`.
+- El token solo se guarda como `sha256`; el valor en claro no existe en ningún sitio tras mostrarse. Un token revocado se rechaza en la siguiente petición. `lastUsedAt` lo escribe solo el servidor (Admin) y como mucho una vez por hora, para que cada llamada no cueste una escritura.
+- Las reglas de `mcpTokens` dejan a cada persona crear, listar y revocar **solo los suyos** (campos cerrados y `revoked == false` al crear; la única actualización del cliente es `revoked` de `false` a `true`: no puede escribir `lastUsedAt` ni reactivar). `allowedUsers` solo la escribe el dueño.
 - El contenido que entra (Mermaid, texto) se valida con `validateBoardContent` y el codec de nota, con límites de tamaño. Los errores inesperados devuelven un 500 genérico y no filtran detalles.
 - Un id de proyecto inexistente da 404 y uno ajeno 403: los ids son aleatorios de 20 caracteres, pero esto confirma que existen.
 
@@ -104,7 +109,7 @@ FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm test
 
 # Servidor a mano, sin Vercel
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 OWNER_UID=owner-test node scripts/mcp-serve.mjs 3977
-claude mcp add --transport http dya-local http://127.0.0.1:3977/api/mcp --header "Authorization: Bearer <token creado en /settings contra los emuladores>"
+claude mcp add --transport http dya-local http://127.0.0.1:3977/api/mcp --header "Authorization: Bearer $DYA_TOKEN"   # token creado en /settings contra los emuladores
 ```
 
 Sin `FIRESTORE_EMULATOR_HOST` los tests de integración se omiten.
