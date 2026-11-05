@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Sin `manualChunks`: Excalidraw, React Flow, Firestore y Storage ya van en chunks propios por `import()` y
+// Sin `manualChunks`: Excalidraw, React Flow y Firestore ya van en chunks propios por `import()` y
 // solo se piden al usarlos. Forzarlos con manualChunks hacía que el chunk arrastrara React, Radix y tslib y que
 // el arranque los descargara enteros (Excalidraw ≈ 1,5 MB gzip en la pantalla de acceso).
 export default defineConfig({

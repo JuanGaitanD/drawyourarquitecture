@@ -69,6 +69,43 @@ service cloud.firestore {
 
         allow delete: if isOwner() && projectDoc(id).ownerId == request.auth.uid;
       }
+
+      // Imágenes en trozos (plan · invariante 3). La lectura hereda la del proyecto; la escritura es del dueño.
+      // La meta se escribe la última; los trozos no se listan salvo el dueño (el visor lee por id).
+      match /files/{fileId} {
+        allow get: if (isOwner() && projectDoc(id).ownerId == request.auth.uid) || projectDoc(id).isPublic == true;
+        allow list: if isOwner() && projectDoc(id).ownerId == request.auth.uid;
+
+        allow create, update: if isOwner()
+          && projectDoc(id).ownerId == request.auth.uid
+          && request.resource.data.keys().hasOnly(['mimeType', 'size', 'chunks', 'createdAt'])
+          && request.resource.data.keys().hasAll(['mimeType', 'size', 'chunks', 'createdAt'])
+          && request.resource.data.mimeType is string
+          && request.resource.data.mimeType in ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+          && request.resource.data.size is int
+          && request.resource.data.size > 0
+          && request.resource.data.size <= 4194304
+          && request.resource.data.chunks is int
+          && request.resource.data.chunks >= 1
+          && request.resource.data.chunks <= 5
+          && request.resource.data.createdAt is number;
+
+        allow delete: if isOwner() && projectDoc(id).ownerId == request.auth.uid;
+
+        match /chunks/{i} {
+          allow get: if (isOwner() && projectDoc(id).ownerId == request.auth.uid) || projectDoc(id).isPublic == true;
+          allow list: if isOwner() && projectDoc(id).ownerId == request.auth.uid;
+
+          allow create, update: if isOwner()
+            && projectDoc(id).ownerId == request.auth.uid
+            && i.matches('[0-9]')
+            && request.resource.data.keys().hasOnly(['data'])
+            && request.resource.data.data is bytes
+            && request.resource.data.data.size() <= 900000;
+
+          allow delete: if isOwner() && projectDoc(id).ownerId == request.auth.uid;
+        }
+      }
     }
   }
 }

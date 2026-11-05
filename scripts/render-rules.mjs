@@ -1,4 +1,4 @@
-// Genera firestore.rules y storage.rules a partir de las plantillas *.rules.tpl.
+// Genera firestore.rules a partir de la plantilla firestore.rules.tpl.
 //   node scripts/render-rules.mjs             toma OWNER_UID de .env (o del entorno) y falla si falta
 //   node scripts/render-rules.mjs --emulator  usa «owner-test», el uid del login de prueba del emulador
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -29,8 +29,6 @@ if (!/^[A-Za-z0-9_-]{1,128}$/.test(uid)) {
   process.exit(1);
 }
 
-for (const name of ['firestore', 'storage']) {
-  const tpl = readFileSync(join(root, `${name}.rules.tpl`), 'utf8');
-  writeFileSync(join(root, `${name}.rules`), tpl.replaceAll('__OWNER_UID__', uid));
-}
+const tpl = readFileSync(join(root, 'firestore.rules.tpl'), 'utf8');
+writeFileSync(join(root, 'firestore.rules'), tpl.replaceAll('__OWNER_UID__', uid));
 console.log(`Reglas generadas para ${emulator ? 'el emulador (owner-test)' : 'OWNER_UID de .env'}.`);

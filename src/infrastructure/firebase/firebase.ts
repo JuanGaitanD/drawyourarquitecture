@@ -6,7 +6,7 @@ import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
 export const USE_EMULATORS = import.meta.env.VITE_USE_EMULATORS === '1';
 export const EMULATOR_PROJECT = 'demo-dya';
 export const EMULATOR_HOST = '127.0.0.1';
-export const EMULATOR_PORTS = { auth: 9099, firestore: 8080, storage: 9199 } as const;
+export const EMULATOR_PORTS = { auth: 9099, firestore: 8080 } as const;
 
 const env = import.meta.env;
 const config = USE_EMULATORS
@@ -14,14 +14,12 @@ const config = USE_EMULATORS
       apiKey: 'demo',
       authDomain: `${EMULATOR_PROJECT}.firebaseapp.com`,
       projectId: EMULATOR_PROJECT,
-      storageBucket: `${EMULATOR_PROJECT}.appspot.com`,
       appId: 'demo',
     }
   : {
       apiKey: env.VITE_FIREBASE_API_KEY,
       authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
       projectId: env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
       messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
       appId: env.VITE_FIREBASE_APP_ID,
       measurementId: env.VITE_FIREBASE_MEASUREMENT_ID,
@@ -32,7 +30,7 @@ export const isFirebaseConfigured = USE_EMULATORS || Boolean(config.apiKey && co
 
 export const app: FirebaseApp = initializeApp(config);
 export const auth: Auth = getAuth(app);
-// Firestore y Storage no se crean aquí: pesan y se cargan con import() al usarlos (firestore.ts, files.ts).
+// Firestore no se crea aquí: pesa y se carga con import() al usarlo (firestore.ts).
 
 if (USE_EMULATORS) {
   connectAuthEmulator(auth, `http://${EMULATOR_HOST}:${EMULATOR_PORTS.auth}`, { disableWarnings: true });
