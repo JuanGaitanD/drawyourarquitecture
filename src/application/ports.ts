@@ -36,11 +36,21 @@ export interface ProjectRepo {
   /** Dueño: fija el rol de `uid` o lo quita con `null`. */
   setMember(id: string, uid: string, role: Role | null): Promise<void>;
   get(id: string): Promise<Project | null>;
+  /**
+   * Dueño: avisa con el acceso vigente (`members` y la `aclRev` que sube con cada cambio de miembros o
+   * invitaciones) al suscribirse y cada vez que cambia; los demás cambios del documento no avisan.
+   */
+  watchAccess(id: string, cb: (access: ProjectAccess) => void, onError: (e: Error) => void): () => void;
   /** Crea el proyecto y su `content/main` (revisión 0) en un mismo batch. Devuelve el id. */
   create(p: Omit<Project, 'id'>, initialData: string): Promise<string>;
   update(id: string, patch: Partial<Pick<Project, 'title' | 'isPublic'>>): Promise<void>;
   /** Borra `content/main` y el proyecto en un batch. Los archivos los borra antes el caso de uso. */
   remove(id: string): Promise<void>;
+}
+
+export interface ProjectAccess {
+  members: Record<string, Role>;
+  aclRev: number;
 }
 
 export interface FileStore {

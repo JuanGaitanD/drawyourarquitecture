@@ -31,6 +31,7 @@ function setup(opts: { signedIn?: boolean; failUpload?: boolean } = {}) {
     listMine: () => () => undefined,
     listShared: () => () => undefined,
     setMember: async () => undefined,
+    watchAccess: () => () => undefined,
     get: async (id) => projects.get(id) ?? null,
     async create(p, initialData) {
       const id = `new${++n}`;

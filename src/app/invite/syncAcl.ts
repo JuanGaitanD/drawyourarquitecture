@@ -1,4 +1,4 @@
-import { inviteRepo, presenceAcl } from '../services';
+import { inviteRepo, presenceAcl, projectRepo } from '../services';
 
 /**
  * Publica en el espejo de presencia el acceso vigente del proyecto, completo y con la versión de Firestore (D33):
@@ -35,4 +35,35 @@ export async function syncAclWithRetry(
       if (!isOpen()) return false;
     }
   }
+}
+
+/**
+ * Dueño con el proyecto abierto: publica el espejo al abrir y de nuevo cada vez que cambian `members` o las
+ * invitaciones (D47; un invitado que entra con el espejo aún sin su invitación queda sin presencia hasta entonces).
+ * Las publicaciones no se solapan: si hay una en curso, el cambio queda pendiente y se repite al terminar.
+ * Devuelve la función que deja de vigilar.
+ */
+export function keepAclSynced(projectId: string, ownerId: string, isOpen: () => boolean): () => void {
+  let running = false;
+  let pending = false;
+  const publish = async () => {
+    if (running) {
+      pending = true;
+      return;
+    }
+    running = true;
+    try {
+      do {
+        pending = false;
+        await syncAclWithRetry(projectId, ownerId, isOpen);
+      } while (pending && isOpen());
+    } finally {
+      running = false;
+    }
+  };
+  return projectRepo.watchAccess(
+    projectId,
+    () => void publish(),
+    (e) => console.error('No se pudo vigilar el acceso del proyecto', e),
+  );
 }

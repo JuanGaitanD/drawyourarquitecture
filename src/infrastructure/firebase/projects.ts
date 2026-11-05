@@ -104,6 +104,32 @@ export const projectRepo: ProjectRepo = {
     }
   },
 
+  watchAccess(id, cb, onError) {
+    let off: (() => void) | null = null;
+    let closed = false;
+    let last = '';
+    loadFirestore().then(({ fs, db }) => {
+      if (closed) return;
+      off = fs.onSnapshot(
+        fs.doc(db, 'projects', id),
+        (snap) => {
+          const d = snap.data();
+          if (!d) return;
+          const access = { members: toMembers(d.members) ?? {}, aclRev: Number(d.aclRev) || 0 };
+          const key = JSON.stringify(access);
+          if (key === last) return; // título, `updatedAt`… no cambian el acceso
+          last = key;
+          cb(access);
+        },
+        (e) => onError(e),
+      );
+    }, onError);
+    return () => {
+      closed = true;
+      off?.();
+    };
+  },
+
   async create(p, initialData) {
     const { fs, db } = await loadFirestore();
     const ref = fs.doc(fs.collection(db, 'projects'));
