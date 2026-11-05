@@ -29,7 +29,17 @@ function getApp(): App {
 
 /** Firestore de Admin: solo para buscar el token (`mcpTokens`) y sembrar datos en los tests. No para proyectos. */
 export const getAdminDb = (): Firestore => getFirestore(getApp());
-export const getAdminAuth = (): Auth => getAuth(getApp());
+/**
+ * El emulador de Auth no separa por proyecto: el SDK web resuelve las cuentas siempre en `demo-dya`. Con emulador,
+ * Admin Auth usa su propia app en ese proyecto aunque Firestore (`GCLOUD_PROJECT`, D41) tenga uno propio por ejecución.
+ */
+export const getAdminAuth = (): Auth =>
+  getAuth(
+    usingEmulator()
+      ? (getApps().find((a) => a.name === 'dya-auth') ??
+          initializeApp({ projectId: EMULATOR_PROJECT }, 'dya-auth'))
+      : getApp(),
+  );
 
 function parseServiceAccount(raw: string | undefined) {
   if (!raw) throw new Error('Falta la variable de entorno FIREBASE_SERVICE_ACCOUNT.');
