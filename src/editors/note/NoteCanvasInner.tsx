@@ -21,6 +21,7 @@ import { ImageTooLargeError, optimizeImage } from '@/application/imageOptimize';
 import { indexedDbPendingStore } from '@/application/pendingFiles';
 import { fileStore } from '@/app/services';
 import type { PendingFile } from '@/application/pendingFiles';
+import { createUploadQueue, type UploadQueue } from '@/application/uploadQueue';
 import { useTheme, useToast } from '@/ui';
 import { BoardEmbed } from './BoardEmbed';
 import {
@@ -41,12 +42,10 @@ import {
 } from './embed';
 import {
   blobToDataUrl,
-  createUploadQueue,
   dataUrlToBlob,
   diffNewFiles,
   retryMissing,
   type BinaryLike,
-  type UploadQueue,
 } from './files';
 import { InsertBoardDialog } from './InsertBoardDialog';
 import { mergeNoteData, reconcileScene } from './merge';

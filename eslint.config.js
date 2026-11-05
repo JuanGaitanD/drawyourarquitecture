@@ -38,6 +38,10 @@ const capa = (nombre, rutas, extra = []) => ({
   },
 });
 const prohibe = (grupos, message) => ({ group: grupos, message });
+const ENTRE_EDITORES = (otro) => ({
+  regex: `^(@/editors/|(\\.\\./)+)${otro}(/|$)`,
+  message: `Un editor no importa de editors/${otro}: lo común va en application/ (D37).`,
+});
 
 export default defineConfig([
   globalIgnores([
@@ -93,6 +97,23 @@ export default defineConfig([
     ['src/editors/**/*.{ts,tsx}'],
     [prohibe(FIREBASE, 'Los editores no importan el SDK de Firebase: usan los puertos de application.')],
   ),
+  // Los editores no se importan entre sí (D37): lo común vive en application/. Excepción a propósito: la nota incrusta
+  // el visor del board (BoardEmbed.tsx). Se repite el SDK porque la última regla que casa sustituye a las anteriores.
+  capa(
+    ['infrastructure'],
+    ['src/editors/board/**/*.{ts,tsx}'],
+    [prohibe(FIREBASE, 'Los editores no importan el SDK de Firebase: usan los puertos de application.'), ENTRE_EDITORES('note')],
+  ),
+  capa(
+    ['infrastructure'],
+    ['src/editors/note/**/*.{ts,tsx}'],
+    [prohibe(FIREBASE, 'Los editores no importan el SDK de Firebase: usan los puertos de application.'), ENTRE_EDITORES('board')],
+  ),
+  capa(
+    ['infrastructure'],
+    ['src/editors/note/BoardEmbed.tsx'],
+    [prohibe(FIREBASE, 'Los editores no importan el SDK de Firebase: usan los puertos de application.')],
+  ),
   // model/: TypeScript puro; solo `import type` de @xyflow/react.
   {
     files: ['src/editors/board/model/**/*.ts'],
@@ -127,6 +148,7 @@ export default defineConfig([
                 '^(@/|(\\.{1,2}/)+)(infrastructure|app|editors/board/(store|canvas|nodes|edges))(/|$)|^\\.\\./(store|canvas|nodes|edges)(/|$)',
               message: 'model/ no depende de capas superiores.',
             },
+            ENTRE_EDITORES('note'),
           ],
         },
       ],

@@ -1,6 +1,6 @@
 import type { PendingFile, PendingStore } from '@/application/pendingFiles';
 import type { FileStore } from '@/application/ports';
-import { createUploadQueue, type UploadQueue } from '@/editors/note/files';
+import { createUploadQueue, type UploadQueue } from '@/application/uploadQueue';
 import { makeNode } from '../model/board';
 import type { ImageMeta } from '../nodes/files';
 import type { BoardStore } from '../store/boardStore';
