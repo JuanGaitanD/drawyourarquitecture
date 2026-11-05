@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { decodeNote as decodeEditorNote } from '../editors/note/codec';
-import { buildNote, decodeNote, encodeNote, noteSummary, noteText, orderKey, textToElements } from './note';
+import {
+  buildNote,
+  decodeNote,
+  encodeNote,
+  noteEmbeds,
+  noteImages,
+  noteSummary,
+  noteText,
+  orderKey,
+  textToElements,
+} from './note';
 
 describe('textToElements', () => {
   it('un bloque por párrafo, apilados y con los campos que Excalidraw exige de un text', () => {
@@ -86,5 +96,42 @@ describe('nota ⇄ texto', () => {
     ];
     expect(noteText(els)).toBe('izquierda\n\nderecha\n\nabajo');
     expect(noteSummary(els)).toEqual({ total: 4, byType: { text: 3, rectangle: 1 } });
+  });
+});
+
+describe('noteImages / noteEmbeds', () => {
+  const el = (over: Record<string, unknown>) => ({ isDeleted: false, ...over });
+
+  it('lista las imágenes vivas por fileId, con su mimeType y sin repetir', () => {
+    const images = noteImages({
+      elements: [
+        el({ type: 'image', fileId: 'f1' }),
+        el({ type: 'image', fileId: 'f1' }),
+        el({ type: 'image', fileId: 'f2' }),
+        el({ type: 'image', fileId: 'f3', isDeleted: true }),
+        el({ type: 'image' }),
+        el({ type: 'text', fileId: 'f4' }),
+      ],
+      files: { f1: { mimeType: 'image/webp', created: 1 } },
+    });
+    expect(images).toEqual([
+      { fileId: 'f1', mimeType: 'image/webp' },
+      { fileId: 'f2', mimeType: null },
+    ]);
+  });
+
+  it('lista los boards incrustados (/embed/board/<id>, de cualquier origen), vivos y sin repetir', () => {
+    const embeds = noteEmbeds([
+      el({ type: 'embeddable', link: 'https://drawyourarchitecture.vercel.app/embed/board/abc_1' }),
+      el({ type: 'embeddable', link: 'http://localhost:5173/embed/board/abc_1/' }),
+      el({ type: 'embeddable', link: 'https://x.test/embed/board/def-2' }),
+      el({ type: 'embeddable', link: 'https://x.test/embed/board/borrado', isDeleted: true }),
+      el({ type: 'embeddable', link: 'https://youtube.com/embed/xyz' }),
+      el({ type: 'embeddable', link: 'https://x.test/embed/board/q?x=1' }),
+      el({ type: 'embeddable', link: '/embed/board/relativo' }),
+      el({ type: 'embeddable', link: null }),
+      el({ type: 'text', link: 'https://x.test/embed/board/otro' }),
+    ]);
+    expect(embeds).toEqual(['abc_1', 'def-2']);
   });
 });

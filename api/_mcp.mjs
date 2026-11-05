@@ -876,6 +876,31 @@ function noteSummary(elements) {
   }
   return { total, byType };
 }
+function noteImages(note) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const e of note.elements) {
+    if (e.type !== "image" || e.isDeleted === true || typeof e.fileId !== "string" || seen.has(e.fileId))
+      continue;
+    seen.add(e.fileId);
+    out.push({ fileId: e.fileId, mimeType: note.files[e.fileId]?.mimeType ?? null });
+  }
+  return out;
+}
+var BOARD_PATH = /^\/embed\/board\/([\w-]+)\/?$/;
+function noteEmbeds(elements) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const e of elements) {
+    if (e.type !== "embeddable" || e.isDeleted === true || typeof e.link !== "string") continue;
+    try {
+      const u = new URL(e.link);
+      const m = BOARD_PATH.exec(u.pathname);
+      if (m && !u.search && !u.hash) ids.add(m[1]);
+    } catch {
+    }
+  }
+  return [...ids];
+}
 
 // src/server/tools.ts
 var MAX_TITLE = 120;
@@ -983,6 +1008,20 @@ var listProjects = denied(async (ctx, args) => {
   const text = projects.length ? projects.map((p) => `- ${p.id} \xB7 ${p.type} \xB7 ${p.title} (${p.role})`).join("\n") : "No hay proyectos.";
   return { text, data: { projects } };
 });
+async function loadBoard(ctx, id2) {
+  const { ref, project } = await loadProject(ctx, id2, "board");
+  const { data, revision } = await loadContent(ref);
+  let parsed;
+  try {
+    parsed = decode(data);
+  } catch {
+    throw new ToolError(400, "El diagrama est\xE1 da\xF1ado (no es JSON).");
+  }
+  const checked = validateBoardContent(parsed);
+  if (!checked.ok) throw new ToolError(400, `El diagrama no es v\xE1lido: ${checked.error}`);
+  return { project, revision, board: checked.value };
+}
+var MAX_EMBEDS = 10;
 var readNote = denied(async (ctx, args) => {
   const { ref, project } = await loadProject(ctx, args.id, "note");
   const { data, revision } = await loadContent(ref);
@@ -993,29 +1032,47 @@ var readNote = denied(async (ctx, args) => {
     throw new ToolError(400, e instanceof Error ? e.message : "La nota est\xE1 da\xF1ada.");
   }
   const text = noteText(note.elements);
+  const images = noteImages(note);
+  const embeds = await Promise.all(
+    noteEmbeds(note.elements).slice(0, MAX_EMBEDS).map(async (boardId) => {
+      try {
+        const b = await loadBoard(ctx, boardId);
+        return { boardId, title: b.project.title, mermaid: toFlowchart(b.board, "LR") };
+      } catch (e) {
+        if (e instanceof ToolError || isPermissionDenied(e)) return { boardId };
+        throw e;
+      }
+    })
+  );
   const summary = { id: args.id, title: project.title, revision, ...noteSummary(note.elements) };
+  const lines = (items) => items.join("\n");
+  const extras = [
+    images.length ? `## Im\xE1genes
+${lines(images.map((i) => `- ${i.fileId} (${i.mimeType ?? "tipo desconocido"})`))}` : "",
+    embeds.length ? `## Diagramas incrustados
+${lines(
+      embeds.map(
+        (e) => e.mermaid ? `- ${e.boardId} \xAB${e.title}\xBB
+
+\`\`\`mermaid
+${e.mermaid}\`\`\`` : `- ${e.boardId} (sin acceso o ilegible)`
+      )
+    )}` : ""
+  ].filter(Boolean);
   return {
     text: `# ${project.title}
 
 ${text || "(sin texto)"}
 
----
+${extras.map((x) => `${x}
+
+`).join("")}---
 ${JSON.stringify(summary)}`,
-    data: { ...summary, text }
+    data: { ...summary, text, images, embeds }
   };
 });
 var readBoard = denied(async (ctx, args) => {
-  const { ref, project } = await loadProject(ctx, args.id, "board");
-  const { data, revision } = await loadContent(ref);
-  let parsed;
-  try {
-    parsed = decode(data);
-  } catch {
-    throw new ToolError(400, "El diagrama est\xE1 da\xF1ado (no es JSON).");
-  }
-  const checked = validateBoardContent(parsed);
-  if (!checked.ok) throw new ToolError(400, `El diagrama no es v\xE1lido: ${checked.error}`);
-  const board = checked.value;
+  const { project, revision, board } = await loadBoard(ctx, args.id);
   const mermaid2 = toFlowchart(board, "LR");
   const nodes = board.nodes.map((n) => ({
     id: n.id,
@@ -1167,7 +1224,7 @@ function createMcpServer(mcp) {
   server.registerTool(
     "read_note",
     {
-      description: "Lee una nota: el texto de sus elementos en orden de lectura y un resumen.",
+      description: "Lee una nota: el texto de sus elementos en orden de lectura, un resumen, sus im\xE1genes (fileId, mimeType) y los diagramas incrustados (boardId, con su Mermaid si puedes leerlos).",
       inputSchema: { id }
     },
     (a) => run(mcp, "read_note", a, () => readNote(ctx, a))

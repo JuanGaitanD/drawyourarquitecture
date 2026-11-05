@@ -20,7 +20,7 @@ import { autoLayout } from '../editors/board/model/layout';
 import { parseFlowchart, toFlowchart } from '../editors/board/model/mermaid';
 import { validateBoardContent } from '../editors/board/model/validate';
 import { ToolError, isPermissionDenied } from './authz';
-import { MAX_NOTE_TEXT, buildNote, decodeNote, noteText, noteSummary } from './note';
+import { MAX_NOTE_TEXT, buildNote, decodeNote, noteEmbeds, noteImages, noteSummary, noteText } from './note';
 
 // Una función por herramienta. Reciben el Firestore del SDK web ya autenticado como la persona: los permisos los
 // deciden las reglas y `permission-denied` se traduce a 403 (`denied`). Devuelven `{ text, data? }`.
@@ -180,6 +180,27 @@ export const listProjects = denied(async (ctx: ToolContext, args: { type?: Proje
   return { text, data: { projects } };
 });
 
+/** Proyecto board → contenido validado. Las reglas rechazan lo que no puedes leer (`permission-denied`). */
+async function loadBoard(
+  ctx: ToolContext,
+  id: string,
+): Promise<{ project: ProjectDoc; revision: number; board: BoardContent }> {
+  const { ref, project } = await loadProject(ctx, id, 'board');
+  const { data, revision } = await loadContent(ref);
+  let parsed: unknown;
+  try {
+    parsed = decode(data);
+  } catch {
+    throw new ToolError(400, 'El diagrama está dañado (no es JSON).');
+  }
+  const checked = validateBoardContent(parsed);
+  if (!checked.ok) throw new ToolError(400, `El diagrama no es válido: ${checked.error}`);
+  return { project, revision, board: checked.value };
+}
+
+/** Diagramas incrustados que se resuelven por nota (cada uno cuesta dos lecturas). */
+const MAX_EMBEDS = 10;
+
 export const readNote = denied(async (ctx: ToolContext, args: { id: string }) => {
   const { ref, project } = await loadProject(ctx, args.id, 'note');
   const { data, revision } = await loadContent(ref);
@@ -190,25 +211,45 @@ export const readNote = denied(async (ctx: ToolContext, args: { id: string }) =>
     throw new ToolError(400, e instanceof Error ? e.message : 'La nota está dañada.');
   }
   const text = noteText(note.elements);
+  const images = noteImages(note);
+  // Cada diagrama incrustado va con su Mermaid si quien llama puede leerlo; si no, solo el `boardId`.
+  const embeds = await Promise.all(
+    noteEmbeds(note.elements)
+      .slice(0, MAX_EMBEDS)
+      .map(async (boardId): Promise<{ boardId: string; title?: string; mermaid?: string }> => {
+        try {
+          const b = await loadBoard(ctx, boardId);
+          return { boardId, title: b.project.title, mermaid: toFlowchart(b.board, 'LR') };
+        } catch (e) {
+          if (e instanceof ToolError || isPermissionDenied(e)) return { boardId };
+          throw e;
+        }
+      }),
+  );
   const summary = { id: args.id, title: project.title, revision, ...noteSummary(note.elements) };
+  const lines = (items: string[]) => items.join('\n');
+  const extras = [
+    images.length
+      ? `## Imágenes\n${lines(images.map((i) => `- ${i.fileId} (${i.mimeType ?? 'tipo desconocido'})`))}`
+      : '',
+    embeds.length
+      ? `## Diagramas incrustados\n${lines(
+          embeds.map((e) =>
+            e.mermaid
+              ? `- ${e.boardId} «${e.title}»\n\n\`\`\`mermaid\n${e.mermaid}\`\`\``
+              : `- ${e.boardId} (sin acceso o ilegible)`,
+          ),
+        )}`
+      : '',
+  ].filter(Boolean);
   return {
-    text: `# ${project.title}\n\n${text || '(sin texto)'}\n\n---\n${JSON.stringify(summary)}`,
-    data: { ...summary, text },
+    text: `# ${project.title}\n\n${text || '(sin texto)'}\n\n${extras.map((x) => `${x}\n\n`).join('')}---\n${JSON.stringify(summary)}`,
+    data: { ...summary, text, images, embeds },
   };
 });
 
 export const readBoard = denied(async (ctx: ToolContext, args: { id: string }) => {
-  const { ref, project } = await loadProject(ctx, args.id, 'board');
-  const { data, revision } = await loadContent(ref);
-  let parsed: unknown;
-  try {
-    parsed = decode(data);
-  } catch {
-    throw new ToolError(400, 'El diagrama está dañado (no es JSON).');
-  }
-  const checked = validateBoardContent(parsed);
-  if (!checked.ok) throw new ToolError(400, `El diagrama no es válido: ${checked.error}`);
-  const board = checked.value;
+  const { project, revision, board } = await loadBoard(ctx, args.id);
   const mermaid = toFlowchart(board, 'LR');
   const nodes = board.nodes.map((n) => ({
     id: n.id,

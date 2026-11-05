@@ -71,7 +71,8 @@ export function createMcpServer(mcp: McpContext): McpServer {
   server.registerTool(
     'read_note',
     {
-      description: 'Lee una nota: el texto de sus elementos en orden de lectura y un resumen.',
+      description:
+        'Lee una nota: el texto de sus elementos en orden de lectura, un resumen, sus imágenes (fileId, mimeType) y los diagramas incrustados (boardId, con su Mermaid si puedes leerlos).',
       inputSchema: { id },
     },
     (a) => run(mcp, 'read_note', a, () => readNote(ctx, a)),

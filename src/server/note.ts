@@ -148,3 +148,41 @@ export function noteSummary(elements: readonly Record<string, unknown>[]): {
   }
   return { total, byType };
 }
+
+export interface NoteImage {
+  fileId: string;
+  /** Tipo MIME según `files` de la nota; `null` si la nota no lo declara. */
+  mimeType: string | null;
+}
+
+/** Imágenes vivas (por `fileId`, sin repetir). El binario vive en `projects/{id}/files/{fileId}`. */
+export function noteImages(note: Pick<NoteContent, 'elements' | 'files'>): NoteImage[] {
+  const seen = new Set<string>();
+  const out: NoteImage[] = [];
+  for (const e of note.elements) {
+    if (e.type !== 'image' || e.isDeleted === true || typeof e.fileId !== 'string' || seen.has(e.fileId))
+      continue;
+    seen.add(e.fileId);
+    out.push({ fileId: e.fileId, mimeType: note.files[e.fileId]?.mimeType ?? null });
+  }
+  return out;
+}
+
+/** `/embed/board/<id>` (misma forma que `editors/note/embed.ts`; el origen no importa: el acceso lo deciden las reglas). */
+const BOARD_PATH = /^\/embed\/board\/([\w-]+)\/?$/;
+
+/** Ids de los diagramas incrustados vivos (elementos `embeddable` con enlace a `/embed/board/<id>`), sin repetir. */
+export function noteEmbeds(elements: readonly Record<string, unknown>[]): string[] {
+  const ids = new Set<string>();
+  for (const e of elements) {
+    if (e.type !== 'embeddable' || e.isDeleted === true || typeof e.link !== 'string') continue;
+    try {
+      const u = new URL(e.link);
+      const m = BOARD_PATH.exec(u.pathname);
+      if (m && !u.search && !u.hash) ids.add(m[1]);
+    } catch {
+      /* enlace vacío o relativo */
+    }
+  }
+  return [...ids];
+}

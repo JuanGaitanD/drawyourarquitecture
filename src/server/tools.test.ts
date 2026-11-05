@@ -4,7 +4,7 @@ import { decode } from '../domain/codec';
 import { validateBoardContent } from '../editors/board/model/validate';
 import { getAdminAuth, getAdminDb } from './admin';
 import { ToolError, authenticate } from './authz';
-import { decodeNote, noteText } from './note';
+import { buildNote, decodeNote, encodeNote, noteText } from './note';
 import { EMULATOR, OWNER, loadRules, seedProject, seedToken, uniq, userCtx } from './testkit';
 import { closeUserDbs } from './userDb';
 import {
@@ -110,6 +110,48 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
 
       const pub = await seedProject(db, { ownerId: OWNER, type: 'note', isPublic: true });
       expect(await status(readNote(await as(STRANGER), { id: pub }))).toBe(0);
+    });
+
+    it('read_note lista las imágenes y los diagramas incrustados (con su Mermaid si se pueden leer)', async () => {
+      const board = (
+        (await createBoard(await as(OWNER), { title: 'Flujo', mermaid: 'flowchart LR\nA[Web] --> B[API]' }))
+          .data as { id: string }
+      ).id;
+      const privateBoard = await seedProject(db, { ownerId: STRANGER, title: 'Ajeno' });
+      const embed = (id: string) => ({
+        type: 'embeddable',
+        isDeleted: false,
+        link: `https://drawyourarchitecture.vercel.app/embed/board/${id}`,
+      });
+      const base = buildNote('Con adjuntos');
+      const note = await seedProject(db, {
+        ownerId: OWNER,
+        type: 'note',
+        data: encodeNote({
+          ...base,
+          elements: [
+            ...base.elements,
+            { type: 'image', isDeleted: false, fileId: 'img-1' },
+            embed(board),
+            embed(privateBoard),
+          ],
+          files: { 'img-1': { mimeType: 'image/png', created: 1 } },
+        }),
+      });
+
+      const r = await readNote(await as(OWNER), { id: note });
+      const d = r.data as {
+        images: { fileId: string; mimeType: string }[];
+        embeds: { boardId: string; mermaid?: string; title?: string }[];
+      };
+      expect(d.images).toEqual([{ fileId: 'img-1', mimeType: 'image/png' }]);
+      expect(d.embeds.map((e) => e.boardId)).toEqual([board, privateBoard]);
+      expect(d.embeds[0].mermaid).toContain('Web');
+      expect(d.embeds[0].title).toBe('Flujo');
+      expect(d.embeds[1]).toEqual({ boardId: privateBoard }); // sin acceso: solo el id
+      expect(r.text).toContain('img-1 (image/png)');
+      expect(r.text).toContain('```mermaid');
+      expect(r.text).toContain(`${privateBoard} (sin acceso o ilegible)`);
     });
 
     it('read_board devuelve Mermaid y JSON de lo creado', async () => {
