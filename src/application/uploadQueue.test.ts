@@ -81,7 +81,15 @@ describe('createUploadQueue con copia en disco (D8)', () => {
     const { store, m } = memStore();
     const upload = vi.fn(() => Promise.resolve());
     const done = vi.fn();
-    const q = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail: vi.fn(), onDone: done, sleep });
+    const q = createUploadQueue({
+      store: { upload },
+      projectId: 'p',
+      persist: store,
+      onFail: vi.fn(),
+      onDone: done,
+      sleep,
+      locks: null,
+    });
     q.add('f', blob, { elements: [1] });
     await vi.waitFor(() => expect(done).toHaveBeenCalledWith('f'));
     expect(m.get('p/f')?.meta).toEqual({ elements: [1] });
@@ -92,9 +100,18 @@ describe('createUploadQueue con copia en disco (D8)', () => {
 
   it('una subida agotada queda en disco; al volver a cargar `resume` la repone y la sube', async () => {
     const { store, m } = memStore();
-    const fail = vi.fn<(p: string, id: string, b: Blob) => Promise<void>>().mockRejectedValue(new Error('sin red'));
+    const fail = vi
+      .fn<(p: string, id: string, b: Blob) => Promise<void>>()
+      .mockRejectedValue(new Error('sin red'));
     const onFail = vi.fn();
-    const q1 = createUploadQueue({ store: { upload: fail }, projectId: 'p', persist: store, onFail, sleep });
+    const q1 = createUploadQueue({
+      store: { upload: fail },
+      projectId: 'p',
+      persist: store,
+      onFail,
+      sleep,
+      locks: null,
+    });
     q1.add('f', blob, { created: 7 });
     await vi.waitFor(() => expect(onFail).toHaveBeenCalledTimes(1));
     expect(m.has('p/f')).toBe(true);
@@ -104,7 +121,15 @@ describe('createUploadQueue con copia en disco (D8)', () => {
     const upload = vi.fn(() => Promise.resolve());
     const done = vi.fn();
     const restore = vi.fn();
-    const q2 = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail: vi.fn(), onDone: done, sleep });
+    const q2 = createUploadQueue({
+      store: { upload },
+      projectId: 'p',
+      persist: store,
+      onFail: vi.fn(),
+      onDone: done,
+      sleep,
+      locks: null,
+    });
     await q2.resume(() => false, restore);
     expect(restore).toHaveBeenCalledWith(expect.objectContaining({ fileId: 'f', meta: { created: 7 } }));
     await vi.waitFor(() => expect(done).toHaveBeenCalledWith('f'));
@@ -116,7 +141,14 @@ describe('createUploadQueue con copia en disco (D8)', () => {
     await store.put({ projectId: 'p', fileId: 'ya', blob });
     await store.put({ projectId: 'otro', fileId: 'x', blob });
     const upload = vi.fn(() => Promise.resolve());
-    const q = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail: vi.fn(), sleep });
+    const q = createUploadQueue({
+      store: { upload },
+      projectId: 'p',
+      persist: store,
+      onFail: vi.fn(),
+      sleep,
+      locks: null,
+    });
     await q.resume((id) => id === 'ya', vi.fn());
     await vi.waitFor(() => expect(m.has('p/ya')).toBe(false));
     expect(m.has('otro/x')).toBe(true);
@@ -131,7 +163,14 @@ describe('createUploadQueue con copia en disco (D8)', () => {
     };
     let release!: () => void;
     const upload = vi.fn(() => new Promise<void>((r) => (release = r)));
-    const q = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail: vi.fn(), sleep });
+    const q = createUploadQueue({
+      store: { upload },
+      projectId: 'p',
+      persist: store,
+      onFail: vi.fn(),
+      sleep,
+      locks: null,
+    });
     q.add('f', blob);
     await vi.waitFor(() => expect(upload).toHaveBeenCalled());
     expect(q.pending()).toBe(1);
@@ -155,22 +194,46 @@ describe('createUploadQueue.discard (D24)', () => {
   it('una imagen borrada tras subirse pero antes de guardarse no vuelve al reabrir', async () => {
     const { store, m } = memStore();
     const done = vi.fn();
-    const q = createUploadQueue({ store: { upload: () => Promise.resolve() }, projectId: 'p', persist: store, onFail: vi.fn(), onDone: done, sleep });
+    const q = createUploadQueue({
+      store: { upload: () => Promise.resolve() },
+      projectId: 'p',
+      persist: store,
+      onFail: vi.fn(),
+      onDone: done,
+      sleep,
+      locks: null,
+    });
     q.add('f', blob);
     await vi.waitFor(() => expect(done).toHaveBeenCalled());
     expect(m.has('p/f')).toBe(true);
     q.discard(['f']);
     await vi.waitFor(() => expect(m.size).toBe(0));
     const restore = vi.fn();
-    await createUploadQueue({ store: { upload: vi.fn() }, projectId: 'p', persist: store, onFail: vi.fn(), sleep }).resume(() => false, restore);
+    await createUploadQueue({
+      store: { upload: vi.fn() },
+      projectId: 'p',
+      persist: store,
+      onFail: vi.fn(),
+      sleep,
+      locks: null,
+    }).resume(() => false, restore);
     expect(restore).not.toHaveBeenCalled();
   });
 
   it('una subida fallida se olvida: ni se reintenta ni queda en disco', async () => {
     const { store, m } = memStore();
-    const upload = vi.fn<(p: string, id: string, b: Blob) => Promise<void>>().mockRejectedValue(new Error('red'));
+    const upload = vi
+      .fn<(p: string, id: string, b: Blob) => Promise<void>>()
+      .mockRejectedValue(new Error('red'));
     const onFail = vi.fn();
-    const q = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail, sleep });
+    const q = createUploadQueue({
+      store: { upload },
+      projectId: 'p',
+      persist: store,
+      onFail,
+      sleep,
+      locks: null,
+    });
     q.add('f', blob);
     await vi.waitFor(() => expect(onFail).toHaveBeenCalled());
     q.discard(['f']);
@@ -189,7 +252,14 @@ describe('createUploadQueue.discard (D24)', () => {
       remove: async (_p, id) => void m.delete(id),
     };
     const upload = vi.fn(() => Promise.resolve());
-    const q = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail: vi.fn(), sleep });
+    const q = createUploadQueue({
+      store: { upload },
+      projectId: 'p',
+      persist: store,
+      onFail: vi.fn(),
+      sleep,
+      locks: null,
+    });
     q.add('f', blob);
     q.discard(['f']);
     finish();
@@ -232,7 +302,7 @@ describe('createUploadQueue.resume entre pestañas (D38)', () => {
         sleep,
         locks,
       });
-    return { m, held, store, tab };
+    return { m, held, store, tab, locks };
   };
 
   it('dos pestañas que reponen a la vez: solo una inserta la imagen', async () => {
@@ -281,6 +351,77 @@ describe('createUploadQueue.resume entre pestañas (D38)', () => {
     const restoreB = vi.fn();
     await tab().resume(() => false, restoreB);
     expect(restoreB).toHaveBeenCalledTimes(1);
+  });
+
+  it('`add` intercalado con `resume` de otra pestaña (D52): una sola subida y una sola confirmación', async () => {
+    const { m, store, locks } = shared();
+    m.clear();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const uploadA = vi.fn(() => Promise.resolve());
+    const uploadB = vi.fn(() => Promise.resolve());
+    const doneA = vi.fn();
+    const doneB = vi.fn();
+    const mk = (upload: typeof uploadA, onDone: typeof doneA, persist: PendingStore) =>
+      createUploadQueue({
+        store: { upload },
+        projectId: 'p',
+        persist,
+        onFail: vi.fn(),
+        onDone,
+        sleep,
+        locks,
+      });
+    // El put de A es visible en disco antes de resolverse: B lo recoge con `resume` y toma el bloqueo.
+    const qA = mk(uploadA, doneA, {
+      ...store,
+      put: async (f) => {
+        await store.put(f);
+        await gate;
+      },
+    });
+    const qB = mk(uploadB, doneB, store);
+    qA.add('g', blob);
+    await vi.waitFor(() => expect(m.size).toBe(1));
+    await qB.resume(() => false, vi.fn());
+    release();
+    await vi.waitFor(() => expect(uploadB).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(uploadA).not.toHaveBeenCalled();
+    expect(doneA).not.toHaveBeenCalled();
+    expect(doneB).toHaveBeenCalledTimes(1);
+  });
+
+  it('`dispose` durante el `put` (D53): no retiene el bloqueo y otra cola recoge el pendiente', async () => {
+    const { m, held, store, tab, locks } = shared();
+    m.clear();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const upload = vi.fn(() => Promise.resolve());
+    const q = createUploadQueue({
+      store: { upload },
+      projectId: 'p',
+      persist: {
+        ...store,
+        put: async (f) => {
+          await store.put(f);
+          await gate;
+        },
+      },
+      onFail: vi.fn(),
+      sleep,
+      locks,
+    });
+    q.add('g', blob);
+    await vi.waitFor(() => expect(m.size).toBe(1));
+    q.dispose();
+    release();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(held.size).toBe(0);
+    expect(upload).not.toHaveBeenCalled();
+    const restore = vi.fn();
+    await tab().resume(() => false, restore);
+    expect(restore).toHaveBeenCalledTimes(1);
   });
 
   it('sin Web Locks repone como antes', async () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { PendingFile, PendingStore } from '@/application/pendingFiles';
 import { createBoardStore } from '../store/boardStore';
 import { createImageUploads } from './imageUploads';
@@ -6,6 +6,9 @@ import { createImageUploads } from './imageUploads';
 const blob = new Blob(['x'], { type: 'image/png' });
 const meta = { x: 10, y: 20, width: 100, height: 50, label: 'foto.png' };
 const settle = () => new Promise((r) => setTimeout(r, 0));
+
+// Sin Web Locks: los casos reutilizan `f1` y la cola retiene el bloqueo hasta `release`; en Node 24 serían reales y se pisarían.
+beforeAll(() => void Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true }));
 
 /** IndexedDB falso: lo que sobrevive a «cerrar la pestaña». */
 function fakeDisk(): PendingStore & { files: Map<string, PendingFile> } {
