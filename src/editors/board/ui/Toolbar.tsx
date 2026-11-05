@@ -6,7 +6,7 @@ import { useBoard } from '../store/BoardStoreProvider';
 import type { Tool } from '../store/boardStore';
 import { useBoardActions } from './actions';
 import chrome from './chrome.module.css';
-import { ICON_COMPONENT, ICON_LABEL, SHAPE_LABEL, ShapePreview } from './glyphs';
+import { ICON_LABEL, iconGlyph, SHAPE_LABEL, ShapePreview } from './glyphs';
 import styles from './Toolbar.module.css';
 
 const SIMPLE: { tool: Tool; label: string; shortcut: string; icon: ReactNode; after?: boolean }[] = [
@@ -28,7 +28,6 @@ export function Toolbar() {
   const actions = useBoardActions();
   const [shapesOpen, setShapesOpen] = useState(false);
   const [iconsOpen, setIconsOpen] = useState(false);
-  const CurrentIcon = ICON_COMPONENT[pendingIcon];
 
   const tools = (list: typeof CREATE) =>
     list.map((t) => (
@@ -88,7 +87,7 @@ export function Toolbar() {
           <IconButton
             label="Iconos de arquitectura"
             shortcut="I"
-            icon={<CurrentIcon size={20} />}
+            icon={iconGlyph(pendingIcon, 20)}
             pressed={tool === 'icon'}
             tooltipSide="right"
           />
@@ -96,12 +95,11 @@ export function Toolbar() {
         <PopoverContent side="right" align="start" aria-label="Iconos" className={styles.picker}>
           <div className={styles.grid} style={{ '--cols': 5 } as CSSProperties}>
             {ICONS.map((icon: IconName) => {
-              const Glyph = ICON_COMPONENT[icon];
               return (
                 <IconButton
                   key={icon}
                   label={ICON_LABEL[icon]}
-                  icon={<Glyph size={22} />}
+                  icon={iconGlyph(icon, 22)}
                   pressed={tool === 'icon' && pendingIcon === icon}
                   onClick={() => {
                     actions.pickIcon(icon);
