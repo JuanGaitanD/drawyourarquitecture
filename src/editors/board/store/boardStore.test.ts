@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeNode } from '../model/board';
 import { fixtureBoard } from '../model/fixtures';
 import { toAbsolute } from '../model/geometry';
+import { validateBoardContent } from '../model/validate';
 import { createBoardStore } from './boardStore';
 import { reparentNodes } from './reparent';
 
@@ -165,5 +166,24 @@ describe('reparentNodes', () => {
     const locked = ns.map((n) => (n.id === 'api' ? { ...n, data: { ...n.data, locked: true } } : n));
     expect(reparentNodes(locked, new Set(['api']))).toBe(locked);
     expect(reparentNodes(ns, new Set(['api', 'frame']))).toBe(ns);
+  });
+
+  it('dos frames superpuestos movidos juntos no se vuelven padre el uno del otro (sin ciclos)', () => {
+    const a = { ...makeNode('frame', { x: 0, y: 0 }), id: 'a' };
+    const b = { ...makeNode('frame', { x: 0, y: 0 }), id: 'b' };
+    const out = reparentNodes([a, b], new Set(['a', 'b']));
+    const content = { schemaVersion: 1, nodes: out, edges: [], viewport: { x: 0, y: 0, zoom: 1 } };
+    expect(validateBoardContent(content).ok).toBe(true);
+    expect(out.every((n) => !n.parentId)).toBe(true);
+  });
+
+  it('un nodo seleccionado no entra en otro seleccionado, pero sí en un frame que no se mueve', () => {
+    const f = { ...makeNode('frame', { x: 0, y: 0 }), id: 'f' };
+    const sel = { ...makeNode('frame', { x: 10, y: 10 }, {}), id: 'sel', width: 50, height: 50 };
+    const sh = { ...makeNode('shape', { x: 12, y: 12 }), id: 'sh', width: 20, height: 20 };
+    const out = reparentNodes([f, sel, sh], new Set(['sel', 'sh']));
+    expect(out.find((n) => n.id === 'sel')!.parentId).toBe('f');
+    expect(out.find((n) => n.id === 'sh')!.parentId).toBe('f'); // no a «sel», que va en la misma selección
+    expect(validateBoardContent({ schemaVersion: 1, nodes: out, edges: [], viewport: { x: 0, y: 0, zoom: 1 } }).ok).toBe(true);
   });
 });
