@@ -72,6 +72,18 @@ describe('createUploadQueue', () => {
     expect(q.pending()).toBe(0);
   });
 
+  it('`whenDone` avisa a los oyentes y se puede dar de baja', async () => {
+    const upload = vi.fn(() => Promise.resolve());
+    const q = createUploadQueue({ store: { upload }, projectId: 'p', onFail: vi.fn(), sleep });
+    const a = vi.fn();
+    const b = vi.fn();
+    q.whenDone(a);
+    q.whenDone(b)();
+    q.add('f', blob);
+    await vi.waitFor(() => expect(a).toHaveBeenCalledWith('f'));
+    expect(b).not.toHaveBeenCalled();
+  });
+
   it('no duplica una subida en curso', async () => {
     const upload = vi.fn(() => Promise.resolve());
     const q = createUploadQueue({ store: { upload }, projectId: 'p', onFail: vi.fn(), sleep });

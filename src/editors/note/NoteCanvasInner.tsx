@@ -18,7 +18,9 @@ import { LayoutDashboard } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import { ImageTooLargeError, optimizeImage } from '@/application/imageOptimize';
+import { indexedDbPendingStore } from '@/application/pendingFiles';
 import { fileStore } from '@/app/services';
+import type { PendingFile } from '@/application/pendingFiles';
 import { useTheme, useToast } from '@/ui';
 import { BoardEmbed } from './BoardEmbed';
 import {
@@ -81,6 +83,8 @@ export default function NoteCanvasInner({
   const scene = useRef<Scene | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rejected = useRef(new Set<string>());
+  // Imágenes cuya subida aún no se confirmó: no se publican en el contenido hasta entonces (D8).
+  const unconfirmed = useRef(new Set<string>());
   const onChangeRef = useRef(onChange);
 
   useEffect(() => {
@@ -93,13 +97,14 @@ export default function NoteCanvasInner({
     const q: UploadQueue = createUploadQueue({
       store: fileStore,
       projectId,
+      persist: indexedDbPendingStore(),
       onFail: () => {
         if (shown) return;
         shown = true;
         toast({
           kind: 'error',
           title: 'No se pudo subir una imagen',
-          description: 'Sigue en esta pestaña. Reintenta antes de cerrarla.',
+          description: 'Se reintentará al recuperar la conexión o al volver a abrir la nota.',
           duration: 0,
           action: {
             label: 'Reintentar',
@@ -114,7 +119,14 @@ export default function NoteCanvasInner({
     return q;
   });
 
-  // Aviso al cerrar la pestaña con subidas sin terminar (el binario solo está en memoria).
+  // Con la conexión de vuelta se reintenta lo que agotó los reintentos.
+  useEffect(() => {
+    const retry = () => uploads.retryFailed();
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [uploads]);
+
+  // Aviso al cerrar la pestaña solo con subidas que se perderían (sin copia en IndexedDB).
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (uploads.pending() > 0) {
@@ -193,6 +205,49 @@ export default function NoteCanvasInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api]);
 
+  // Al volver a cargar: lo que quedó sin subir en IndexedDB se repone en la escena (con su binario) y se sube.
+  useEffect(() => {
+    if (!api || readonly) return;
+    const back: { f: PendingFile; created: number; elements: { id: string }[] }[] = [];
+    void uploads
+      .resume(
+        (id) => !!content.files[id],
+        (f) => {
+          const m = (f.meta ?? {}) as { elements?: { id: string }[]; created?: number };
+          const created = m.created ?? Date.now();
+          unconfirmed.current.add(f.fileId);
+          known.current[f.fileId] = { mimeType: f.blob.type, created };
+          back.push({ f, created, elements: m.elements ?? [] });
+        },
+      )
+      .then(async () => {
+        if (!back.length) return;
+        const files = await Promise.all(
+          back.map(async ({ f, created }) => ({
+            id: f.fileId as BinaryFileData['id'],
+            mimeType: f.blob.type as BinaryFileData['mimeType'],
+            dataURL: (await blobToDataUrl(f.blob)) as BinaryFileData['dataURL'],
+            created,
+          })),
+        );
+        if (!alive.current) return;
+        api.addFiles(files);
+        const have = new Set(api.getSceneElementsIncludingDeleted().map((e) => e.id as string));
+        const missing = back.flatMap((b) => b.elements).filter((e) => !have.has(e.id));
+        if (missing.length) {
+          api.updateScene({
+            elements: [
+              ...api.getSceneElementsIncludingDeleted(),
+              ...restoreElements(missing as unknown as ExcalidrawElement[], null, { repairBindings: true }),
+            ],
+            captureUpdate: CaptureUpdateAction.NEVER,
+          });
+        }
+      });
+    // Una vez por montaje, con el contenido inicial.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [api]);
+
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -203,7 +258,7 @@ export default function NoteCanvasInner({
   const emit = useCallback(() => {
     timer.current = null;
     const s = scene.current;
-    if (s) onChangeRef.current?.(buildNoteContent(s.elements, s.appState, known.current));
+    if (s) onChangeRef.current?.(buildNoteContent(s.elements, s.appState, known.current, Date.now(), unconfirmed.current));
   }, []);
 
   // Lo retenido por el respiro sale por `drain` (lo llama NoteEditor antes de guardar). Al desmontar no se emite
@@ -213,8 +268,18 @@ export default function NoteCanvasInner({
     clearTimeout(timer.current);
     timer.current = null;
     const s = scene.current;
-    return s ? buildNoteContent(s.elements, s.appState, known.current) : null;
+    return s ? buildNoteContent(s.elements, s.appState, known.current, Date.now(), unconfirmed.current) : null;
   }, []);
+
+  // Confirmada la subida, la imagen entra en el contenido: se emite aunque la persona ya no esté editando.
+  useEffect(
+    () =>
+      uploads.whenDone((id) => {
+        unconfirmed.current.delete(id);
+        if (alive.current && scene.current && !timer.current) timer.current = setTimeout(emit, CHANGE_THROTTLE_MS);
+      }),
+    [emit, uploads],
+  );
 
   /** Excalidraw acepta SVG y archivos grandes; aquí no. Se retira la imagen de la escena y se explica. */
   const retire = useCallback(
@@ -250,13 +315,17 @@ export default function NoteCanvasInner({
       );
       for (const f of fresh) {
         known.current[f.id] = { mimeType: f.mimeType, created: f.created };
+        unconfirmed.current.add(f.id);
+        const images = (elements as { type: string; fileId?: string | null }[]).filter(
+          (e) => e.type === 'image' && e.fileId === f.id,
+        );
         dataUrlToBlob(f.dataURL)
           .then(optimizeImage)
           .then(
             (b) => {
               // Se registra el tipo que de verdad se guarda (WebP si se recodificó).
               known.current[f.id] = { mimeType: b.type, created: f.created };
-              uploads.add(f.id, b);
+              uploads.add(f.id, b, { elements: images, created: f.created });
             },
             (e: unknown) => {
               if (e instanceof ImageTooLargeError) retire([f.id], e.message);
@@ -287,6 +356,7 @@ export default function NoteCanvasInner({
       merge: (l, r) => mergeNoteData(knownBg.current)(l, r),
       saved(c) {
         knownBg.current = c.appState.viewBackgroundColor ?? '#ffffff';
+        uploads.release(Object.keys(c.files)); // lo confirmado ya está en el servidor: se libera la copia en disco
       },
       async applyRemote(c) {
         known.current = unionFiles(known.current, c.files);
@@ -327,7 +397,7 @@ export default function NoteCanvasInner({
       },
     });
     return () => onHandle(null);
-  }, [api, onHandle, loadFiles, drain]);
+  }, [api, onHandle, loadFiles, drain, uploads]);
 
   const insertBoard = useCallback(
     (boardId: string) => {

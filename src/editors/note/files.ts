@@ -81,6 +81,8 @@ export interface UploadQueue {
   resume(published: (id: string) => boolean, restore: (file: PendingFile) => void): Promise<void>;
   /** El contenido con estas imágenes ya se guardó en el servidor: se borran de la cola en disco. */
   release(ids: Iterable<string>): void;
+  /** Avisa de cada subida confirmada (varios oyentes; devuelve la baja). */
+  whenDone(cb: (fileId: string) => void): () => void;
   /** Reintenta lo que falló (botón «Reintentar» o vuelta de la conexión). */
   retryFailed(): void;
   /** Subidas que se perderían al cerrar la pestaña: sin terminar y sin copia en disco. */
@@ -98,6 +100,7 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
   const blobs = new Map<string, Blob>(); // pendientes: siguen en memoria hasta subirse
   const running = new Set<string>();
   const failed = new Set<string>();
+  const listeners = new Set<(id: string) => void>();
   const onDisk = new Set<string>(); // con copia en disco (ahí se queda hasta `release`)
 
   async function run(id: string) {
@@ -112,6 +115,7 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
         blobs.delete(id);
         running.delete(id);
         opts.onDone?.(id);
+        listeners.forEach((cb) => cb(id));
         return;
       } catch (e) {
         lastError = e instanceof Error ? e : new Error(String(e));
@@ -154,6 +158,10 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
         if (blobs.has(id) || !onDisk.delete(id)) continue; // aún sin subir: la copia en disco sigue siendo la red
         void store?.remove(opts.projectId, id).catch(() => undefined);
       }
+    },
+    whenDone(cb) {
+      listeners.add(cb);
+      return () => void listeners.delete(cb);
     },
     retryFailed() {
       for (const id of [...failed]) void run(id);
