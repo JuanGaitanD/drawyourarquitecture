@@ -34,6 +34,58 @@ function mergeList<T extends El>(local: readonly T[], remote: readonly T[], base
 }
 
 /**
+ * Dos jerarquías válidas pueden fusionarse en un ciclo (A dentro de B en un lado y B dentro de A en el otro).
+ * Se rompe de forma determinista: el miembro de id menor pasa a la raíz y el resto cuelga de él en el mismo orden;
+ * cada miembro conserva la posición absoluta que quiso su autor (su posición relativa sobre la absoluta que su
+ * padre tenía en `base`). Los descendientes de los miembros se mueven con ellos.
+ */
+function breakCycles(nodes: BoardNode[], base: BoardContent | null): BoardNode[] {
+  const byId = new Map(nodes.map((n) => [n.id, n] as const));
+  const done = new Set<string>();
+  const cycles: string[][] = [];
+  for (const n of nodes) {
+    const path: string[] = [];
+    let cur: BoardNode | undefined = n;
+    while (cur && !done.has(cur.id)) {
+      const at = path.indexOf(cur.id);
+      if (at >= 0) {
+        cycles.push(path.slice(at));
+        break;
+      }
+      path.push(cur.id);
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+    path.forEach((id) => done.add(id));
+  }
+  if (!cycles.length) return nodes;
+  const baseById = new Map((base?.nodes ?? []).map((n) => [n.id, n] as const));
+  const out = new Map(byId);
+  for (const cycle of cycles) {
+    const intended = new Map(
+      cycle.map((id) => {
+        const n = byId.get(id)!;
+        const bp = n.parentId ? baseById.get(n.parentId) : undefined;
+        const pa = bp ? toAbsolute(bp, baseById) : toAbsolute(byId.get(n.parentId!)!, byId);
+        return [id, { x: n.position.x + pa.x, y: n.position.y + pa.y }] as const;
+      }),
+    );
+    const head = [...cycle].sort()[0]!;
+    const { parentId: _p, ...rest } = byId.get(head)!;
+    out.set(head, { ...rest, position: intended.get(head)! } as BoardNode);
+    let parent = head;
+    for (let i = 1; i < cycle.length; i++) {
+      const id = cycle.find((c) => c !== head && byId.get(c)!.parentId === parent && !done.has(`fixed:${c}`))!;
+      done.add(`fixed:${id}`);
+      const pa = toAbsolute(out.get(parent)!, out);
+      const a = intended.get(id)!;
+      out.set(id, { ...byId.get(id)!, position: { x: a.x - pa.x, y: a.y - pa.y } });
+      parent = id;
+    }
+  }
+  return nodes.map((n) => out.get(n.id)!);
+}
+
+/**
  * Fusiona el estado local con el remoto contra `base`. Quita lo que queda colgando: aristas sin extremo y nodos
  * cuyo padre se borró (pasan a la raíz conservando su posición absoluta). El viewport es el local.
  */
@@ -50,5 +102,5 @@ export function mergeBoards(local: BoardContent, remote: BoardContent, base: Boa
   const edges = mergeList(local.edges, remote.edges, base?.edges ?? []).filter(
     (e) => ids.has(e.source) && ids.has(e.target),
   );
-  return { schemaVersion: 1, nodes: sortParentsFirst(nodes), edges, viewport: local.viewport };
+  return { schemaVersion: 1, nodes: sortParentsFirst(breakCycles(nodes, base)), edges, viewport: local.viewport };
 }

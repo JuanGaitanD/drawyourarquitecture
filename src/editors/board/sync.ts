@@ -75,11 +75,13 @@ export function createBoardSync(
      */
     onRemote(record: ContentRecord): boolean {
       if (record.revision <= seen) return false;
-      seen = record.revision;
       const remote = parse(record.data);
       if (!remote) return false;
       const s0 = store.getState();
       const merged = mergeBoards(s0.toContent(view), remote, base);
+      // Una fusión inválida no se aplica ni avanza la base: el editor nunca recibe una jerarquía rota.
+      if (!validateBoardContent(merged).ok) return false;
+      seen = record.revision;
       base = remote;
       const nodes = reuse(s0.nodes, merged.nodes, cleanNodes);
       const edges = reuse(s0.edges, merged.edges, cleanEdges);

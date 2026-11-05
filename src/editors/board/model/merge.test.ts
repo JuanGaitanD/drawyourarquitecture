@@ -100,3 +100,44 @@ describe('mergeBoards · tres bandas', () => {
     expect(labelOf(mergeBoards(relabel(base(), 'api', 'L'), relabel(base(), 'api', 'R'), null), 'api')).toBe('L');
   });
 });
+
+describe('mergeBoards · reparentados concurrentes', () => {
+  const frame = (id: string, x: number, y: number): BoardNode => ({ ...makeNode('frame', { x, y }), id });
+  const root = (): BoardContent => ({
+    schemaVersion: 1,
+    nodes: [frame('A', 100, 100), frame('B', 500, 300)],
+    edges: [],
+    viewport: { x: 0, y: 0, zoom: 1 },
+  });
+  /** `child` entra en `parent` conservando su posición absoluta. */
+  const nest = (c: BoardContent, child: string, parent: string): BoardContent => {
+    const out = clone(c);
+    const ch = out.nodes.find((n) => n.id === child)!;
+    const pa = out.nodes.find((n) => n.id === parent)!;
+    ch.parentId = parent;
+    ch.position = { x: ch.position.x - pa.position.x, y: ch.position.y - pa.position.y };
+    out.nodes = [...out.nodes.filter((n) => n.id === parent), ...out.nodes.filter((n) => n.id !== parent)];
+    return out;
+  };
+  const abs = (c: BoardContent, id: string) => {
+    const n = c.nodes.find((x) => x.id === id)!;
+    const p = n.parentId ? c.nodes.find((x) => x.id === n.parentId) : undefined;
+    return { x: n.position.x + (p?.position.x ?? 0), y: n.position.y + (p?.position.y ?? 0) };
+  };
+
+  for (const [name, mine, theirs] of [
+    ['A dentro de B (local) y B dentro de A (remoto)', ['A', 'B'], ['B', 'A']],
+    ['B dentro de A (local) y A dentro de B (remoto)', ['B', 'A'], ['A', 'B']],
+  ] as const) {
+    it(`rompe el ciclo de forma determinista: ${name}`, () => {
+      const m = mergeBoards(nest(root(), mine[0], mine[1]), nest(root(), theirs[0], theirs[1]), root());
+      expect(validateBoardContent(m).ok).toBe(true);
+      expect(m.nodes.filter((n) => !n.parentId)).toHaveLength(1);
+      // el nodo con el id menor queda en la raíz; el otro cuelga de él; los dos conservan su posición absoluta
+      expect(m.nodes.find((n) => n.id === 'A')!.parentId).toBeUndefined();
+      expect(m.nodes.find((n) => n.id === 'B')!.parentId).toBe('A');
+      expect(abs(m, 'A')).toEqual({ x: 100, y: 100 });
+      expect(abs(m, 'B')).toEqual({ x: 500, y: 300 });
+    });
+  }
+});
