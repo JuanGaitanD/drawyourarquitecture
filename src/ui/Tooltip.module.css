@@ -1,0 +1,29 @@
+.content {
+  z-index: var(--z-tooltip);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inverse);
+  color: var(--text-inverse);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  box-shadow: var(--shadow-md);
+  animation: fade-in var(--duration-fast) var(--ease);
+}
+
+.kbd {
+  padding: 0 var(--space-1);
+  border-radius: 4px;
+  background: rgb(127 127 127 / 0.3);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}

@@ -1,0 +1,30 @@
+.list {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0 var(--space-1);
+  list-style: none;
+}
+.list li + li {
+  margin-left: -6px;
+}
+.avatar,
+.more {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 2px solid var(--surface-raised);
+  border-radius: var(--radius-full);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+/* Los colores de los avatares son identidad de persona (iguales en claro y oscuro), no del tema. */
+.avatar {
+  color: #fff;
+}
+.more {
+  background: var(--surface-active);
+  color: var(--text);
+}

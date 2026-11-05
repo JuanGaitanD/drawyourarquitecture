@@ -1,0 +1,9 @@
+# Configuración de pnpm (no hay workspaces). Los scripts de instalación de
+# estos paquetes no hacen falta para compilar ni para los emuladores.
+allowBuilds:
+  '@firebase/util': false
+  protobufjs: false
+  esbuild: false
+  re2: false
+minimumReleaseAgeExclude:
+  - lucide-react@1.69.0

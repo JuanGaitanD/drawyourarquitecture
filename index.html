@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>drawyourarquitecture · notas y diagramas de arquitectura</title>
+    <meta
+      name="description"
+      content="Pizarra libre tipo Excalidraw y diagramas de arquitectura tipo Miro, en un solo lugar."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#2f54d6" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Open Graph genérico (las vistas públicas añaden noindex al montarse) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="drawyourarquitecture" />
+    <meta property="og:title" content="drawyourarquitecture · notas y diagramas de arquitectura" />
+    <meta
+      property="og:description"
+      content="Pizarra libre tipo Excalidraw y diagramas de arquitectura tipo Miro, en un solo lugar."
+    />
+    <meta property="og:locale" content="es_ES" />
+    <meta name="twitter:card" content="summary" />
+
+    <!-- Aplica el tema guardado antes de pintar para evitar el parpadeo claro → oscuro -->
+    <script>
+      (function () {
+        try {
+          var p = localStorage.getItem('theme');
+          var dark =
+            p === 'dark' ||
+            ((p === null || p === 'system') && matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Esta aplicación necesita JavaScript.</noscript>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
