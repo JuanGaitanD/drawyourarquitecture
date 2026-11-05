@@ -1,5 +1,5 @@
 import { FileX2, TriangleAlert } from 'lucide-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
 import { PageFallback } from '@/app/PageFallback';
 import { useAutosave, useProject, useRemoteContent, type ProjectState } from '@/app/hooks';
@@ -12,6 +12,7 @@ import { Button, useToast } from '@/ui';
 import { decodeNote, encodeNote, noteSame, type NoteContent } from './codec';
 import styles from './NoteEditor.module.css';
 import { NoteCanvas, type NoteHandle } from './NoteCanvas';
+import { createRemoteInbox } from './remoteInbox';
 import { TopBar } from './TopBar';
 
 export interface NoteEditorProps {
@@ -117,6 +118,8 @@ function Session({
   const handleRef = useRef<NoteHandle | null>(null);
   // Última revisión del servidor que ya se fusionó en la escena (o que esta pestaña escribió).
   const seen = useRef(record.revision);
+  const inbox = useMemo(() => createRemoteInbox<ContentRecord>(), []);
+  const applyRemoteRecord = useRef<(r: ContentRecord) => void>(() => undefined);
   const onHandle = useCallback((h: NoteHandle | null) => {
     if (h) {
       drainRef.current = h.drain;
@@ -124,7 +127,8 @@ function Session({
     }
     handleRef.current = h;
     setHandle(h);
-  }, []);
+    if (h) inbox.flush(applyRemoteRecord.current);
+  }, [inbox]);
   const syncOpts = useMemo(
     () => ({
       same: noteSame,
@@ -154,17 +158,21 @@ function Session({
   // El lienzo solo llama a onChange tras aplicar initialData: aquí `hydrated` ya es cierto.
   const autosave = useAutosave(project.id, encoded, true, record.revision, undefined, drain, syncOpts);
 
-  useRemoteContent(project.id, (r) => {
-    const h = handleRef.current;
-    if (!h || r.revision <= seen.current) return;
-    seen.current = r.revision;
-    try {
-      void h.applyRemote(decodeNote(r.data));
-      autosave.acceptRemote(r.data);
-    } catch {
-      /* contenido ilegible: se ignora, el guardado en transacción lo volverá a fusionar */
-    }
+  useEffect(() => {
+    applyRemoteRecord.current = (r) => {
+      const h = handleRef.current;
+      if (!h || r.revision <= seen.current) return;
+      seen.current = r.revision;
+      try {
+        void h.applyRemote(decodeNote(r.data));
+        autosave.acceptRemote(r.data);
+      } catch {
+        /* contenido ilegible: se ignora, el guardado en transacción lo volverá a fusionar */
+      }
+    };
   });
+  // Si Excalidraw aún no entregó su handle, el último remoto espera y se aplica al registrarlo.
+  useRemoteContent(project.id, (r) => inbox.push(r, handleRef.current !== null, applyRemoteRecord.current));
 
   const onChange = useCallback((c: NoteContent) => {
     try {
