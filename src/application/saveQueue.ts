@@ -1,4 +1,4 @@
-import type { ContentRepo } from './ports';
+import type { ContentMerger, ContentRepo } from './ports';
 
 // Autosave sin React (plan · invariante 2). Una sola escritura en vuelo, la última gana;
 // transacción con revisión esperada; borrador local en cada cambio.
@@ -115,6 +115,20 @@ export interface SaveQueueOptions {
   isOffline?: () => boolean;
   /** Identifica el borrador de esta cola; por defecto uno aleatorio por instancia. */
   sessionId?: string;
+  /**
+   * Si se pasa, un guardado con la revisión desfasada se fusiona contra el remoto en la transacción en vez de
+   * dar conflicto (colaboración en tiempo real). Sin él, el desfase es `conflicto` como antes.
+   */
+  merge?: ContentMerger;
+  /** Igualdad semántica de dos contenidos codificados (por defecto, igualdad de texto). Evita escrituras redundantes. */
+  same?: (a: string, b: string) => boolean;
+  /**
+   * Colaboración: si la cola lleva al menos `debounceMs` sin escribir, el primer cambio se escribe a los
+   * `fastFirstMs` en vez de a los `debounceMs`; una ráfaga de cambios sigue agrupándose (techo de escrituras igual).
+   */
+  fastFirstMs?: number;
+  /** Tras cada guardado correcto. `merged` viene si el servidor tenía algo más y se escribió la fusión. */
+  onSaved?: (r: { data: string; revision: number; merged?: string }) => void;
 }
 
 export interface SaveQueue {
@@ -125,6 +139,13 @@ export interface SaveQueue {
   onStatus(cb: (s: SaveState) => void): () => void;
   /** Abre el gate tras cargar con éxito: `lastSaved` es lo que hay en el servidor. */
   hydrate(revision: number, lastSaved: string): void;
+  /**
+   * Otra persona escribió `data` y el editor ya lo fusionó en su escena: pasa a ser lo último conocido del servidor,
+   * así la cola no vuelve a escribir lo que el editor re-emite igual (eco) y dos clientes no entran en ping-pong.
+   * No sube la revisión esperada: un guardado pendiente con contenido anterior a la fusión pasa por la fusión de la
+   * transacción en vez de pisar lo ajeno.
+   */
+  acceptRemote(data: string): void;
   readonly hydrated: boolean;
   readonly revision: number;
   readonly sessionId: string;
@@ -158,6 +179,7 @@ export function createSaveQueue(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight: Promise<void> | null = null;
   let disposed = false;
+  let lastWriteAt = Number.NEGATIVE_INFINITY;
   let state: SaveState = { status: 'guardado' };
   const listeners = new Set<(s: SaveState) => void>();
 
@@ -165,7 +187,9 @@ export function createSaveQueue(
     state = s;
     listeners.forEach((cb) => cb(s));
   };
-  const dirty = () => latest !== null && latest !== lastSaved;
+  const isSame = (a: string | null, b: string | null) =>
+    a === b || (a !== null && b !== null && (opts.same?.(a, b) ?? false));
+  const dirty = () => latest !== null && !isSame(latest, lastSaved);
 
   function writeDraft(data: string) {
     try {
@@ -189,13 +213,15 @@ export function createSaveQueue(
           const data = latest as string;
           setState({ status: 'guardando' });
           try {
-            const res = await repo.save(id, data, revision);
+            lastWriteAt = now();
+            const res = await repo.save(id, data, revision, opts.merge);
             if ('conflict' in res) {
               setState({ status: 'conflicto' });
               return;
             }
             revision = res.revision;
             lastSaved = data;
+            opts.onSaved?.({ data, revision, merged: res.merged });
             if (latest === data) clearDraft(myDraft, storage);
             setState({ status: 'guardado' });
           } catch (e) {
@@ -215,15 +241,16 @@ export function createSaveQueue(
     push(data) {
       if (!hydrated || disposed) return;
       latest = data;
-      if (data === lastSaved) {
+      if (isSame(data, lastSaved)) {
         clearTimer();
         clearDraft(myDraft, storage);
         if (state.status === 'error') setState({ status: 'guardado' });
         return;
       }
       writeDraft(data);
-      clearTimer();
-      timer = setTimeout(() => void run(), debounceMs);
+      const fast = opts.fastFirstMs !== undefined && !timer && now() - lastWriteAt >= debounceMs;
+      clearTimer(); // una ráfaga reinicia el debounce; el primer cambio tras un descanso sale rápido
+      timer = setTimeout(() => void run(), fast ? opts.fastFirstMs : debounceMs);
     },
     async flush() {
       clearTimer();
@@ -239,6 +266,15 @@ export function createSaveQueue(
       revision = rev;
       lastSaved = saved;
       hydrated = true;
+    },
+    acceptRemote(data) {
+      if (!hydrated || disposed) return;
+      lastSaved = data;
+      if (!dirty()) {
+        clearTimer();
+        clearDraft(myDraft, storage);
+        if (state.status === 'error') setState({ status: 'guardado' });
+      }
     },
     get hydrated() {
       return hydrated;

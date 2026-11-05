@@ -17,7 +17,16 @@ export interface SceneElementLike {
   type: string;
   isDeleted?: boolean;
   fileId?: string | null;
+  /** Marca de tiempo de la última modificación (Excalidraw). */
+  updated?: number;
 }
+
+/**
+ * Un elemento borrado se conserva una hora (Excalidraw usa `isDeleted` como tombstone): así el borrado llega a quien
+ * edita a la vez o vuelve de estar sin conexión. ponytail: pasada una hora, un borrado puede resucitar en un cliente
+ * que llevaba más tiempo desconectado; la nota no tiene `base` con la que deducirlo.
+ */
+export const TOMBSTONE_TTL_MS = 60 * 60_000;
 
 /** Ids de archivo que usan las imágenes vivas de la escena. */
 export function referencedFileIds(elements: readonly unknown[]): string[] {
@@ -36,15 +45,18 @@ export function buildNoteContent(
   elements: readonly unknown[],
   appState: { viewBackgroundColor?: string },
   known: NoteFiles,
+  now = Date.now(),
 ): NoteContent {
-  const live = (elements as readonly SceneElementLike[]).filter((e) => !e.isDeleted);
+  const all = elements as readonly SceneElementLike[];
+  const live = all.filter((e) => !e.isDeleted);
+  const kept = all.filter((e) => !e.isDeleted || (typeof e.updated === 'number' && now - e.updated <= TOMBSTONE_TTL_MS));
   const files: NoteFiles = {};
   for (const id of referencedFileIds(live)) {
     const meta = known[id];
     if (meta) files[id] = { mimeType: meta.mimeType, created: meta.created };
   }
   const bg = appState.viewBackgroundColor;
-  return { schemaVersion: 1, elements: live, appState: bg ? { viewBackgroundColor: bg } : {}, files };
+  return { schemaVersion: 1, elements: kept, appState: bg ? { viewBackgroundColor: bg } : {}, files };
 }
 
 export const encodeNote = (c: NoteContent): string => encode(c);
@@ -68,4 +80,26 @@ export function decodeNote(data: string): NoteContent {
     appState: typeof bg === 'string' ? { viewBackgroundColor: bg } : {},
     files,
   };
+}
+
+/** Unión de los archivos de dos versiones de la nota por `fileId` (en un choque manda `local`). */
+export const unionFiles = (local: NoteFiles, remote: NoteFiles): NoteFiles => ({ ...remote, ...local });
+
+type Versioned = { id?: string; version?: number; versionNonce?: number };
+
+/** Igualdad semántica de dos notas codificadas: mismos elementos (id, versión) y mismos archivos. */
+export function noteSame(a: string, b: string): boolean {
+  try {
+    const sig = (d: string) => {
+      const n = decodeNote(d);
+      return JSON.stringify([
+        (n.elements as Versioned[]).map((e) => `${e.id}:${e.version}:${e.versionNonce}`).sort(),
+        Object.keys(n.files).sort(),
+        n.appState.viewBackgroundColor ?? '',
+      ]);
+    };
+    return sig(a) === sig(b);
+  } catch {
+    return false;
+  }
 }

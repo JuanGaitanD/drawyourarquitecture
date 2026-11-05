@@ -4,7 +4,8 @@ import type { Viewport } from '../model/board';
 import { validateBoardContent } from '../model/validate';
 import type { BoardStore } from '../store/boardStore';
 
-const DELAY_MS = 250;
+// Corto a propósito: con colaboración el cambio debe salir en menos de un segundo (el guardado agrupa después).
+const DELAY_MS = 120;
 
 export interface EncodedContent {
   encoded: string | null;
@@ -29,7 +30,7 @@ const same = (a: EncodedContent, b: EncodedContent) =>
 
 /**
  * El contenido del store ya codificado para `useAutosave`. El primer valor es síncrono (es la base de
- * comparación); después se recalcula 250 ms tras el último cambio de nodos o aristas (no de la selección ni del
+ * comparación); después se recalcula 120 ms tras el último cambio de nodos o aristas (no de la selección ni del
  * viewport: el viewport viaja con el siguiente cambio de contenido). `tooLarge` avisa de que pasa de 900 KB e `invalid` de que el contenido no valida (no se guarda).
  * `drain` calcula ya lo pendiente (para `pagehide`, ocultar la pestaña o desmontar) y devuelve `null` si no hay.
  * Sigue valiendo después de desmontar: el cambio pendiente no depende del orden en que React limpia los efectos.

@@ -29,6 +29,8 @@ function setup(opts: { signedIn?: boolean; failUpload?: boolean } = {}) {
 
   const projectRepo: ProjectRepo = {
     listMine: () => () => undefined,
+    listShared: () => () => undefined,
+    setMember: async () => undefined,
     get: async (id) => projects.get(id) ?? null,
     async create(p, initialData) {
       const id = `new${++n}`;
@@ -52,6 +54,7 @@ function setup(opts: { signedIn?: boolean; failUpload?: boolean } = {}) {
       log.push(`content:${id}`);
       return { revision: 1 };
     },
+    subscribe: () => () => undefined,
   };
   const fileStore: FileStore = {
     async upload(pid, fid, blob) {

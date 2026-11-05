@@ -1,12 +1,13 @@
 import { FolderOpen, Search, TriangleAlert, X } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Button } from '@/ui';
-import { useAuth, useMyProjects } from '../hooks';
+import { useAuth, useMyProjects, useSharedProjects } from '../hooks';
 import { Shell } from '../shell/Shell';
 import styles from './Dashboard.module.css';
 import { countByTab, filterProjects, type Tab } from './filter';
 import { NewProject } from './NewProject';
 import { ProjectCard } from './ProjectCard';
+import { SharedProjects } from './SharedProjects';
 import { PANEL_ID, ProjectTabs, tabId } from './ProjectTabs';
 import { useNow } from './useNow';
 
@@ -15,6 +16,7 @@ const plural = (n: number) => `${n} ${n === 1 ? 'proyecto' : 'proyectos'}`;
 export function Dashboard() {
   const { user } = useAuth();
   const { projects, error, retry } = useMyProjects(user?.uid ?? null);
+  const shared = useSharedProjects(user?.uid ?? null);
   const now = useNow();
   const [tab, setTab] = useState<Tab>('all');
   const [query, setQuery] = useState('');
@@ -132,6 +134,8 @@ export function Dashboard() {
             )}
           </div>
         </section>
+
+        {shared && shared.length > 0 ? <SharedProjects projects={shared} uid={user?.uid ?? ''} now={now} /> : null}
       </div>
     </Shell>
   );

@@ -21,7 +21,13 @@ import { ImageTooLargeError, optimizeImage } from '@/application/imageOptimize';
 import { fileStore } from '@/app/services';
 import { useTheme, useToast } from '@/ui';
 import { BoardEmbed } from './BoardEmbed';
-import { buildNoteContent, referencedFileIds, type NoteContent, type NoteFiles } from './codec';
+import {
+  buildNoteContent,
+  referencedFileIds,
+  unionFiles,
+  type NoteContent,
+  type NoteFiles,
+} from './codec';
 import {
   boardEmbedLink,
   embedOrigin,
@@ -39,6 +45,7 @@ import {
   type UploadQueue,
 } from './files';
 import { InsertBoardDialog } from './InsertBoardDialog';
+import { mergeNoteData, reconcileScene } from './merge';
 import { readLibrary, writeLibrary } from './library';
 import type { NoteCanvasProps } from './NoteCanvas';
 import styles from './NoteCanvas.module.css';
@@ -46,7 +53,8 @@ import styles from './NoteCanvas.module.css';
 const CHANGE_THROTTLE_MS = 150;
 const REJECTION_TEXT = 'Solo se admiten PNG, JPEG, GIF y WebP (hasta 4 MiB tras optimizar).';
 
-type Scene = { elements: readonly unknown[]; appState: { viewBackgroundColor?: string } };
+type SceneState = { viewBackgroundColor?: string; openSidebar?: { name: string } | null };
+type Scene = { elements: readonly unknown[]; appState: SceneState };
 
 export default function NoteCanvasInner({
   projectId,
@@ -61,6 +69,8 @@ export default function NoteCanvasInner({
   const [, navigate] = useLocation();
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [insertOpen, setInsertOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const toggleLibrary = useCallback(() => api?.toggleSidebar({ name: 'default' }), [api]);
 
   // Estado del puente con Excalidraw. Vive en refs: no pinta nada y no debe re-renderizar el lienzo.
   const known = useRef<NoteFiles>({ ...content.files }); // archivos ya registrados en la nota
@@ -220,7 +230,8 @@ export default function NoteCanvasInner({
   );
 
   const handleChange = useCallback(
-    (elements: readonly unknown[], appState: { viewBackgroundColor?: string }, files: BinaryFiles) => {
+    (elements: readonly unknown[], appState: SceneState, files: BinaryFiles) => {
+      setLibraryOpen(appState.openSidebar?.name === 'default');
       if (!ready.current || readonly) return;
       const { fresh, rejected: bad } = diffNewFiles(
         elements,
@@ -263,6 +274,21 @@ export default function NoteCanvasInner({
     if (!api || !onHandle) return;
     onHandle({
       drain,
+      merge: mergeNoteData,
+      async applyRemote(c) {
+        known.current = unionFiles(known.current, c.files);
+        const elements = reconcileScene(
+          api.getSceneElementsIncludingDeleted() as never,
+          c.elements as never,
+          api.getAppState(),
+        );
+        api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
+        const have = api.getFiles();
+        await loadFiles(
+          api,
+          referencedFileIds(elements).filter((id) => !have[id]),
+        );
+      },
       async applyContent(c) {
         known.current = { ...known.current, ...c.files };
         const elements = restoreElements(c.elements as ExcalidrawElement[], null, { repairBindings: true });
@@ -329,7 +355,15 @@ export default function NoteCanvasInner({
         }}
         onLinkOpen={onLinkOpen}
         onLibraryChange={writeLibrary}
-        renderTopRightUI={readonly ? undefined : () => <div className={styles.topRight}>{topRight}</div>}
+        renderTopRightUI={
+          !topRight
+            ? undefined
+            : () => (
+                <div className={styles.topRight}>
+                  {typeof topRight === 'function' ? topRight({ libraryOpen, toggleLibrary }) : topRight}
+                </div>
+              )
+        }
         UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
       >
         {readonly ? null : (

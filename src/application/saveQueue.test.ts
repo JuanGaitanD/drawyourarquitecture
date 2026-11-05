@@ -31,9 +31,11 @@ function fakeRepo(serverRevision = 0) {
   let release: (() => void) | null = null;
   let hold = false;
   let failNext: Error | null = null;
+  let remoteData = '';
   const repo: ContentRepo = {
     load: async () => null,
-    async save(_id, data, expected) {
+    subscribe: () => () => undefined,
+    async save(_id, data, expected, merge) {
       calls.push({ data, expected });
       if (hold) await new Promise<void>((r) => (release = r));
       if (failNext) {
@@ -41,8 +43,15 @@ function fakeRepo(serverRevision = 0) {
         failNext = null;
         throw e;
       }
-      if (expected !== rev) return { conflict: true };
+      if (expected !== rev) {
+        if (!merge) return { conflict: true };
+        rev += 1;
+        const merged = merge(data, remoteData);
+        remoteData = merged;
+        return merged === data ? { revision: rev } : { revision: rev, merged };
+      }
       rev += 1;
+      remoteData = data;
       return { revision: rev };
     },
   };
@@ -55,6 +64,11 @@ function fakeRepo(serverRevision = 0) {
       release?.();
     },
     failNext: (e: Error) => (failNext = e),
+    /** Simula que otro cliente guardó: sube la revisión y deja su contenido. */
+    remoteSave: (data: string) => {
+      rev += 1;
+      remoteData = data;
+    },
   };
 }
 
@@ -187,6 +201,141 @@ describe('saveQueue · conflicto de revisión', () => {
     q.push('mío');
     await q.flush();
     expect(readDraft(draftKey('p1', q.sessionId), storage)?.data).toBe('mío');
+  });
+});
+
+describe('saveQueue · fusión con el remoto', () => {
+  const merge = (local: string, remote: string) => (local === remote ? local : `${remote}+${local}`);
+
+  it('con merge, un desfase de revisión no da conflicto: escribe la fusión y sigue guardando', async () => {
+    const f = fakeRepo(0);
+    const q = createSaveQueue(f.repo, 'p1', 0, { storage: memoryStorage(), merge });
+    f.remoteSave('R');
+    q.push('L1');
+    await q.flush();
+    expect(q.state.status).toBe('guardado');
+    expect(q.revision).toBe(2);
+    // la cola ya no está sucia: no reescribe lo que ya mandó
+    await q.flush();
+    expect(f.calls).toHaveLength(1);
+    q.push('L2');
+    await q.flush();
+    expect(f.calls[1]).toEqual({ data: 'L2', expected: 2 });
+    expect(q.state.status).toBe('guardado');
+  });
+
+  it('sin merge el mismo desfase sigue siendo conflicto', async () => {
+    const f = fakeRepo(0);
+    const q = createSaveQueue(f.repo, 'p1', 0, { storage: memoryStorage() });
+    f.remoteSave('R');
+    q.push('L1');
+    await q.flush();
+    expect(q.state.status).toBe('conflicto');
+  });
+});
+
+describe('saveQueue · dos clientes sin ping-pong', () => {
+  type Rec = Parameters<Parameters<ContentRepo['subscribe']>[1]>[0];
+  const parse = (d: string) => JSON.parse(d) as string[];
+  const union = (a: string, b: string) => JSON.stringify([...new Set([...parse(a), ...parse(b)])].sort());
+
+  /** Servidor compartido: cada escritura se notifica a todos los suscriptores, también al que escribió. */
+  function server() {
+    let rev = 0;
+    let data = '[]';
+    let writes = 0;
+    const subs = new Set<(r: Rec) => void>();
+    const repo: ContentRepo = {
+      load: async () => null,
+      subscribe: (_id, cb) => (subs.add(cb), () => subs.delete(cb)),
+      async save(_id, d, expected, merge) {
+        let out = d;
+        if (expected !== rev) {
+          if (!merge) return { conflict: true };
+          out = merge(d, data);
+        }
+        rev += 1;
+        writes += 1;
+        data = out;
+        subs.forEach((cb) => cb({ data: out, schemaVersion: 1, revision: rev, updatedAt: 0 }));
+        return out === d ? { revision: rev } : { revision: rev, merged: out };
+      },
+    };
+    return { repo, writes: () => writes, data: () => data };
+  }
+
+  /** Un editor mínimo: estado local (conjunto), cola con fusión y la misma lógica de eco que los editores reales. */
+  function client(srv: ReturnType<typeof server>) {
+    const local = new Set<string>();
+    const enc = () => JSON.stringify([...local].sort());
+    let seen = 0;
+    const q = createSaveQueue(srv.repo, 'p', 0, {
+      storage: memoryStorage(),
+      merge: union,
+      onSaved: (r) => {
+        if (r.merged === undefined && r.revision > seen) seen = r.revision;
+      },
+    });
+    q.hydrate(0, '[]');
+    srv.repo.subscribe('p', (r) => {
+      if (r.revision <= seen) return; // el snapshot propio ya se vio
+      seen = r.revision;
+      parse(r.data).forEach((x) => local.add(x));
+      q.acceptRemote(r.data);
+      q.push(enc()); // el editor re-emite tras aplicar el remoto
+    });
+    return { add: (x: string) => (local.add(x), q.push(enc())), local, q };
+  }
+
+  it('ediciones simultáneas convergen y, al asentarse, nadie vuelve a escribir', async () => {
+    const srv = server();
+    const a = client(srv);
+    const b = client(srv);
+    a.add('a');
+    b.add('b');
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 4);
+    expect([...a.local].sort()).toEqual(['a', 'b']);
+    expect([...b.local].sort()).toEqual(['a', 'b']);
+    expect(srv.data()).toBe('["a","b"]');
+    const writes = srv.writes();
+    expect(writes).toBeLessThanOrEqual(3);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(srv.writes()).toBe(writes);
+  });
+
+  it('muchas ediciones alternas no multiplican las escrituras', async () => {
+    const srv = server();
+    const a = client(srv);
+    const b = client(srv);
+    for (let i = 0; i < 5; i++) {
+      a.add(`a${i}`);
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 50);
+      b.add(`b${i}`);
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 50);
+    }
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 4);
+    expect(parse(srv.data())).toHaveLength(10);
+    // una escritura por edición como mucho (10), nunca más por eco
+    expect(srv.writes()).toBeLessThanOrEqual(10);
+    expect(a.q.state.status).toBe('guardado');
+    expect(b.q.state.status).toBe('guardado');
+  });
+});
+
+describe('saveQueue · primer cambio rápido (colaboración)', () => {
+  it('tras un descanso el primer cambio sale a fastFirstMs y una ráfaga sigue agrupándose', async () => {
+    const f = fakeRepo(0);
+    const q = createSaveQueue(f.repo, 'p1', 0, { storage: memoryStorage(), fastFirstMs: 100 });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 1);
+    q.push('1');
+    await vi.advanceTimersByTimeAsync(110);
+    expect(f.calls).toHaveLength(1); // salió sin esperar al debounce
+    q.push('2'); // justo después de escribir: ráfaga, debounce normal
+    await vi.advanceTimersByTimeAsync(110);
+    expect(f.calls).toHaveLength(1);
+    q.push('3');
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 10);
+    expect(f.calls.map((c) => c.data)).toEqual(['1', '3']);
   });
 });
 

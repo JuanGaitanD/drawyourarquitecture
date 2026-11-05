@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildNoteContent, decodeNote, emptyNote, encodeNote, referencedFileIds } from './codec';
+import {
+  buildNoteContent,
+  decodeNote,
+  emptyNote,
+  encodeNote,
+  noteSame,
+  referencedFileIds,
+  unionFiles,
+} from './codec';
 
 const img = (fileId: string, isDeleted = false) => ({ type: 'image', id: fileId, fileId, isDeleted });
 const rect = { type: 'rectangle', id: 'r1', isDeleted: false };
@@ -42,5 +50,29 @@ describe('codec de nota', () => {
     expect(() => decodeNote('{"schemaVersion":1,"nodes":[]}')).toThrow();
     expect(() => decodeNote('null')).toThrow();
     expect(decodeNote('{"schemaVersion":1,"elements":[]}')).toEqual(emptyNote());
+  });
+});
+
+describe('colaboración · archivos y comparación', () => {
+  it('unionFiles junta los archivos de los dos lados por fileId', () => {
+    const local = { a: { mimeType: 'image/png', created: 1 } };
+    const remote = { b: { mimeType: 'image/webp', created: 2 }, a: { mimeType: 'image/gif', created: 9 } };
+    expect(unionFiles(local, remote)).toEqual({ a: local.a, b: remote.b });
+  });
+
+  it('noteSame ignora el orden de los elementos y distingue versiones y archivos', () => {
+    const el = (id: string, version: number) => ({ id, type: 'rectangle', version, versionNonce: 1 });
+    const enc = (elements: unknown[], files = {}) =>
+      encodeNote({ schemaVersion: 1, elements, appState: {}, files });
+    expect(noteSame(enc([el('a', 1), el('b', 1)]), enc([el('b', 1), el('a', 1)]))).toBe(true);
+    expect(noteSame(enc([el('a', 1)]), enc([el('a', 2)]))).toBe(false);
+    expect(noteSame(enc([el('a', 1)]), enc([el('a', 1)], { f: { mimeType: 'image/png', created: 1 } }))).toBe(false);
+  });
+
+  it('un elemento borrado hace menos de una hora viaja como tombstone y uno viejo se descarta', () => {
+    const now = 10_000_000_000;
+    const gone = (id: string, updated: number) => ({ type: 'rectangle', id, isDeleted: true, updated });
+    const c = buildNoteContent([gone('nuevo', now - 1000), gone('viejo', now - 2 * 3_600_000)], {}, {}, now);
+    expect((c.elements as { id: string }[]).map((e) => e.id)).toEqual(['nuevo']);
   });
 });

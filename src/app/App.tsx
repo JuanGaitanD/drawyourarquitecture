@@ -11,6 +11,7 @@ const Dashboard = lazy(() => import('./dashboard/Dashboard').then((m) => ({ defa
 const Settings = lazy(() => import('./settings/Settings').then((m) => ({ default: m.Settings })));
 const Viewer = lazy(() => import('./viewer/Viewer').then((m) => ({ default: m.Viewer })));
 const EmbedPage = lazy(() => import('./viewer/EmbedPage').then((m) => ({ default: m.EmbedPage })));
+const InvitePage = lazy(() => import('./invite/InvitePage').then((m) => ({ default: m.InvitePage })));
 const NoteEditor = lazy(() => import('@/editors/note/NoteEditor').then((m) => ({ default: m.NoteEditor })));
 const BoardEditor = lazy(() =>
   import('@/editors/board/BoardEditor').then((m) => ({ default: m.BoardEditor })),
@@ -46,6 +47,13 @@ export function App() {
             {({ id }) => (
               <AuthGate>
                 <BoardEditor key={id} id={id} />
+              </AuthGate>
+            )}
+          </Route>
+          <Route path="/invite/:token">
+            {({ token }) => (
+              <AuthGate>
+                <InvitePage key={token} token={token} />
               </AuthGate>
             )}
           </Route>

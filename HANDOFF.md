@@ -12,6 +12,43 @@
 
 Siguen T6 (e2e) y T8 (despliegue, pendiente de Juan).
 
+## Carril P2 · Colaboración en tiempo real (rama `lane/p2-realtime`, sin push)
+
+**Hecho**: Biblioteca propia en la barra de la nota; reglas de `members`, `invites`, `joins` y `presence` (50 casos de reglas); invitaciones con enlace, panel «Compartidos conmigo» y ruta `/invite/:token`; sincronización en vivo con fusión (nota y board); presencia con latido y avatares. Gates: `lint`, `typecheck`, `test` (345), `build`, reglas (50) y `test:e2e` (3) en verde.
+
+### Decisiones (incluye las correcciones de la revisión PonyTail)
+
+1. **Biblioteca**: `NoteCanvas.topRight` admite una función `(ui: CanvasUi) => ReactNode`; el botón propio vive en `TopBar` (`api.toggleSidebar({ name: 'default' })`, `aria-pressed` con el estado) y el disparador de Excalidraw se oculta por CSS (`.default-sidebar-trigger`). Con la barra lateral abierta la tapa a ella, igual que antes: se cierra con su «X».
+2. **Reglas** (`firestore.rules.tpl`): `members: map<uid, 'editor'|'viewer'>` en el proyecto; lectura dueño/miembro/público; contenido y archivos los escriben dueño y editor; metadatos, `members` y borrados solo el dueño (el editor solo sube `updatedAt`); `canCreate()` = `isOwner()` (P3 la amplía; los bloques `mcpTokens` y `allowedUsers` no se tocaron). **Unirse con invitación**: un batch escribe `projects/{id}/joins/{uid} = { token, name }` y `members.<uid>`; la regla de `update` lee el token con `getAfter(joins/uid)`, valida con `get(invites/token)` (mismo proyecto, `expiresAt` > `request.time`), exige que el rol sea el del invite y que solo cambie `members.<uid>`. Invites: `get` sin `list` salvo los propios, los crean y borran solo el dueño, token de 32 caracteres (24 bytes), caducidad ≤ 7 días. **`list` de compartidos**: `where('members.<uid>', 'in', ['editor','viewer'])` **sin `orderBy`** (se ordena en cliente): un índice compuesto por uid es imposible, así que `firestore.indexes.json` no cambia.
+3. **Revocación** en «Compartir» (solo el dueño): crear enlace (editor/solo lectura), copiar, **revocar** invitación y **quitar** miembros (los nombres salen de `joins`).
+4. **Sincronización**: `ContentRepo.subscribe` (`onSnapshot`) y `save(id, data, rev, merge?)`: con `merge`, un desfase de revisión no da conflicto: la transacción fusiona contra el remoto y escribe `revision+1`. La fusión se **inyecta por editor** (`useAutosave` 7.º parámetro `{ merge, same, fastFirstMs, onSaved }`); `application/` no importa motores. **Board**: fusión **a tres bandas** contra la base (último contenido del servidor conocido): sin contador `v`, sin tombstones y sin cambios en `BoardContent`/`validate`/visor/MCP; si cambia en los dos lados gana el local; se limpian aristas colgantes y se reparentan hijos de un frame borrado (`model/merge.ts`, `sync.ts`). La fusión del guardado usa el **estado vivo del store**, no el texto encolado (que puede ser anterior a lo último recibido). **Nota**: `reconcileElements` (`merge.ts`) con `updateScene({ captureUpdate: NEVER })`; la fusión **une `content.files`** (`unionFiles`). Como la nota no tiene `base`, `buildNoteContent` ahora **conserva como tombstone los elementos `isDeleted` modificados hace menos de 1 h** (`TOMBSTONE_TTL_MS`); **P3: el servidor MCP debe ignorar `isDeleted` al leer notas**. Techo: un cliente desconectado más de 1 h puede resucitar un borrado.
+5. **Anti-eco**: al aplicar un remoto se llama `acceptRemote(data)` (la cola toma ese contenido como lo último del servidor) y se ignora la instantánea con revisión ya vista (propia o antigua); `same` compara contenidos de forma semántica (board: por id sin orden ni viewport; nota: id+versión+archivos), así lo que el editor re-emite igual no se reescribe. **No se sube la revisión esperada** al aplicar un remoto (la revisión es la de la última escritura propia): un guardado pendiente anterior a la fusión pasa por la fusión de la transacción en vez de pisar lo ajeno. Test: dos colas simuladas convergen y no escriben más al asentarse (`saveQueue.test.ts`).
+6. **Latencia**: `fastFirstMs: 150` (el primer cambio tras un descanso ≥ 800 ms sale a los 150 ms; una ráfaga sigue agrupándose a 800 ms) y el board codifica a los 120 ms (antes 250).
+7. **Presencia**: **sin cursores** (cada escritura gasta cuota). `projects/{id}/presence/{uid} = { name, color, at }`: latido al abrir y cada 60 s, caduca a los 2 min, borrado al salir (mejor esfuerzo); lo escribe solo el propio usuario y lo leen miembros y dueño. Avatares de los conectados en la barra de la nota y la cabecera del board. Los cursores (nota con `collaborators`, capa propia en el board) **quedan fuera de v2**: harían falta Realtime Database u otro canal efímero.
+8. **Viewer**: la nota abre en `viewModeEnabled` y el board en `BoardViewer` («Solo lectura», título bloqueado); ambos se actualizan en vivo. El editor y el viewer no ven «Compartir».
+9. **Emulador de pruebas con dos cuentas**: con `VITE_USE_EMULATORS=1`, `localStorage['dya:testUser'] = 'guest-a'` entra como otra cuenta de prueba (el dueño sigue siendo `owner-test`).
+
+### Coste (cuota Spark: 20 000 escrituras y 50 000 lecturas al día)
+
+- Guardado: con `DEBOUNCE_MS = 800`, un editor escribiendo sin parar genera **≈ 4 500 escrituras/h** (el techo; en uso real mucho menos), más **una lectura por oyente y por escritura**. Si se acerca a la cuota, subir el debounce.
+- Presencia: 1 escritura/min por persona conectada.
+
+### Aceptación (Chrome, dos contextos de Playwright: `owner-test` e invitado `guest-a`; script en `.wigi/p2/accept.mjs`, no versionado)
+
+- Board: edición simultánea de los dos → los dos ven ambos cambios en 0,5 s; cambios de etiqueta distintos a la vez y un borrado se propagan; sin avisos de conflicto. Cambio aislado: 0,4–1,0 s de un cliente al otro.
+- Nota: un rectángulo y una elipse dibujados a la vez por cada uno acaban en el servidor en ≈ 1 s, sin avisos de conflicto.
+- Viewer (`viewer-b`): ve «Solo lectura», sin herramientas de edición, título bloqueado, y ve en vivo los cambios del dueño. Reglas: un viewer no escribe contenido.
+- Dueño: lista de miembros con nombres, quitar un miembro y revocar invitaciones funcionan; tras quitarlo, sus escrituras reciben 403.
+- Avatares: cada uno ve al otro conectado.
+- **Reglas en el navegador**: los tests de reglas cargan `firestore.rules` en el emulador compartido; otro carril puede sobrescribirlas, y entonces «Crear enlace» falla («No se pudo crear la invitación»). Se volvió a lanzar la suite de reglas antes de cada pasada.
+
+### Pendiente / límites
+
+- Cursores en tiempo real (ver 7). Viewer del board: el visor se reconstruye (reencuadra) con cada cambio remoto.
+- La fusión del board recorre todo el board por cada cambio remoto (O(n)).
+- Una invitación aceptada y luego revocada no expulsa: hay que quitar al miembro (se hace desde la misma ventana).
+- P3: ignorar `isDeleted` en notas; el servidor MCP ya puede escribir contenido de un board sin tocar nada de sincronización (no hay campos extra).
+
 ## Lo que hay
 
 | Pieza            | Dónde                                                                  | Estado                                                                                                 |

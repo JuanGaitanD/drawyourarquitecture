@@ -2,12 +2,22 @@ import { ArrowLeft, CircleAlert, CloudOff, Link2, LoaderCircle, Check, Copy, Glo
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import type { SaveStatus } from '@/application/saveQueue';
+import { PresenceAvatars } from '@/app/invite/PresenceAvatars';
+import { SharePanel } from '@/app/invite/SharePanel';
 import { ThemeToggle, UserMenu } from '@/app/shell/Shell';
 import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
 import styles from './editor.module.css';
 
 /** Título editable: Enter o salir del campo confirma, Esc lo devuelve. */
-export function TitleField({ value, onCommit }: { value: string; onCommit: (title: string) => void }) {
+export function TitleField({
+  value,
+  onCommit,
+  readOnly,
+}: {
+  value: string;
+  onCommit: (title: string) => void;
+  readOnly?: boolean;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? value;
   const finish = (next: string | null) => {
@@ -20,6 +30,7 @@ export function TitleField({ value, onCommit }: { value: string; onCommit: (titl
       className={styles.title}
       value={shown}
       maxLength={120}
+      readOnly={readOnly}
       aria-label="Título del diagrama"
       placeholder="Diagrama sin título"
       size={Math.min(Math.max(shown.length, 12), 40)}
@@ -139,6 +150,7 @@ export function ShareButton({ id, isPublic, onChange }: ShareProps) {
         >
           {isPublic ? 'Dejar de compartir' : 'Publicar enlace'}
         </Button>
+        <SharePanel projectId={id} />
       </PopoverContent>
     </Popover>
   );
@@ -149,4 +161,4 @@ export function BackButton() {
   return <IconButton label="Volver al panel" icon={<ArrowLeft size={18} />} onClick={() => navigate('/')} />;
 }
 
-export { ThemeToggle, UserMenu };
+export { PresenceAvatars, ThemeToggle, UserMenu };

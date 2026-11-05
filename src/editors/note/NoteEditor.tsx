@@ -2,14 +2,14 @@ import { FileX2, TriangleAlert } from 'lucide-react';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
 import { PageFallback } from '@/app/PageFallback';
-import { useAutosave, useProject, type ProjectState } from '@/app/hooks';
-import { projectRepo } from '@/app/services';
+import { useAutosave, useProject, useRemoteContent, type ProjectState } from '@/app/hooks';
+import { identity, projectRepo } from '@/app/services';
 import type { StoredDraft } from '@/application/saveQueue';
 import type { ContentRecord } from '@/application/ports';
 import { ContentTooLargeError } from '@/domain/codec';
-import { normalizeTitle, type Project } from '@/domain/project';
+import { normalizeTitle, roleOf, type Project } from '@/domain/project';
 import { Button, useToast } from '@/ui';
-import { decodeNote, encodeNote, type NoteContent } from './codec';
+import { decodeNote, encodeNote, noteSame, type NoteContent } from './codec';
 import styles from './NoteEditor.module.css';
 import { NoteCanvas, type NoteHandle } from './NoteCanvas';
 import { TopBar } from './TopBar';
@@ -104,6 +104,8 @@ function Session({
 }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const role = roleOf(project, identity.current()?.uid);
+  const viewOnly = role === 'viewer';
   const [title, setTitle] = useState(project.title);
   const [isPublic, setIsPublic] = useState(project.isPublic);
   const [encoded, setEncoded] = useState<string | null>(null);
@@ -111,10 +113,33 @@ function Session({
   const [handle, setHandle] = useState<NoteHandle | null>(null);
   // El drain no se borra al desmontar el lienzo: useAutosave lo usa en su limpieza para no perder el último trazo.
   const drainRef = useRef<NoteHandle['drain'] | null>(null);
+  const mergeRef = useRef<NoteHandle['merge'] | null>(null);
+  const handleRef = useRef<NoteHandle | null>(null);
+  // Última revisión del servidor que ya se fusionó en la escena (o que esta pestaña escribió).
+  const seen = useRef(record.revision);
   const onHandle = useCallback((h: NoteHandle | null) => {
-    if (h) drainRef.current = h.drain;
+    if (h) {
+      drainRef.current = h.drain;
+      mergeRef.current = h.merge;
+    }
+    handleRef.current = h;
     setHandle(h);
   }, []);
+  const syncOpts = useMemo(
+    () => ({
+      same: noteSame,
+      fastFirstMs: 150,
+      merge: (l: string, r: string) => {
+        if (!mergeRef.current) throw new Error('El editor aún no está listo para fusionar.');
+        return mergeRef.current(l, r);
+      },
+      // Sin fusión, la revisión escrita ya es la vista; con fusión, la instantánea de esa revisión traerá lo ajeno.
+      onSaved: (r: { revision: number; merged?: string }) => {
+        if (r.merged === undefined && r.revision > seen.current) seen.current = r.revision;
+      },
+    }),
+    [],
+  );
   const drain = useCallback((): string | null => {
     const c = drainRef.current?.();
     if (!c) return null;
@@ -127,7 +152,19 @@ function Session({
   }, []);
 
   // El lienzo solo llama a onChange tras aplicar initialData: aquí `hydrated` ya es cierto.
-  const autosave = useAutosave(project.id, encoded, true, record.revision, undefined, drain);
+  const autosave = useAutosave(project.id, encoded, true, record.revision, undefined, drain, syncOpts);
+
+  useRemoteContent(project.id, (r) => {
+    const h = handleRef.current;
+    if (!h || r.revision <= seen.current) return;
+    seen.current = r.revision;
+    try {
+      void h.applyRemote(decodeNote(r.data));
+      autosave.acceptRemote(r.data);
+    } catch {
+      /* contenido ilegible: se ignora, el guardado en transacción lo volverá a fusionar */
+    }
+  });
 
   const onChange = useCallback((c: NoteContent) => {
     try {
@@ -179,11 +216,14 @@ function Session({
       <NoteCanvas
         projectId={project.id}
         content={content}
-        readonly={false}
+        readonly={viewOnly}
         onChange={onChange}
         onHandle={onHandle}
-        topRight={
+        topRight={(ui) => (
           <TopBar
+            library={ui}
+            projectId={project.id}
+            canShare={role === 'owner'}
             title={title}
             onTitle={rename}
             status={autosave.status}
@@ -193,7 +233,7 @@ function Session({
             shareUrl={`${location.origin}/view/note/${project.id}`}
             onBack={back}
           />
-        }
+        )}
       />
       <div className={styles.banners}>
         {autosave.status === 'conflicto' ? (
