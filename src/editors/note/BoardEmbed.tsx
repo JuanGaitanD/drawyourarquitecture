@@ -114,7 +114,7 @@ export function BoardEmbed({ boardId, depth = 0, readonly = false }: BoardEmbedP
         />
       ) : null}
       {state.status === 'ready' ? (
-        <div className={styles.actions}>
+        <div className={styles.actions} {...guard}>
           <Button size="sm" icon={<ExternalLink size={14} />} onClick={open}>
             Abrir
           </Button>
@@ -126,6 +126,12 @@ export function BoardEmbed({ boardId, depth = 0, readonly = false }: BoardEmbedP
     </div>
   );
 }
+
+/**
+ * Excalidraw deja el embed sin eventos de puntero hasta activarlo con doble clic: los botones los recuperan (CSS) y
+ * aquí no dejan pasar el puntero ni el teclado al lienzo, que de otro modo los usaría para seleccionar o mover el embed.
+ */
+const guard = { onPointerDown: (e: React.SyntheticEvent) => e.stopPropagation(), onKeyDown: (e: React.SyntheticEvent) => e.stopPropagation() };
 
 function Loading() {
   return (
@@ -144,7 +150,11 @@ function Message(props: { icon: React.ReactNode; title: string; text: string; ac
       </span>
       <p className={styles.title}>{props.title}</p>
       <p className={styles.text}>{props.text}</p>
-      {props.action}
+      {props.action ? (
+        <div className={styles.buttons} {...guard}>
+          {props.action}
+        </div>
+      ) : null}
     </div>
   );
 }
