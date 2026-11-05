@@ -15,3 +15,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  /** Ruta base de las fuentes autoalojadas de Excalidraw; se fija en main.tsx antes de cargar el motor. */
+  EXCALIDRAW_ASSET_PATH?: string | string[];
+}
