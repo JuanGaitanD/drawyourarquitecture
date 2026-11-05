@@ -39,14 +39,15 @@ service cloud.firestore {
       return m is map && m.size() <= 20 && m.values().hasOnly(['editor', 'viewer']);
     }
 
-    // `aclRev` versiona el espejo de acceso de Realtime Database (D33): solo el dueño lo toca y sube exactamente 1 en
-    // cada cambio de `members` (y no se mueve si `members` no cambia). Así una publicación atrasada se reconoce y se
-    // rechaza. No se usa `updatedAt` porque cualquier editor lo escribe con su reloj.
+    // `aclRev` versiona el espejo de acceso de Realtime Database (D33): solo el dueño lo toca. Sube exactamente 1
+    // con cada cambio de `members` y puede subir 1 con un cambio de invitaciones (mismo batch); nunca retrocede ni
+    // salta. Así una publicación atrasada se reconoce y se rechaza. No se usa `updatedAt`: cualquier editor lo
+    // escribe con su reloj.
     function aclRevOk(before, after) {
       return after.get('aclRev', 0) is int
-        && (after.get('members', {}) == before.get('members', {})
-          ? after.get('aclRev', 0) == before.get('aclRev', 0)
-          : after.get('aclRev', 0) == before.get('aclRev', 0) + 1);
+        && (after.get('aclRev', 0) == before.get('aclRev', 0) + 1
+          || (after.get('aclRev', 0) == before.get('aclRev', 0)
+            && after.get('members', {}) == before.get('members', {})));
     }
 
     function validTitle(t) {

@@ -249,15 +249,17 @@ describe('compartir · aclRev (versión del espejo de presencia)', () => {
   const rm = (fs: ReturnType<typeof as>, ...extra: unknown[]) =>
     updateDoc(proj(fs), new FieldPath('members', VIEWER), deleteField(), 'updatedAt', 5, ...extra);
 
-  it('el dueño sube aclRev exactamente 1 con cada cambio de members; sin bump o con otro salto se rechaza', async () => {
+  it('el dueño sube aclRev exactamente 1 con cada cambio de members (o de invitaciones); sin bump o con otro salto se rechaza', async () => {
     const owner = as(OWNER);
     await assertFails(rm(owner)); // quitar sin avanzar la versión
     await assertFails(rm(owner, 'aclRev', 7)); // saltarla
     await assertFails(rm(owner, 'aclRev', increment(2)));
     await assertSucceeds(rm(owner, 'aclRev', increment(1)));
     expect((await getDoc(proj(owner))).data()?.aclRev).toBe(1);
-    await assertFails(updateDoc(proj(owner), { aclRev: 5 })); // sin cambiar members no se mueve
+    await assertFails(updateDoc(proj(owner), { aclRev: 5 })); // sin cambiar members, tampoco salta
     await assertFails(updateDoc(proj(owner), { aclRev: 0 })); // ni retrocede
+    await assertSucceeds(updateDoc(proj(owner), { aclRev: increment(1) })); // +1 sin members: cambio de invitaciones
+    expect((await getDoc(proj(owner))).data()?.aclRev).toBe(2);
     await assertSucceeds(updateDoc(proj(owner), { title: 'otro', updatedAt: 9 }));
   });
 
