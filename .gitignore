@@ -4,3 +4,16 @@ dist/
 .env
 .env.*
 !.env.example
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*.log
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+.vercel/
+# Reglas generadas por scripts/render-rules.mjs a partir de las plantillas *.rules.tpl
+/firestore.rules
+/storage.rules
