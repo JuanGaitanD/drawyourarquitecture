@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { makeEdge, makeNode, type BoardContent, type BoardNode } from './board';
 import { fixtureBoard } from './fixtures';
-import { canon, mergeBoards } from './merge';
+import { canon, deepEqual, diffById, mergeBoards } from './merge';
 import { validateBoardContent } from './validate';
 
 const base = (): BoardContent => fixtureBoard();
@@ -140,4 +140,22 @@ describe('mergeBoards · reparentados concurrentes', () => {
       expect(abs(m, 'B')).toEqual({ x: 500, y: 300 });
     });
   }
+});
+
+describe('deepEqual y diffById (D13)', () => {
+  it('compara sin orden de claves y trata undefined como ausente', () => {
+    expect(deepEqual({ a: 1, b: { c: [1, 2] } }, { b: { c: [1, 2] }, a: 1 })).toBe(true);
+    expect(deepEqual({ a: 1, p: undefined }, { a: 1 })).toBe(true);
+    expect(deepEqual({ a: 1 }, { a: 2 })).toBe(false);
+    expect(deepEqual({ a: [1, 2] }, { a: [2, 1] })).toBe(false);
+    expect(deepEqual([], {})).toBe(false);
+    expect(deepEqual(null, {})).toBe(false);
+  });
+
+  it('diffById devuelve altas, bajas y ediciones, y nada si solo cambia la referencia', () => {
+    const a = [{ id: 'x', v: { n: 1 } }, { id: 'y', v: { n: 2 } }, { id: 'z', v: { n: 3 } }];
+    const b = [{ id: 'x', v: { n: 1 } }, { id: 'y', v: { n: 9 } }, { id: 'w', v: { n: 4 } }];
+    expect([...diffById(a, b)].sort()).toEqual(['w', 'y', 'z']);
+    expect(diffById(a, structuredClone(a)).size).toBe(0);
+  });
 });

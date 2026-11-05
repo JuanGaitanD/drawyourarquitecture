@@ -25,9 +25,10 @@ import {
 } from '@/ui';
 import type { BoardContent, Viewport } from '../model/board';
 import { autoLayout } from '../model/layout';
-import { validateBoardContent } from '../model/validate';
+import { useBoardFiles } from '../nodes';
 import { useBoard, useBoardStore } from '../store/BoardStoreProvider';
 import { describeContent, placeBelow, type ApplyMode } from './content';
+import { MAX_DYA_BYTES, buildDya, parseImport, uploadImages, type DyaImages } from './dyaFile';
 import { downloadText, downloadUrl, slug } from './files';
 import { track } from '@/app/services';
 import { renderBoardPng } from './exportPng';
@@ -47,12 +48,13 @@ export interface BoardMenuProps {
 }
 
 const ORIGIN: Viewport = { x: 0, y: 0, zoom: 1 };
-const MAX_JSON_BYTES = 8 * 1024 * 1024;
 
 type DialogName = 'templates' | 'mermaid-in' | 'mermaid-out';
 interface Pending {
   content: BoardContent;
   mode: ApplyMode;
+  /** Imágenes de un `.dya.json` por subir al aplicar (después de confirmar, antes de cambiar el lienzo). */
+  files?: DyaImages;
   /** Qué se va a reemplazar y por qué, para el texto de la confirmación. */
   source: string;
 }
@@ -66,6 +68,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
   const store = useBoardStore();
   const nodeCount = useBoard((s) => s.nodes.length);
   const { toast } = useToast();
+  const boardFiles = useBoardFiles();
   const [dialog, setDialog] = useState<DialogName | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
   const [busy, setBusy] = useState(false);
@@ -82,7 +85,29 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
   const getContent = useCallback(() => store.getState().toContent(viewport()), [store, viewport]);
 
   const commit = useCallback(
-    (content: BoardContent, mode: ApplyMode, done: string) => {
+    async (content: BoardContent, mode: ApplyMode, done: string, files?: DyaImages) => {
+      setPending(null); // la confirmación ya se dio: mientras suben las imágenes no se puede volver a pulsar
+      // Las imágenes se suben ANTES de aplicar: si falla una, el diagrama actual no se toca.
+      if (files && Object.keys(files).length) {
+        const upload = boardFiles?.upload;
+        if (!upload) {
+          toast({ title: 'No se pueden añadir imágenes aquí', kind: 'error' });
+          return;
+        }
+        setBusy(true);
+        try {
+          content = await uploadImages(content, files, upload);
+        } catch (e) {
+          toast({
+            title: 'No se pudieron subir las imágenes',
+            description: e instanceof Error ? `${e.message} No se importó nada.` : undefined,
+            kind: 'error',
+          });
+          return;
+        } finally {
+          setBusy(false);
+        }
+      }
       const s = store.getState();
       if (mode === 'insert') {
         const moved = placeBelow(content, s.nodes);
@@ -95,15 +120,15 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
       // Tras el siguiente pintado, para que React Flow ya tenga los nodos nuevos.
       requestAnimationFrame(() => onContentChanged?.());
     },
-    [store, toast, onContentChanged],
+    [store, toast, onContentChanged, boardFiles],
   );
 
   /** Reemplazar un diagrama con contenido pide confirmación; insertar y lienzo vacío, no. */
   const request = useCallback(
-    (content: BoardContent, mode: ApplyMode, source: string) => {
+    (content: BoardContent, mode: ApplyMode, source: string, files?: DyaImages) => {
       const done = mode === 'insert' ? `${source} añadido` : `${source} aplicado`;
-      if (mode === 'replace' && store.getState().nodes.length > 0) setPending({ content, mode, source });
-      else commit(content, mode, done);
+      if (mode === 'replace' && store.getState().nodes.length > 0) setPending({ content, mode, source, files });
+      else void commit(content, mode, done, files);
     },
     [store, commit],
   );
@@ -145,19 +170,31 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
     }
   };
 
-  const exportJson = () => {
-    downloadText(JSON.stringify(getContent(), null, 2), `${slug(title)}.json`);
-    track({ name: 'export', params: { format: 'json' } });
-    toast({
-      title: 'JSON exportado',
-      description: 'Las imágenes no se incluyen: no es una copia de seguridad completa.',
-      kind: 'success',
-    });
+  const exportJson = async () => {
+    if (!boardFiles) return;
+    setBusy(true);
+    try {
+      // `.dya.json`: el contenido y los binarios de las imágenes (base64), para poder importarlo en cualquier proyecto.
+      const { file, missing } = await buildDya(getContent(), boardFiles.load);
+      downloadText(JSON.stringify(file, null, 2), `${slug(title)}.dya.json`);
+      track({ name: 'export', params: { format: 'json' } });
+      toast({
+        title: 'Diagrama exportado',
+        description: missing.length
+          ? `${missing.length} ${missing.length === 1 ? 'imagen no se pudo leer y no se incluye' : 'imágenes no se pudieron leer y no se incluyen'}.`
+          : undefined,
+        kind: missing.length ? 'info' : 'success',
+      });
+    } catch (e) {
+      toast({ title: 'No se pudo exportar', description: e instanceof Error ? e.message : undefined, kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
   };
 
   const importJson = async (file: File) => {
-    if (file.size > MAX_JSON_BYTES) {
-      toast({ title: 'El archivo es demasiado grande', description: 'El máximo es 8 MB.', kind: 'error' });
+    if (file.size > MAX_DYA_BYTES) {
+      toast({ title: 'El archivo es demasiado grande', description: 'El máximo es 40 MB.', kind: 'error' });
       return;
     }
     let raw: unknown;
@@ -167,12 +204,12 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
       toast({ title: 'No es un JSON válido', description: file.name, kind: 'error' });
       return;
     }
-    const v = validateBoardContent(raw);
+    const v = parseImport(raw);
     if (!v.ok) {
       toast({ title: 'No es un diagrama válido', description: v.error, kind: 'error', duration: 8000 });
       return;
     }
-    request(v.value, 'replace', `«${file.name}»`);
+    request(v.content, 'replace', `«${file.name}»`, v.files);
   };
 
   const confirmText = pending
@@ -203,7 +240,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
             Importar Mermaid…
           </DropdownMenuItem>
           <DropdownMenuItem icon={<FileUp size={16} />} onSelect={() => fileInput.current?.click()}>
-            Importar JSON…
+            Importar .dya.json…
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>Ordenar automáticamente</DropdownMenuLabel>
@@ -237,8 +274,8 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
           >
             Copiar como Mermaid…
           </DropdownMenuItem>
-          <DropdownMenuItem icon={<FileDown size={16} />} disabled={empty} onSelect={exportJson}>
-            Descargar JSON (sin imágenes)
+          <DropdownMenuItem icon={<FileDown size={16} />} disabled={empty || busy} onSelect={() => void exportJson()}>
+            Descargar .dya.json
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -289,7 +326,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
               </Button>
               <Button
                 variant="danger"
-                onClick={() => pending && commit(pending.content, pending.mode, `${pending.source} aplicado`)}
+                onClick={() => pending && void commit(pending.content, pending.mode, `${pending.source} aplicado`, pending.files)}
               >
                 Reemplazar
               </Button>

@@ -13,13 +13,13 @@ Fuente: `HANDOFF.md`, comentarios `ponytail:` del código y revisiones (`.wigi/r
 | D7 | L2 | Revocar una invitación ya aceptada no expulsa | La UI lo explica en la lista de enlaces y ofrece «Revocar y quitar a quienes entraron con él» (guardar `inviteToken` en el miembro) | cerrado (commits d04e7d1, 505b0bb) |
 | D8 | L3 | Imagen remota rota si la subida tarda > 7 s; binario agotado solo en memoria | La referencia (`content.files`/nodo imagen) se publica cuando la subida confirma; mientras, se guarda en IndexedDB (`dya-pending-files`) y se reintenta al volver | cerrado en la nota (commits 0aa18e4, a489136, 738b80c). El board ya solo inserta el nodo tras confirmar la subida; su binario agotado sigue solo en memoria (ver `HANDOFF-l3.md`) |
 | D9 | L3 | Botones «Abrir/Recargar» del embed solo reciben el ratón tras activar el embed | Accesibles con un clic y con teclado | cerrado (commit b9ea29e) |
-| D10 | L4 | Conector por clic origen → destino no existe | Herramienta conector: clic en nodo origen y clic en destino crea la arista (Esc cancela) | abierto |
-| D11 | L4 | Pan y zoom solos no guardan el viewport | El viewport se guarda (debounce) aunque no cambie el contenido, sin entrar al historial | abierto |
-| D12 | L4 | Crear una forma son dos pasos de historial (crear + etiqueta) | Un paso | abierto |
-| D13 | L4 | Historial y fusión comparan por JSON / recorren todo (O(n)) | Comparación por referencia y fusión diferencial por id; medido con un board de 2 000 nodos | abierto |
-| D14 | L4 | Exportar JSON no incluye imágenes | Exportar/importar un `.dya.json` con los binarios (base64) que se suben al importar | abierto |
-| D15 | L4 | Copiar/pegar no usa el portapapeles del sistema | Copiar escribe `application/x-dya+json` y texto Mermaid; pegar entre pestañas funciona | abierto |
-| D16 | L4 | Título de la plantilla «Web de 3 capas» se parte | Ancho correcto | abierto |
+| D10 | L4 | Conector por clic origen → destino no existe | Herramienta conector: clic en nodo origen y clic en destino crea la arista (Esc cancela) | cerrado (commit fccb162, afefbac) |
+| D11 | L4 | Pan y zoom solos no guardan el viewport | El viewport se guarda (debounce) aunque no cambie el contenido, sin entrar al historial | cerrado (commit 3fac5f0) |
+| D12 | L4 | Crear una forma son dos pasos de historial (crear + etiqueta) | Un paso | cerrado (commit e1f9b86) |
+| D13 | L4 | Historial y fusión comparan por JSON / recorren todo (O(n)) | Comparación por referencia y fusión diferencial por id; medido con un board de 2 000 nodos | cerrado (commit 7c50ea1) |
+| D14 | L4 | Exportar JSON no incluye imágenes | Exportar/importar un `.dya.json` con los binarios (base64) que se suben al importar | cerrado (commit 7d1137f) |
+| D15 | L4 | Copiar/pegar no usa el portapapeles del sistema | Copiar escribe `application/x-dya+json` y texto Mermaid; pegar entre pestañas funciona | cerrado (commit 531f0dc) |
+| D16 | L4 | Título de la plantilla «Web de 3 capas» se parte | Ancho correcto | cerrado (commit efeb25d) |
 | D17 | L5 | Contenido > 900 KB da error | Contenido troceado como los archivos (`content/main` + `content/chunks/{i}`), transacción con revisión intacta; límite práctico 8 MiB | cerrado (commit d61436f, bdaa4be) |
 | D18 | L3 | Borrado de nota puede resucitar tras > 1 h desconectado | Tombstones con `revision` del servidor en vez de tiempo; purgar solo lo confirmado por todos o > 30 días | cerrado (commit fae51a9): no es demostrable la base de todos los clientes, se conservan 30 días |
 | D19 | L5 | `pnpm test:rules` falla si los emuladores ya corren | El script detecta emuladores vivos (puerto 8080) y reutiliza; si no, `emulators:exec` | cerrado (commit 73815c0) |
