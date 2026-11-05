@@ -4,7 +4,8 @@ import { doc, setDoc } from 'firebase/firestore';
 
 export const OWNER = 'owner-test';
 export const STRANGER = 'otra-cuenta';
-export const PROJECT = 'demo-dya';
+/** Proyecto propio de la ejecución (`scripts/test-rules.mjs`): otro carril no puede limpiar ni recargar lo nuestro. */
+export const PROJECT = process.env.RULES_PROJECT ?? 'demo-dya-rules';
 
 export async function createEnv(): Promise<RulesTestEnvironment> {
   return initializeTestEnvironment({

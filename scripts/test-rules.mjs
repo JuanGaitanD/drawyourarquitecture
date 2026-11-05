@@ -23,14 +23,26 @@ const run = (cmd, env = process.env) => spawnSync(cmd, { stdio: 'inherit', shell
 
 if (run('node scripts/render-rules.mjs --emulator') !== 0) process.exit(1);
 
-const env = { ...process.env };
-const missing = [];
-for (const e of EMULATORS) {
-  if (await isAlive(e.port)) {
-    env[e.env] = `${HOST}:${e.port}`;
-    console.log(`Emulador de ${e.name} vivo en ${HOST}:${e.port}: se reutiliza.`);
-  } else missing.push(e.name);
+// Proyecto propio por ejecución: el emulador separa por proyecto los datos y las reglas, así que otro carril (u otro
+// `test:rules` a la vez) no limpia ni recarga lo nuestro, y nosotros tampoco el proyecto del e2e ni el de la app (D29).
+const project = `demo-dya-r${process.pid.toString(36)}${Date.now().toString(36).slice(-3)}`;
+// Con otros carriles en marcha un emulador puede aparecer entre la detección y `emulators:exec` (puerto ocupado): si
+// falló y alguno de los que faltaban ya está vivo, se repite una vez reutilizándolo. Un fallo de las pruebas no se repite.
+for (let attempt = 1; ; attempt++) {
+  const env = { ...process.env, RULES_PROJECT: project };
+  const missing = [];
+  for (const e of EMULATORS) {
+    if (await isAlive(e.port)) {
+      env[e.env] = `${HOST}:${e.port}`;
+      console.log(`Emulador de ${e.name} vivo en ${HOST}:${e.port}: se reutiliza.`);
+    } else missing.push(e);
+  }
+  if (!missing.length) process.exit(run(`pnpm exec ${vitest}`, env));
+  console.log(`Se arrancan con emulators:exec: ${missing.map((e) => e.name).join(', ')}.`);
+  const names = missing.map((e) => e.name).join(',');
+  const code = run(`pnpm exec firebase emulators:exec --only ${names} --project demo-dya "${vitest}"`, env);
+  if (code === 0) process.exit(0);
+  const raced = (await Promise.all(missing.map((e) => isAlive(e.port)))).some(Boolean);
+  if (attempt >= 2 || !raced) process.exit(code);
+  console.log('Otro carril arrancó el emulador a la vez: se repite reutilizándolo.');
 }
-if (!missing.length) process.exit(run(`pnpm exec ${vitest}`, env));
-console.log(`Se arrancan con emulators:exec: ${missing.join(', ')}.`);
-process.exit(run(`pnpm exec firebase emulators:exec --only ${missing.join(',')} --project demo-dya "${vitest}"`, env));
