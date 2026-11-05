@@ -8,7 +8,15 @@ import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, useToast }
 import styles from './editor.module.css';
 
 /** Título editable: Enter o salir del campo confirma, Esc lo devuelve. */
-export function TitleField({ value, onCommit }: { value: string; onCommit: (title: string) => void }) {
+export function TitleField({
+  value,
+  onCommit,
+  readOnly,
+}: {
+  value: string;
+  onCommit: (title: string) => void;
+  readOnly?: boolean;
+}) {
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? value;
   const finish = (next: string | null) => {
@@ -21,6 +29,7 @@ export function TitleField({ value, onCommit }: { value: string; onCommit: (titl
       className={styles.title}
       value={shown}
       maxLength={120}
+      readOnly={readOnly}
       aria-label="Título del diagrama"
       placeholder="Diagrama sin título"
       size={Math.min(Math.max(shown.length, 12), 40)}

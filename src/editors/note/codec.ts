@@ -17,7 +17,12 @@ export interface SceneElementLike {
   type: string;
   isDeleted?: boolean;
   fileId?: string | null;
+  /** Marca de tiempo de la última modificación (Excalidraw). */
+  updated?: number;
 }
+
+/** Un elemento borrado se conserva un minuto como tombstone: así el borrado llega a quien edita a la vez. */
+export const TOMBSTONE_TTL_MS = 60_000;
 
 /** Ids de archivo que usan las imágenes vivas de la escena. */
 export function referencedFileIds(elements: readonly unknown[]): string[] {
@@ -36,15 +41,18 @@ export function buildNoteContent(
   elements: readonly unknown[],
   appState: { viewBackgroundColor?: string },
   known: NoteFiles,
+  now = Date.now(),
 ): NoteContent {
-  const live = (elements as readonly SceneElementLike[]).filter((e) => !e.isDeleted);
+  const all = elements as readonly SceneElementLike[];
+  const live = all.filter((e) => !e.isDeleted);
+  const kept = all.filter((e) => !e.isDeleted || (typeof e.updated === 'number' && now - e.updated <= TOMBSTONE_TTL_MS));
   const files: NoteFiles = {};
   for (const id of referencedFileIds(live)) {
     const meta = known[id];
     if (meta) files[id] = { mimeType: meta.mimeType, created: meta.created };
   }
   const bg = appState.viewBackgroundColor;
-  return { schemaVersion: 1, elements: live, appState: bg ? { viewBackgroundColor: bg } : {}, files };
+  return { schemaVersion: 1, elements: kept, appState: bg ? { viewBackgroundColor: bg } : {}, files };
 }
 
 export const encodeNote = (c: NoteContent): string => encode(c);

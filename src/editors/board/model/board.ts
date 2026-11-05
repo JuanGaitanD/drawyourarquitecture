@@ -76,11 +76,17 @@ export interface Viewport {
   y: number;
   zoom: number;
 }
+/** Colaboración (model/merge.ts): contador por elemento y tombstones de lo borrado. Opcional y sin él todo vale 0. */
+export interface SyncInfo {
+  v: Record<string, number>;
+  dead: Record<string, { v: number; at: number }>;
+}
 export interface BoardContent {
   schemaVersion: 1;
   nodes: BoardNode[];
   edges: BoardEdge[];
   viewport: Viewport;
+  sync?: SyncInfo;
 }
 
 export const NODE_KINDS: readonly NodeKind[] = ['shape', 'text', 'sticky', 'frame', 'icon', 'image'];

@@ -9,7 +9,14 @@ import {
   type SaveState,
   type SaveStatus,
 } from '@/application/saveQueue';
+import type { ContentMerger } from '@/application/ports';
 import { contentRepo, projectRepo, saveAsCopy } from '../services';
+
+export interface AutosaveSync {
+  /** Fusión contra el remoto cuando la revisión se desfasó (sin ella, el desfase es `conflicto`). */
+  merge?: ContentMerger;
+  onSaved?: (r: { data: string; revision: number; merged?: string }) => void;
+}
 
 export interface Autosave {
   status: SaveStatus;
@@ -30,6 +37,7 @@ export interface Autosave {
  * - `drain`: vacía el throttle del editor y devuelve el contenido codificado más reciente (o `null` si no hay
  *   nada pendiente). Se llama antes de cada `flush` al ocultar la pestaña, al `pagehide` y al desmontar, para
  *   no perder lo hecho en los últimos milisegundos.
+ * - `sync`: colaboración en tiempo real (fusión en la transacción y aviso de cada guardado).
  */
 export function useAutosave(
   id: string,
@@ -38,19 +46,26 @@ export function useAutosave(
   revision: number,
   baseline?: string,
   drain?: () => string | null,
+  sync?: AutosaveSync,
 ): Autosave {
   const [state, setState] = useState<SaveState>({ status: 'guardado' });
   const queue = useRef<SaveQueue | null>(null);
   const latest = useRef<string | null>(null);
   const drainRef = useRef(drain);
+  const syncRef = useRef(sync);
   useEffect(() => {
     drainRef.current = drain;
-  }, [drain]);
+    syncRef.current = sync;
+  }, [drain, sync]);
   const [, navigate] = useLocation();
 
   // Una cola por id; flush y limpieza al desmontar. Compatible con StrictMode (se recrea).
   useEffect(() => {
-    const q = createSaveQueue(contentRepo, id, null);
+    const q = createSaveQueue(contentRepo, id, null, {
+      // Por ref y a demanda: el editor puede registrar su fusión después de montar este efecto.
+      merge: syncRef.current?.merge ? (l, r) => syncRef.current!.merge!(l, r) : undefined,
+      onSaved: (r) => syncRef.current?.onSaved?.(r),
+    });
     queue.current = q;
     const off = q.onStatus(setState);
     // El drain va por ref y se lee al disparar: el editor puede registrarlo después de montar este efecto.

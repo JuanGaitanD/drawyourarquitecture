@@ -2,11 +2,13 @@ import { ReactFlowProvider, useReactFlow, type Viewport } from '@xyflow/react';
 import { TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useLocation } from 'wouter';
-import { useAutosave, useProject } from '@/app/hooks';
-import { fileStore, projectRepo } from '@/app/services';
+import { useAutosave, useProject, useRemoteContent } from '@/app/hooks';
+import { fileStore, identity, projectRepo } from '@/app/services';
 import type { StoredDraft } from '@/application/saveQueue';
 import { decode } from '@/domain/codec';
+import { roleOf } from '@/domain/project';
 import { Button, useToast } from '@/ui';
+import { BoardViewer } from './BoardViewer';
 import { BoardCanvas } from './canvas/BoardCanvas';
 import { BackButton, SaveBadge, ShareButton, ThemeToggle, TitleField, UserMenu } from './canvas/EditorChrome';
 import { useEncodedContent } from './canvas/useEncodedContent';
@@ -17,6 +19,7 @@ import { validateBoardContent } from './model/validate';
 import { BoardFilesContext, type BoardFiles } from './nodes';
 import { BoardStoreProvider } from './store/BoardStoreProvider';
 import { createBoardStore } from './store/boardStore';
+import { createBoardSync, mergeBoardData } from './sync';
 import { ActionBar } from './ui/ActionBar';
 import { SearchBox } from './ui/SearchBox';
 import { StylePanel } from './ui/StylePanel';
@@ -75,9 +78,13 @@ export function BoardEditor({ id }: BoardEditorProps) {
       />
     );
 
+  const role = roleOf(p.project, identity.current()?.uid);
+  if (role === 'viewer') return <ReadOnly id={id} title={p.project.title} initial={parsed.value} />;
+
   return (
     <Loaded
       id={id}
+      isOwner={role === 'owner'}
       title={p.project.title}
       isPublic={p.project.isPublic}
       revision={p.content.revision}
@@ -123,8 +130,34 @@ function EditorMenu({ title, stageRef }: { title: string; stageRef: RefObject<HT
   );
 }
 
+/** Rol viewer: el diagrama en solo lectura, que se actualiza cuando otra persona guarda. */
+function ReadOnly({ id, title, initial }: { id: string; title: string; initial: BoardContent }) {
+  const [content, setContent] = useState(initial);
+  useRemoteContent(id, (r) => {
+    const next = parse(r.data);
+    if (next.ok) setContent(next.value);
+  });
+  const files = useMemo<BoardFiles>(() => ({ load: (fileId) => fileStore.load(id, fileId) }), [id]);
+  return (
+    <div className={styles.root}>
+      <header className={styles.header}>
+        <BackButton />
+        <TitleField value={title} onCommit={() => undefined} readOnly />
+        <span className={styles.status}>Solo lectura</span>
+        <div className={styles.spacer} />
+        <ThemeToggle />
+        <UserMenu />
+      </header>
+      <div className={styles.stage}>
+        <BoardViewer content={content} files={files} />
+      </div>
+    </div>
+  );
+}
+
 interface LoadedProps {
   id: string;
+  isOwner: boolean;
   title: string;
   isPublic: boolean;
   revision: number;
@@ -135,6 +168,7 @@ interface LoadedProps {
 
 function Loaded({
   id,
+  isOwner,
   title: initialTitle,
   isPublic: initialPublic,
   revision,
@@ -150,8 +184,19 @@ function Loaded({
     return s;
   });
   const viewport = useRef<Viewport>(initial.viewport);
-  const { encoded, tooLarge, invalid, drain } = useEncodedContent(store, viewport);
-  const { status, flush, resolveConflict } = useAutosave(id, encoded, true, revision, undefined, drain);
+  const [sync] = useState(() => createBoardSync(store, initial, revision));
+  const { encoded, tooLarge, invalid, drain } = useEncodedContent(store, viewport, sync);
+  const syncOpts = useMemo(() => ({ merge: mergeBoardData, onSaved: sync.onSaved }), [sync]);
+  const { status, flush, resolveConflict } = useAutosave(
+    id,
+    encoded,
+    true,
+    revision,
+    undefined,
+    drain,
+    syncOpts,
+  );
+  useRemoteContent(id, (r) => sync.onRemote(r, viewport.current));
   const [title, setTitle] = useState(initialTitle);
   const [isPublic, setPublic] = useState(initialPublic);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -208,11 +253,11 @@ function Loaded({
             <Shortcuts container={rootRef} />
             <header className={styles.header}>
               <BackButton />
-              <TitleField value={title} onCommit={rename} />
+              <TitleField value={title} onCommit={rename} readOnly={!isOwner} />
               <div className={styles.spacer} />
               <SaveBadge status={status} onRetry={() => void flush()} />
               <EditorMenu title={title} stageRef={stageRef} />
-              <ShareButton id={id} isPublic={isPublic} onChange={share} />
+              {isOwner ? <ShareButton id={id} isPublic={isPublic} onChange={share} /> : null}
               <ThemeToggle />
               <UserMenu />
             </header>

@@ -35,6 +35,8 @@ export interface BoardState {
   /** Reemplaza el contenido y limpia el historial. */
   load(content: BoardContent): void;
   toContent(viewport: Viewport): BoardContent;
+  /** Aplica lo que llega de otra persona: no entra al historial local ni lo borra. */
+  applyRemote(nodes: BoardNode[], edges: BoardEdge[]): void;
   /** Reemplaza nodos y aristas (entra al historial: importar y plantillas son deshacibles). */
   replaceAll(nodes: BoardNode[], edges: BoardEdge[]): void;
   addNodes(nodes: BoardNode[]): void;
@@ -127,6 +129,12 @@ export function createBoardStore(): BoardStore {
         toContent: (viewport) => {
           const { nodes, edges } = get();
           return { schemaVersion: 1, nodes: cleanNodes(nodes), edges: cleanEdges(edges), viewport };
+        },
+        applyRemote(nodes, edges) {
+          const t = store.temporal.getState();
+          t.pause();
+          set({ nodes: sortParentsFirst(nodes), edges });
+          t.resume();
         },
         replaceAll: (nodes, edges) => set({ nodes: sortParentsFirst(nodes), edges }),
         addNodes: (nodes) => set((s) => ({ nodes: sortParentsFirst([...s.nodes, ...nodes]) })),

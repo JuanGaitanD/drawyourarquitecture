@@ -26,6 +26,16 @@ function badNumberPath(x: unknown, path: string, depth = 0): string | null {
   return null;
 }
 
+/** `sync` es opcional: se conserva lo que tenga la forma esperada y se descarta el resto. */
+function readSync(x: unknown): BoardContent['sync'] {
+  if (!isObj(x) || !isObj(x.v) || !isObj(x.dead)) return undefined;
+  const sv: Record<string, number> = {};
+  for (const [k, n] of Object.entries(x.v)) if (isNum(n)) sv[k] = n;
+  const dead: Record<string, { v: number; at: number }> = {};
+  for (const [k, d] of Object.entries(x.dead)) if (isObj(d) && isNum(d.v) && isNum(d.at)) dead[k] = { v: d.v, at: d.at };
+  return { v: sv, dead };
+}
+
 /** Valida un contenido de board desconocido. Devuelve una copia con los padres antes que los hijos. */
 export function validateBoardContent(x: unknown): ValidationResult {
   if (!isObj(x)) return fail('El contenido no es un objeto.');
@@ -106,6 +116,7 @@ export function validateBoardContent(x: unknown): ValidationResult {
     if (bad) return fail(`Número no finito en ${bad}.`);
   }
 
+  const sync = readSync(x.sync);
   return {
     ok: true,
     value: {
@@ -113,6 +124,7 @@ export function validateBoardContent(x: unknown): ValidationResult {
       nodes: sortParentsFirst(x.nodes as BoardNode[]),
       edges: x.edges as BoardEdge[],
       viewport: { x: vp.x, y: vp.y, zoom: vp.zoom },
+      ...(sync ? { sync } : {}),
     },
   };
 }

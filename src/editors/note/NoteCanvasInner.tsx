@@ -39,6 +39,7 @@ import {
   type UploadQueue,
 } from './files';
 import { InsertBoardDialog } from './InsertBoardDialog';
+import { mergeNoteData, reconcileScene } from './merge';
 import { readLibrary, writeLibrary } from './library';
 import type { NoteCanvasProps } from './NoteCanvas';
 import styles from './NoteCanvas.module.css';
@@ -267,6 +268,21 @@ export default function NoteCanvasInner({
     if (!api || !onHandle) return;
     onHandle({
       drain,
+      merge: mergeNoteData,
+      async applyRemote(c) {
+        known.current = { ...c.files, ...known.current };
+        const elements = reconcileScene(
+          api.getSceneElementsIncludingDeleted() as never,
+          c.elements as never,
+          api.getAppState(),
+        );
+        api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
+        const have = api.getFiles();
+        await loadFiles(
+          api,
+          referencedFileIds(elements).filter((id) => !have[id]),
+        );
+      },
       async applyContent(c) {
         known.current = { ...known.current, ...c.files };
         const elements = restoreElements(c.elements as ExcalidrawElement[], null, { repairBindings: true });

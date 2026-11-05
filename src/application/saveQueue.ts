@@ -120,6 +120,8 @@ export interface SaveQueueOptions {
    * dar conflicto (colaboración en tiempo real). Sin él, el desfase es `conflicto` como antes.
    */
   merge?: ContentMerger;
+  /** Tras cada guardado correcto. `merged` viene si el servidor tenía algo más y se escribió la fusión. */
+  onSaved?: (r: { data: string; revision: number; merged?: string }) => void;
 }
 
 export interface SaveQueue {
@@ -201,6 +203,7 @@ export function createSaveQueue(
             }
             revision = res.revision;
             lastSaved = data;
+            opts.onSaved?.({ data, revision, merged: res.merged });
             if (latest === data) clearDraft(myDraft, storage);
             setState({ status: 'guardado' });
           } catch (e) {
