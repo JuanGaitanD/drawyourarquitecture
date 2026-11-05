@@ -118,3 +118,25 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
     pending: () => blobs.size,
   };
 }
+
+/**
+ * Un colaborador puede recibir el elemento antes de que el autor termine de subir la imagen (optimizar y subir
+ * lleva segundos): `attempt` devuelve los ids que no pudo cargar y se reintentan con `delays` antes de darlos
+ * por fallidos. Devuelve los que siguen fallando. `alive` corta los reintentos si el lienzo se desmontó.
+ */
+export async function retryMissing(
+  ids: string[],
+  attempt: (ids: string[]) => Promise<string[]>,
+  delays: readonly number[] = RETRY_DELAYS_MS,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  alive: () => boolean = () => true,
+): Promise<string[]> {
+  let failed = await attempt(ids);
+  for (const d of delays) {
+    if (!failed.length || !alive()) break;
+    await sleep(d);
+    if (!alive()) break;
+    failed = await attempt(failed);
+  }
+  return failed;
+}

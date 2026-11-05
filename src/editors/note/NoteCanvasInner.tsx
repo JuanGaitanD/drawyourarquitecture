@@ -42,6 +42,7 @@ import {
   createUploadQueue,
   dataUrlToBlob,
   diffNewFiles,
+  retryMissing,
   type BinaryLike,
   type UploadQueue,
 } from './files';
@@ -144,9 +145,9 @@ export default function NoteCanvasInner({
 
   /** Descarga de Firestore las imágenes indicadas y las entrega a Excalidraw con `BinaryFileData` completo. */
   const loadFiles = useCallback(
-    (a: ExcalidrawImperativeAPI, all: string[]) => {
-      const run = async (ids: string[]): Promise<void> => {
-        if (ids.length === 0) return;
+    (a: ExcalidrawImperativeAPI, all: string[], patient = false) => {
+      /** Carga `ids`; devuelve los que fallaron. */
+      const attempt = async (ids: string[]): Promise<string[]> => {
         const results = await Promise.allSettled(
           ids.map(async (id): Promise<BinaryFileData> => {
             const blob = await fileStore.load(projectId, id);
@@ -159,11 +160,16 @@ export default function NoteCanvasInner({
             };
           }),
         );
-        if (!alive.current) return;
+        if (!alive.current) return [];
         const ok = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
         if (ok.length) a.addFiles(ok);
-        const failed = ids.filter((_, i) => results[i].status === 'rejected');
-        if (failed.length) {
+        return ids.filter((_, i) => results[i].status === 'rejected');
+      };
+      const run = async (ids: string[], wait = false): Promise<void> => {
+        if (ids.length === 0) return;
+        // Remoto: la imagen puede estar aún subiéndose en el cliente del autor; se reintenta antes de avisar.
+        const failed = wait ? await retryMissing(ids, attempt, undefined, undefined, () => alive.current) : await attempt(ids);
+        if (failed.length && alive.current) {
           toast({
             kind: 'error',
             title:
@@ -175,7 +181,7 @@ export default function NoteCanvasInner({
           });
         }
       };
-      return run(all);
+      return run(all, patient);
     },
     [projectId, toast],
   );
@@ -302,6 +308,7 @@ export default function NoteCanvasInner({
         await loadFiles(
           api,
           referencedFileIds(elements).filter((id) => !have[id]),
+          true,
         );
       },
       async applyContent(c) {

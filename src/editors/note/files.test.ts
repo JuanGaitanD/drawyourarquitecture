@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createUploadQueue, diffNewFiles, type BinaryLike } from './files';
+import { createUploadQueue, diffNewFiles, retryMissing, type BinaryLike } from './files';
 
 const png = (id: string, bytes = 10): BinaryLike => ({
   id,
@@ -78,5 +78,31 @@ describe('createUploadQueue', () => {
     q.add('f', blob);
     await vi.waitFor(() => expect(q.pending()).toBe(0));
     expect(upload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('retryMissing', () => {
+  const sleep = () => Promise.resolve();
+
+  it('reintenta lo que aún no existe y se detiene al conseguirlo (subida lenta del autor)', async () => {
+    const calls: string[][] = [];
+    const attempt = vi.fn(async (ids: string[]) => {
+      calls.push(ids);
+      return calls.length < 3 ? ids : [];
+    });
+    expect(await retryMissing(['a'], attempt, [1, 2, 4], sleep)).toEqual([]);
+    expect(calls).toEqual([['a'], ['a'], ['a']]);
+  });
+
+  it('con un fallo definitivo reintenta de forma acotada y devuelve lo que falló', async () => {
+    const attempt = vi.fn(async (ids: string[]) => ids);
+    expect(await retryMissing(['a', 'b'], attempt, [1, 2, 4], sleep)).toEqual(['a', 'b']);
+    expect(attempt).toHaveBeenCalledTimes(4);
+  });
+
+  it('no reintenta si el lienzo ya no está', async () => {
+    const attempt = vi.fn(async (ids: string[]) => ids);
+    await retryMissing(['a'], attempt, [1, 2], sleep, () => false);
+    expect(attempt).toHaveBeenCalledTimes(1);
   });
 });
