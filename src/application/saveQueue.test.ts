@@ -6,7 +6,7 @@ import {
   drainAndFlush,
   draftKey,
   readDraft,
-  recoverableDraft,
+  recoverableDrafts,
   type DraftStorage,
 } from './saveQueue';
 
@@ -14,6 +14,10 @@ function memoryStorage(): DraftStorage & { map: Map<string, string> } {
   const map = new Map<string, string>();
   return {
     map,
+    get length() {
+      return map.size;
+    },
+    key: (i) => [...map.keys()][i] ?? null,
     getItem: (k) => map.get(k) ?? null,
     setItem: (k, v) => void map.set(k, v),
     removeItem: (k) => void map.delete(k),
@@ -182,7 +186,7 @@ describe('saveQueue · conflicto de revisión', () => {
     const q = createSaveQueue(f.repo, 'p1', 4, { storage });
     q.push('mío');
     await q.flush();
-    expect(readDraft('p1', storage)?.data).toBe('mío');
+    expect(readDraft(draftKey('p1', q.sessionId), storage)?.data).toBe('mío');
   });
 });
 
@@ -192,9 +196,13 @@ describe('saveQueue · borrador local', () => {
     const storage = memoryStorage();
     const q = createSaveQueue(f.repo, 'p1', 0, { storage, now: () => 1234 });
     q.push('x');
-    expect(JSON.parse(storage.map.get(draftKey('p1'))!)).toEqual({ data: 'x', at: 1234, revision: 0 });
+    expect(JSON.parse(storage.map.get(draftKey('p1', q.sessionId))!)).toEqual({
+      data: 'x',
+      at: 1234,
+      revision: 0,
+    });
     await q.flush();
-    expect(storage.map.has(draftKey('p1'))).toBe(false);
+    expect(storage.map.has(draftKey('p1', q.sessionId))).toBe(false);
   });
 
   it('si falla el guardado el borrador sigue ahí', async () => {
@@ -204,22 +212,56 @@ describe('saveQueue · borrador local', () => {
     f.failNext(new Error('x'));
     q.push('y');
     await q.flush();
-    expect(readDraft('p1', storage)?.data).toBe('y');
+    expect(readDraft(draftKey('p1', q.sessionId), storage)?.data).toBe('y');
   });
 
-  it('solo ofrece recuperar un borrador más reciente y distinto de lo guardado', () => {
+  it('ofrece los borradores distintos de lo guardado, sin descartarlos por fecha', () => {
     const storage = memoryStorage();
-    storage.setItem(draftKey('p1'), JSON.stringify({ data: 'nuevo', at: 2000, revision: 3 }));
-    expect(recoverableDraft('p1', { data: 'viejo', updatedAt: 1000 }, storage)?.data).toBe('nuevo');
-    expect(recoverableDraft('p1', { data: 'viejo', updatedAt: 3000 }, storage)).toBeNull();
-    expect(recoverableDraft('p1', { data: 'nuevo', updatedAt: 1000 }, storage)).toBeNull();
-    expect(recoverableDraft('p1', null, storage)).toBeNull();
+    storage.setItem(draftKey('p1', 'a'), JSON.stringify({ data: 'viejo-A', at: 100, revision: 3 }));
+    storage.setItem(draftKey('p1', 'b'), JSON.stringify({ data: 'nuevo-B', at: 300, revision: 4 }));
+    storage.setItem(draftKey('p2', 'a'), JSON.stringify({ data: 'otro', at: 300, revision: 0 }));
+    const r = recoverableDrafts('p1', { data: 'servidor', revision: 4 }, storage);
+    expect(r.map((d) => d.data)).toEqual(['nuevo-B', 'viejo-A']); // el más reciente primero
+    expect(r.map((d) => d.stale)).toEqual([false, true]); // base distinta de la revisión guardada
+    expect(recoverableDrafts('p1', null, storage)).toEqual([]);
+  });
+
+  it('limpia los borradores idénticos al servidor', () => {
+    const storage = memoryStorage();
+    storage.setItem(draftKey('p1', 'a'), JSON.stringify({ data: 'servidor', at: 100, revision: 3 }));
+    expect(recoverableDrafts('p1', { data: 'servidor', revision: 4 }, storage)).toEqual([]);
+    expect(storage.map.size).toBe(0);
   });
 
   it('ignora borradores corruptos', () => {
     const storage = memoryStorage();
-    storage.setItem(draftKey('p1'), '{no es json');
-    expect(readDraft('p1', storage)).toBeNull();
+    storage.setItem(draftKey('p1', 'a'), '{no es json');
+    expect(readDraft(draftKey('p1', 'a'), storage)).toBeNull();
+    expect(recoverableDrafts('p1', { data: 'x', revision: 0 }, storage)).toEqual([]);
+  });
+
+  it('dos pestañas: guardar en B no borra el borrador pendiente de A, que sigue recuperable tras el conflicto', async () => {
+    const f = fakeRepo();
+    const storage = memoryStorage();
+    const a = createSaveQueue(f.repo, 'p1', 0, { storage, now: () => 100 });
+    const b = createSaveQueue(f.repo, 'p1', 0, { storage, now: () => 200 });
+    expect(a.sessionId).not.toBe(b.sessionId);
+    a.push('cambios de A');
+    b.push('cambios de B');
+    await b.flush(); // B guarda y borra solo su borrador
+    await a.flush(); // A: conflicto
+    expect(a.state.status).toBe('conflicto');
+    const r = recoverableDrafts('p1', { data: 'cambios de B', revision: 1 }, storage);
+    expect(r.map((d) => d.data)).toEqual(['cambios de A']);
+  });
+
+  it('un push idéntico a lo guardado solo limpia el borrador propio', () => {
+    const storage = memoryStorage();
+    storage.setItem(draftKey('p1', 'otra'), JSON.stringify({ data: 'ajeno', at: 1, revision: 0 }));
+    const q = createSaveQueue(fakeRepo().repo, 'p1', null, { storage });
+    q.hydrate(0, 'base');
+    q.push('base');
+    expect(storage.map.has(draftKey('p1', 'otra'))).toBe(true);
   });
 });
 
@@ -234,7 +276,7 @@ describe('drainAndFlush · el último cambio retenido por el throttle del editor
     await drainAndFlush(q, () => 'retenido por el throttle');
 
     expect(f.calls.map((c) => c.data)).toEqual(['retenido por el throttle']);
-    expect(readDraft('p1', storage)).toBeNull(); // guardado: el borrador se borra
+    expect(readDraft(draftKey('p1', q.sessionId), storage)).toBeNull(); // guardado: el borrador se borra
     expect(q.hasPending()).toBe(false);
   });
 

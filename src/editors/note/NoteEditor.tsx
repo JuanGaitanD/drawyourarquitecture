@@ -4,7 +4,7 @@ import { Link, Redirect, useLocation } from 'wouter';
 import { PageFallback } from '@/app/PageFallback';
 import { useAutosave, useProject, type ProjectState } from '@/app/hooks';
 import { projectRepo } from '@/app/services';
-import type { Draft } from '@/application/saveQueue';
+import type { StoredDraft } from '@/application/saveQueue';
 import type { ContentRecord } from '@/application/ports';
 import { ContentTooLargeError } from '@/domain/codec';
 import { normalizeTitle, type Project } from '@/domain/project';
@@ -99,7 +99,7 @@ function Session({
   project: Project;
   record: ContentRecord;
   content: NoteContent;
-  draft: Draft | null;
+  draft: StoredDraft | null;
   discardDraft: () => void;
 }) {
   const { toast } = useToast();
@@ -232,7 +232,7 @@ function Session({
         {draft ? (
           <Banner
             tone="warn"
-            text="Hay cambios sin guardar de la última vez que abriste esta nota."
+            text={`Hay cambios sin guardar de ${new Date(draft.at).toLocaleString('es')} en este navegador${draft.stale ? ' (hechos sobre una versión anterior: otra pestaña guardó después)' : ''}.`}
             actions={
               <>
                 <Button size="sm" onClick={discardDraft}>

@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import {
   createSaveQueue,
   drainAndFlush,
+  draftKey,
   readDraft,
   type SaveQueue,
   type SaveState,
@@ -104,7 +105,7 @@ export function useAutosave(
         window.location.reload();
         return;
       }
-      const data = latest.current ?? readDraft(id)?.data;
+      const data = latest.current ?? (queue.current ? readDraft(draftKey(id, queue.current.sessionId))?.data : undefined);
       if (!data) return;
       const newId = await saveAsCopy(id, data);
       const copy = await projectRepo.get(newId);

@@ -16,13 +16,16 @@ export interface Draft {
 }
 
 export interface DraftStorage {
+  readonly length: number;
+  key(index: number): string | null;
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
 }
 
 export const DEBOUNCE_MS = 800;
-export const draftKey = (id: string) => `draft:${id}`;
+/** Un borrador por cola (pestaña): dos pestañas del mismo proyecto no se pisan. */
+export const draftKey = (id: string, sessionId: string) => `draft:${id}:${sessionId}`;
 
 function defaultStorage(): DraftStorage | null {
   try {
@@ -32,9 +35,9 @@ function defaultStorage(): DraftStorage | null {
   }
 }
 
-export function readDraft(id: string, storage: DraftStorage | null = defaultStorage()): Draft | null {
+export function readDraft(key: string, storage: DraftStorage | null = defaultStorage()): Draft | null {
   try {
-    const raw = storage?.getItem(draftKey(id));
+    const raw = storage?.getItem(key);
     if (!raw) return null;
     const d = JSON.parse(raw) as Partial<Draft>;
     return typeof d.data === 'string' && typeof d.at === 'number' && typeof d.revision === 'number'
@@ -45,23 +48,49 @@ export function readDraft(id: string, storage: DraftStorage | null = defaultStor
   }
 }
 
-export function clearDraft(id: string, storage: DraftStorage | null = defaultStorage()): void {
+export function clearDraft(key: string, storage: DraftStorage | null = defaultStorage()): void {
   try {
-    storage?.removeItem(draftKey(id));
+    storage?.removeItem(key);
   } catch {
     /* sin almacenamiento: nada que borrar */
   }
 }
 
-/** El borrador solo se ofrece si es más reciente que lo guardado en el servidor. */
-export function recoverableDraft(
+export interface StoredDraft extends Draft {
+  key: string;
+  /** La base del borrador no es la revisión guardada: otra pestaña guardó entre medias. */
+  stale: boolean;
+}
+
+/**
+ * Borradores de cualquier sesión de `id` cuyo contenido difiere del servidor, el más reciente primero.
+ * No se descartan por fecha (el servidor puede ser más nuevo que el borrador de una pestaña en conflicto);
+ * los idénticos al servidor ya no sirven y se borran.
+ */
+export function recoverableDrafts(
   id: string,
-  record: { data: string; updatedAt: number } | null,
+  record: { data: string; revision: number } | null,
   storage: DraftStorage | null = defaultStorage(),
-): Draft | null {
-  const d = readDraft(id, storage);
-  if (!d || !record) return null;
-  return d.at > record.updatedAt && d.data !== record.data ? d : null;
+): StoredDraft[] {
+  if (!storage || !record) return [];
+  const prefix = `draft:${id}:`;
+  const keys: string[] = [];
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i);
+      if (k?.startsWith(prefix)) keys.push(k);
+    }
+  } catch {
+    return [];
+  }
+  const out: StoredDraft[] = [];
+  for (const key of keys) {
+    const d = readDraft(key, storage);
+    if (!d) continue;
+    if (d.data === record.data) clearDraft(key, storage);
+    else out.push({ ...d, key, stale: d.revision !== record.revision });
+  }
+  return out.sort((x, y) => y.at - x.at);
 }
 
 /**
@@ -84,6 +113,8 @@ export interface SaveQueueOptions {
   storage?: DraftStorage | null;
   now?: () => number;
   isOffline?: () => boolean;
+  /** Identifica el borrador de esta cola; por defecto uno aleatorio por instancia. */
+  sessionId?: string;
 }
 
 export interface SaveQueue {
@@ -96,6 +127,7 @@ export interface SaveQueue {
   hydrate(revision: number, lastSaved: string): void;
   readonly hydrated: boolean;
   readonly revision: number;
+  readonly sessionId: string;
   readonly state: SaveState;
   hasPending(): boolean;
   /** Cancela el debounce y deja de escribir (al desmontar, tras `flush`). */
@@ -115,6 +147,8 @@ export function createSaveQueue(
   const debounceMs = opts.debounceMs ?? DEBOUNCE_MS;
   const storage = opts.storage === undefined ? defaultStorage() : opts.storage;
   const now = opts.now ?? Date.now;
+  const sessionId = opts.sessionId ?? Math.random().toString(36).slice(2, 10);
+  const myDraft = draftKey(id, sessionId);
   const isOffline = opts.isOffline ?? (() => typeof navigator !== 'undefined' && navigator.onLine === false);
 
   let revision = initialRevision ?? 0;
@@ -135,7 +169,7 @@ export function createSaveQueue(
 
   function writeDraft(data: string) {
     try {
-      storage?.setItem(draftKey(id), JSON.stringify({ data, at: now(), revision } satisfies Draft));
+      storage?.setItem(myDraft, JSON.stringify({ data, at: now(), revision } satisfies Draft));
     } catch {
       /* cuota llena o sin almacenamiento: seguimos sin borrador */
     }
@@ -162,7 +196,7 @@ export function createSaveQueue(
             }
             revision = res.revision;
             lastSaved = data;
-            if (latest === data) clearDraft(id, storage);
+            if (latest === data) clearDraft(myDraft, storage);
             setState({ status: 'guardado' });
           } catch (e) {
             const error = e instanceof Error ? e : new Error(String(e));
@@ -183,7 +217,7 @@ export function createSaveQueue(
       latest = data;
       if (data === lastSaved) {
         clearTimer();
-        clearDraft(id, storage);
+        clearDraft(myDraft, storage);
         if (state.status === 'error') setState({ status: 'guardado' });
         return;
       }
@@ -212,6 +246,7 @@ export function createSaveQueue(
     get revision() {
       return revision;
     },
+    sessionId,
     get state() {
       return state;
     },

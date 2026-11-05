@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { useLocation } from 'wouter';
 import { useAutosave, useProject } from '@/app/hooks';
 import { fileStore, projectRepo } from '@/app/services';
-import type { Draft } from '@/application/saveQueue';
+import type { StoredDraft } from '@/application/saveQueue';
 import { decode } from '@/domain/codec';
 import { Button, useToast } from '@/ui';
 import { BoardCanvas } from './canvas/BoardCanvas';
@@ -129,7 +129,7 @@ interface LoadedProps {
   isPublic: boolean;
   revision: number;
   initial: BoardContent;
-  draft: Draft | null;
+  draft: StoredDraft | null;
   discardDraft: () => void;
 }
 
@@ -154,7 +154,6 @@ function Loaded({
   const { status, flush, resolveConflict } = useAutosave(id, encoded, true, revision, undefined, drain);
   const [title, setTitle] = useState(initialTitle);
   const [isPublic, setPublic] = useState(initialPublic);
-  const [draftOpen, setDraftOpen] = useState(draft !== null);
   const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -198,7 +197,6 @@ function Loaded({
     const r = draft ? parse(draft.data) : null;
     if (r?.ok) store.getState().load(r.value);
     else toast({ title: 'El borrador no es válido', kind: 'error' });
-    setDraftOpen(false);
     discardDraft();
   };
 
@@ -237,21 +235,16 @@ function Loaded({
                 </span>
               </div>
             ) : null}
-            {draftOpen && draft ? (
+            {draft ? (
               <div className={styles.banner} data-kind="info" role="region" aria-label="Cambios sin guardar">
                 <span>
-                  Hay cambios sin guardar de {new Date(draft.at).toLocaleString('es')} en este navegador.
+                  Hay cambios sin guardar de {new Date(draft.at).toLocaleString('es')} en este navegador
+                  {draft.stale ? ' (hechos sobre una versión anterior: otra pestaña guardó después)' : ''}.
                 </span>
                 <Button size="sm" variant="primary" onClick={recover}>
                   Recuperar cambios
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setDraftOpen(false);
-                    discardDraft();
-                  }}
-                >
+                <Button size="sm" onClick={discardDraft}>
                   Descartar
                 </Button>
               </div>

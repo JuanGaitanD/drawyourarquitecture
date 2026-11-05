@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ContentRecord } from '@/application/ports';
-import { clearDraft, recoverableDraft, type Draft } from '@/application/saveQueue';
+import { clearDraft, recoverableDrafts, type StoredDraft } from '@/application/saveQueue';
 import type { Project } from '@/domain/project';
 import { contentRepo, projectRepo } from '../services';
 
@@ -11,9 +11,9 @@ export interface ProjectState {
   project: Project | null;
   content: ContentRecord | null;
   error: Error | null;
-  /** Borrador local más reciente que lo guardado, si lo hay («Recuperar cambios no guardados»). */
-  draft: Draft | null;
-  /** Descarta el borrador (tras recuperarlo o al rechazarlo). */
+  /** Borrador local distinto de lo guardado (el más reciente de cualquier pestaña), si lo hay («Recuperar cambios»). */
+  draft: StoredDraft | null;
+  /** Descarta el borrador mostrado (tras recuperarlo o al rechazarlo); si quedan otros, se ofrece el siguiente. */
   discardDraft: () => void;
   /** Vuelve a cargar: «Reintentar» tras un error de red. */
   reload: () => void;
@@ -25,13 +25,13 @@ export interface ProjectState {
  * El editor se monta con `key={id}`, así que cada id arranca en `loading`.
  */
 export function useProject(id: string): ProjectState {
-  const [state, setState] = useState<Omit<ProjectState, 'discardDraft' | 'reload'>>({
+  const [state, setState] = useState<Omit<ProjectState, 'draft' | 'discardDraft' | 'reload'>>({
     status: 'loading',
     project: null,
     content: null,
     error: null,
-    draft: null,
   });
+  const [drafts, setDrafts] = useState<StoredDraft[]>([]);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -40,8 +40,9 @@ export function useProject(id: string): ProjectState {
       .then(([project, content]) => {
         if (cancelled) return;
         if (!project || !content)
-          return setState({ status: 'missing', project: null, content: null, error: null, draft: null });
-        setState({ status: 'ready', project, content, error: null, draft: recoverableDraft(id, content) });
+          return setState({ status: 'missing', project: null, content: null, error: null });
+        setDrafts(recoverableDrafts(id, content));
+        setState({ status: 'ready', project, content, error: null });
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -50,7 +51,6 @@ export function useProject(id: string): ProjectState {
           project: null,
           content: null,
           error: e instanceof Error ? e : new Error(String(e)),
-          draft: null,
         });
       });
     return () => {
@@ -59,13 +59,16 @@ export function useProject(id: string): ProjectState {
   }, [id, attempt]);
 
   const discardDraft = useCallback(() => {
-    clearDraft(id);
-    setState((s) => ({ ...s, draft: null }));
-  }, [id]);
+    setDrafts(([first, ...rest]) => {
+      if (first) clearDraft(first.key);
+      return rest;
+    });
+  }, []);
   const reload = useCallback(() => {
-    setState({ status: 'loading', project: null, content: null, error: null, draft: null });
+    setState({ status: 'loading', project: null, content: null, error: null });
+    setDrafts([]);
     setAttempt((n) => n + 1);
   }, []);
 
-  return { ...state, discardDraft, reload };
+  return { ...state, draft: drafts[0] ?? null, discardDraft, reload };
 }
