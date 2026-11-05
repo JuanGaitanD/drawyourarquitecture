@@ -1,7 +1,7 @@
 import { ExternalLink, LoaderCircle, LockKeyhole, RefreshCw } from 'lucide-react';
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'wouter';
-import { contentRepo } from '@/app/services';
+import { contentRepo, fileStore } from '@/app/services';
 import { decode } from '@/domain/codec';
 import type { BoardContent } from '@/editors/board/model/board';
 import { validateBoardContent } from '@/editors/board/model/validate';
@@ -34,6 +34,7 @@ export function BoardEmbed({ boardId, depth = 0, readonly = false }: BoardEmbedP
   const [attempt, setAttempt] = useState(0);
   const [, navigate] = useLocation();
   const tooDeep = depth > MAX_EMBED_DEPTH;
+  const files = useMemo(() => ({ load: (fileId: string) => fileStore.load(boardId, fileId) }), [boardId]);
 
   useEffect(() => {
     if (tooDeep) return;
@@ -84,7 +85,7 @@ export function BoardEmbed({ boardId, depth = 0, readonly = false }: BoardEmbedP
     <div className={styles.frame} data-embed-board={boardId}>
       {state.status === 'ready' ? (
         <Suspense fallback={<Loading />}>
-          <BoardViewer content={state.content} />
+          <BoardViewer content={state.content} files={files} />
         </Suspense>
       ) : null}
       {state.status === 'loading' ? <Loading /> : null}
