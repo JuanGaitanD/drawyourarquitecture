@@ -23,8 +23,7 @@ service cloud.firestore {
       return request.auth != null && p.ownerId == request.auth.uid;
     }
     function memberRole(p) {
-      return (request.auth != null && request.auth.uid in p.get('members', {}))
-        ? p.members[request.auth.uid] : '';
+      return request.auth == null ? '' : p.get('members', {}).get(request.auth.uid, '');
     }
     function canRead(p) {
       return isProjectOwner(p) || memberRole(p) in ['editor', 'viewer'] || p.isPublic == true;
@@ -43,20 +42,23 @@ service cloud.firestore {
       return t is string && t.size() > 0 && t.size() <= 120;
     }
 
-    // Una invitación vale si es del proyecto, trae ese rol y no ha caducado.
-    function validInvite(token, pid, role) {
+    // Una invitación vale si es de este proyecto y no ha caducado (`expiresAt` en ms, comparado con la hora del
+    // servidor).
+    function validInvite(token, pid) {
       let inv = get(/databases/$(database)/documents/invites/$(token)).data;
-      return inv.projectId == pid && inv.role == role && inv.expiresAt > request.time.toMillis();
+      return inv.projectId == pid && inv.expiresAt > request.time.toMillis();
     }
 
-    // Unirse con una invitación: la persona se añade sola a `members` y deja en `joins/{uid}` el token que lo
-    // justifica (getAfter ve ese documento escrito en el mismo batch).
+    // Excepción explícita a «los metadatos son del dueño»: unirse con una invitación. El token no viaja en la
+    // escritura de `members`, así que el mismo batch crea `joins/{uid} = { token, name }` y la regla lo lee con
+    // getAfter; luego get() del invite valida proyecto, caducidad y rol. Solo puede cambiar `members.<uid>`.
     function isJoining(id) {
       return request.auth != null
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
         && request.resource.data.members.diff(resource.data.get('members', {})).affectedKeys().hasOnly([request.auth.uid])
+        && validInvite(getAfter(/databases/$(database)/documents/projects/$(id)/joins/$(request.auth.uid)).data.token, id)
         && request.resource.data.members[request.auth.uid]
-          == getAfter(/databases/$(database)/documents/projects/$(id)/joins/$(request.auth.uid)).data.role
+          == get(/databases/$(database)/documents/invites/$(getAfter(/databases/$(database)/documents/projects/$(id)/joins/$(request.auth.uid)).data.token)).data.role
         && validMembers(request.resource.data.members);
     }
 
@@ -95,25 +97,24 @@ service cloud.firestore {
       match /joins/{uid} {
         allow get, list: if isProjectOwner(projectDoc(id));
         allow create, update: if request.auth != null && request.auth.uid == uid
-          && request.resource.data.keys().hasOnly(['token', 'role', 'name'])
-          && request.resource.data.keys().hasAll(['token', 'role', 'name'])
+          && request.resource.data.keys().hasOnly(['token', 'name'])
+          && request.resource.data.keys().hasAll(['token', 'name'])
           && request.resource.data.token is string
           && request.resource.data.name is string && request.resource.data.name.size() <= 80
-          && request.resource.data.role in ['editor', 'viewer']
-          && validInvite(request.resource.data.token, id, request.resource.data.role);
+          && validInvite(request.resource.data.token, id);
         allow delete: if isProjectOwner(projectDoc(id));
       }
 
-      // Presencia: solo dueño y miembros; cada uno escribe su propio documento.
+      // Presencia (latido cada 60 s, caduca a los 2 min): solo dueño y miembros; cada uno escribe su propio documento.
+      // Los cursores no se persisten: cada escritura cuesta cuota.
       match /presence/{uid} {
         allow get, list: if isMemberOrOwner(projectDoc(id));
         allow create, update: if request.auth != null && request.auth.uid == uid
           && isMemberOrOwner(projectDoc(id))
-          && request.resource.data.keys().hasOnly(['name', 'color', 'x', 'y', 'at'])
-          && request.resource.data.keys().hasAll(['name', 'color', 'x', 'y', 'at'])
+          && request.resource.data.keys().hasOnly(['name', 'color', 'at'])
+          && request.resource.data.keys().hasAll(['name', 'color', 'at'])
           && request.resource.data.name is string && request.resource.data.name.size() <= 80
           && request.resource.data.color is string && request.resource.data.color.size() <= 20
-          && request.resource.data.x is number && request.resource.data.y is number
           && request.resource.data.at is number;
         allow delete: if request.auth != null && request.auth.uid == uid;
       }

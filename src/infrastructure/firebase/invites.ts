@@ -50,7 +50,7 @@ export const inviteRepo: InviteRepo = {
     const { fs, db } = await loadFirestore();
     const batch = fs.writeBatch(db);
     const project = fs.doc(db, 'projects', invite.projectId);
-    batch.set(fs.doc(project, 'joins', user.uid), { token: invite.token, role: invite.role, name: user.name.slice(0, 80) });
+    batch.set(fs.doc(project, 'joins', user.uid), { token: invite.token, name: user.name.slice(0, 80) });
     batch.update(project, new fs.FieldPath('members', user.uid), invite.role);
     await batch.commit();
   },

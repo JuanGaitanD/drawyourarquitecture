@@ -49,7 +49,7 @@ async function seedInvite(over: Record<string, unknown> = {}, token = TOKEN) {
 /** Lo que hace el invitado: el rol en `members` y el rastro en `joins/{uid}`, en un batch. */
 function join(fs: ReturnType<typeof as>, uid: string, role: string, token = TOKEN, id = 'p') {
   const b = writeBatch(fs);
-  b.set(doc(fs, 'projects', id, 'joins', uid), { token, role, name: uid });
+  b.set(doc(fs, 'projects', id, 'joins', uid), { token, name: uid });
   b.update(proj(fs, id), { [`members.${uid}`]: role });
   return b.commit();
 }
@@ -170,11 +170,27 @@ describe('compartir · invitaciones', () => {
     await assertFails(join(as(STRANGER), STRANGER, 'editor', TOKEN, 'ajeno'));
   });
 
+  it('al unirse solo puede cambiar members.<uid>: ni título ni visibilidad', async () => {
+    await seedInvite();
+    const fs = as(STRANGER);
+    const b = writeBatch(fs);
+    b.set(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: TOKEN, name: 'x' });
+    b.update(proj(fs), { [`members.${STRANGER}`]: 'editor', isPublic: true });
+    await assertFails(b.commit());
+  });
+
+  it('el rastro joins/{uid} no se escribe con un token inexistente ni a nombre de otro', async () => {
+    await seedInvite();
+    const fs = as(STRANGER);
+    await assertFails(setDoc(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: 'no-existe-0123456789abcd', name: 'x' }));
+    await assertFails(setDoc(doc(fs, 'projects', 'p', 'joins', 'otra-persona'), { token: TOKEN, name: 'x' }));
+  });
+
   it('nadie añade a otra persona con su invitación', async () => {
     await seedInvite();
     const fs = as(STRANGER);
     const b = writeBatch(fs);
-    b.set(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: TOKEN, role: 'editor', name: 'x' });
+    b.set(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: TOKEN, name: 'x' });
     b.update(proj(fs), { 'members.otra-persona': 'editor' });
     await assertFails(b.commit());
   });
@@ -192,7 +208,7 @@ describe('compartir · invitaciones', () => {
 
 describe('presencia', () => {
   const pres = (fs: ReturnType<typeof as>, uid: string) => doc(fs, 'projects', 'p', 'presence', uid);
-  const data = { name: 'Ana', color: '#e11d48', x: 10, y: 20, at: 1 };
+  const data = { name: 'Ana', color: '#e11d48', at: 1 };
 
   it('un miembro escribe su documento y lo lee otro miembro', async () => {
     await assertSucceeds(setDoc(pres(as(EDITOR), EDITOR), data));
@@ -209,7 +225,7 @@ describe('presencia', () => {
 
   it('valida campos y se borra solo el propio', async () => {
     await assertFails(setDoc(pres(as(EDITOR), EDITOR), { ...data, extra: 1 }));
-    await assertFails(setDoc(pres(as(EDITOR), EDITOR), { ...data, x: 'a' }));
+    await assertFails(setDoc(pres(as(EDITOR), EDITOR), { ...data, at: 'ahora' }));
     await assertSucceeds(setDoc(pres(as(EDITOR), EDITOR), data));
     await assertFails(setDoc(pres(as(VIEWER), EDITOR), data));
   });
