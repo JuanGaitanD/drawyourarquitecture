@@ -88,8 +88,18 @@ export function createInviteRepo(loadFirestore: () => Promise<FirestoreModule>):
 
     async accept(invite, user) {
       const { fs, db } = await loadFirestore();
-      const batch = fs.writeBatch(db);
       const project = fs.doc(db, 'projects', invite.projectId);
+      // D51: quien ya es miembro con este rol no escribe nada (la regla de D44 exige que el rol cambie y el rastro
+      // ya nombra el enlace que se lo dio). Quien aún no puede leer el proyecto sigue el flujo normal.
+      const current = await fs.getDoc(project).then(
+        (s) => (s.data()?.members as Record<string, unknown> | undefined)?.[user.uid],
+        (e: unknown) => {
+          if (isPermissionDenied(e)) return undefined;
+          throw e;
+        },
+      );
+      if (current === invite.role) return;
+      const batch = fs.writeBatch(db);
       batch.set(fs.doc(project, 'joins', user.uid), { token: invite.token, name: user.name.slice(0, 80) });
       batch.update(project, new fs.FieldPath('members', user.uid), invite.role);
       await batch.commit();

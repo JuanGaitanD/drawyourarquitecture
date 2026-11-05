@@ -108,20 +108,29 @@ test.describe('imágenes e2e', () => {
       const errors: string[] = [];
       guest.on('pageerror', (e) => errors.push(e.message));
 
-      let slow = false;
-      await page.route('http://127.0.0.1:8080/**', async (route) => {
-        if (slow) await new Promise((r) => setTimeout(r, 2500));
+      // Compuerta observable: la escritura del archivo (meta y trozos, rutas /files/, por el canal de escritura de
+      // Firestore) queda retenida hasta soltarla. El contenido del proyecto (transacción :commit) pasa sin demora.
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let held = 0;
+      await page.route('**/Write/channel**', async (route) => {
+        if (decodeURIComponent(route.request().postData() ?? '').includes('/files/')) {
+          held++;
+          await gate;
+        }
         await route.continue();
       });
-      slow = true;
       await dropImage(page, 'lenta.png', pngBytes(96, 64, [30, 160, 90]), { x: 400, y: 350 });
+      await expect.poll(() => held).toBeGreaterThan(0); // la subida está en vuelo y sin confirmar
       await expect.poll(() => noteImages(page)).toEqual({ total: 1, loaded: 1 });
       await drawRectangle(page, { x: 800, y: 450 }); // sigue editando con la subida en curso
 
-      // La invitada ve lo demás aunque la imagen aún no esté publicada.
+      // La invitada recibe el rectángulo y todavía ni la imagen ni errores: la referencia no se publica sin confirmar.
       await expect.poll(() => rectangles(guest), { timeout: 30_000 }).toBe(1);
+      expect(await noteImages(guest)).toEqual({ total: 0, loaded: 0 });
+      expect(errors).toEqual([]);
 
-      slow = false;
+      release();
       await expect.poll(() => noteImages(guest), { timeout: 30_000 }).toEqual({ total: 1, loaded: 1 });
       expect(errors).toEqual([]);
       await expect(guest.getByRole('region', { name: 'Notificaciones' }).getByText(/No se pudo/)).toHaveCount(

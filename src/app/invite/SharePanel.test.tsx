@@ -17,6 +17,8 @@ const world = vi.hoisted(() => {
     joins: {} as Record<string, MemberJoin>,
     published: [] as AclSnapshot[],
     failNext: null as null | 'create' | 'revokeAndRemove' | 'publish',
+    /** Si está, `publish` espera a que se resuelva antes de registrar la publicación. */
+    hold: null as null | Promise<void>,
     seq: 0,
   };
   return w;
@@ -56,7 +58,10 @@ vi.mock('../services', () => {
       return gone;
     },
     async aclSnapshot() {
-      return { version: world.seq, members: { ...world.members }, invites: {} };
+      const invites = Object.fromEntries(
+        world.invites.map((i) => [i.token, { role: i.role, expiresAt: i.expiresAt }]),
+      );
+      return { version: world.seq, members: { ...world.members }, invites };
     },
   };
   return {
@@ -72,6 +77,7 @@ vi.mock('../services', () => {
     presenceAcl: {
       publish: async (_room: unknown, snap: AclSnapshot) => {
         fail('publish');
+        await world.hold;
         world.published.push(snap);
         return 'ok';
       },
@@ -96,7 +102,15 @@ function setup() {
 }
 
 beforeEach(() => {
-  Object.assign(world, { invites: [], members: {}, joins: {}, published: [], failNext: null, seq: 0 });
+  Object.assign(world, {
+    invites: [],
+    members: {},
+    joins: {},
+    published: [],
+    failNext: null,
+    hold: null,
+    seq: 0,
+  });
   writeText.mockReset().mockResolvedValue();
 });
 
@@ -119,11 +133,20 @@ describe('SharePanel · compartir con personas', () => {
     expect(within(list).getByText(/Solo lectura/)).toBeTruthy();
   });
 
-  it('al crear un enlace publica el acceso vigente en el espejo de presencia', async () => {
+  it('al crear un enlace publica en segundo plano el acceso con ese token, sin que el enlace espere', async () => {
     const user = setup();
+    await waitFor(() => expect(world.published).toHaveLength(1)); // publicación inicial del montaje
+    world.published = [];
+    let release!: () => void;
+    world.hold = new Promise<void>((r) => (release = r));
+
     await user.click(screen.getByRole('button', { name: 'Crear enlace' }));
+    // El enlace se copia y se muestra con la publicación retenida: no la espera.
     await screen.findByText('Enlace de invitación copiado');
-    expect(world.published.length).toBeGreaterThan(0);
+    expect(world.published).toEqual([]);
+
+    release();
+    await waitFor(() => expect(world.published.some((snap) => 'tok1' in snap.invites)).toBe(true));
   });
 
   it('si crear el enlace falla avisa y no copia nada', async () => {
