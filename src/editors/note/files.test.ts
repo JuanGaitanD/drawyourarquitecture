@@ -47,7 +47,7 @@ describe('límites', () => {
 
 describe('createUploadQueue', () => {
   const blob = new Blob(['x']);
-  const sleep = vi.fn(() => Promise.resolve());
+  const sleep = vi.fn((_ms: number) => Promise.resolve());
 
   it('reintenta con 1-2-4 s y termina si el 4.º intento sale', async () => {
     sleep.mockClear();
