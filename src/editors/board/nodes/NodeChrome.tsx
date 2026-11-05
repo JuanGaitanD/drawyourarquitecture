@@ -55,6 +55,17 @@ export function NodeChrome({
         .join(' ')}
     >
       {children}
+      {/* Los handles siempre existen (React Flow los necesita para trazar las aristas); sin edición no se ven ni se tocan. */}
+      {HANDLES.map(([hid, pos]) => (
+        <Handle
+          key={hid}
+          id={hid}
+          type="source"
+          position={pos}
+          isConnectable={interactive}
+          className={[styles.handle, interactive ? '' : styles.handleOff].filter(Boolean).join(' ')}
+        />
+      ))}
       {readonly ? null : (
         <>
           <NodeResizer
@@ -69,11 +80,6 @@ export function NodeChrome({
             onResizeStart={() => store.getState().beginGesture()}
             onResizeEnd={() => store.getState().endGesture()}
           />
-          {interactive
-            ? HANDLES.map(([hid, pos]) => (
-                <Handle key={hid} id={hid} type="source" position={pos} className={styles.handle} />
-              ))
-            : null}
           {locked ? (
             <button
               type="button"

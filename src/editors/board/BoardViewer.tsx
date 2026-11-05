@@ -1,4 +1,4 @@
-import { ReactFlow, ReactFlowProvider } from '@xyflow/react';
+import { ConnectionMode, ReactFlow, ReactFlowProvider } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMemo } from 'react';
 import { useTheme } from '@/ui';
@@ -49,6 +49,7 @@ export function BoardViewer({ content, files }: BoardViewerProps) {
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 colorMode={resolved}
+                connectionMode={ConnectionMode.Loose}
                 ariaLabelConfig={ARIA_LABELS}
                 nodesDraggable={false}
                 nodesConnectable={false}

@@ -210,6 +210,12 @@
   outline-offset: 2px;
 }
 
+.handleOff,
+.node .handleOff:hover {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .resizeLine {
   border-color: var(--selection) !important;
 }
