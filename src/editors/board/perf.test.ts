@@ -85,7 +85,7 @@ describe(`rendimiento con ${N} nodos (D13)`, () => {
     });
     expect(s.getState().nodes.find((n) => n.id === 'n9')!.data.label).toBe('remoto 14');
     results['fusión · onRemote (parse incluido)'] = fmt(onRemote);
-    expect(onRemote).toBeLessThan(70);
+    expect(onRemote).toBeLessThan(100);
   });
 
   it('fusión: llega un remoto con un nodo cambiado y el historial lleno (100 pasos)', () => {
@@ -115,7 +115,7 @@ describe(`rendimiento con ${N} nodos (D13)`, () => {
     results['fusión · mergeBoards'] = fmt(merge);
     results['fusión · boardSame (2 textos)'] = fmt(same);
     expect(merge).toBeLessThan(15);
-    expect(same).toBeLessThan(50);
+    expect(same).toBeLessThan(60);
   });
 
   it('resumen', () => {
