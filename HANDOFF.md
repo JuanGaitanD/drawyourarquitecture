@@ -2,9 +2,11 @@
 
 ## Dónde estamos
 
-**T5 · Integración terminada** en la rama `feat/base` (sin push): los carriles C1, C2, D, A y B están fusionados (`chore(merge): integrar carril <X>`, sin conflictos) y los pendientes cruzados resueltos. Gates `lint`, `typecheck`, `test` (296), `test:rules` (25) y `build` en verde. Bundle inicial **152,7 kB gzip** (objetivo < 250). Probado a mano en Chrome contra los emuladores (nota con imagen y board embebido, board con plantilla, Mermaid, ordenar, PNG, JSON, atajos, bloqueo, enlace público sin sesión, despublicar, conflicto entre pestañas, claro y oscuro a 1280 y 1024 px).
+**T5 · Integración terminada** en la rama `feat/base` (sin push): los carriles C1, C2, D, A y B están fusionados (`chore(merge): integrar carril <X>`, sin conflictos) y los pendientes cruzados resueltos. Gates `lint`, `typecheck`, `test` (309), `test:rules` (25) y `build` en verde. Bundle inicial **152,7 kB gzip** (objetivo < 250). Probado a mano en Chrome contra los emuladores (nota con imagen y board embebido, board con plantilla, Mermaid, ordenar, PNG, JSON, atajos, bloqueo, enlace público sin sesión, despublicar, conflicto entre pestañas, claro y oscuro a 1280 y 1024 px).
 
-Siguen T6 (e2e), T7 (revisión) y T8 (despliegue, pendiente de Juan).
+**T7 · Revisión final corregida** (6 hallazgos de `.wigi/review/final-gpt.md`, un commit por cada uno, ver «Correcciones de la revisión final»). Gates `lint`, `typecheck`, `test` y `build` en verde (`test:rules` no se tocó: no cambian las reglas).
+
+Siguen T6 (e2e) y T8 (despliegue, pendiente de Juan).
 
 ## Lo que hay
 
@@ -33,9 +35,9 @@ Siguen T6 (e2e), T7 (revisión) y T8 (despliegue, pendiente de Juan).
 
 - `app/services.ts` exporta `createProject`, `duplicateProject`, `deleteProject`, `saveAsCopy` (ya ligados a Firebase), y `projectRepo`, `contentRepo`, `fileStore`, `identity`. Los editores los importan de ahí (permitido por el lint; `infrastructure/` y el SDK no).
 - `useAutosave(id, encoded, hydrated, revision, baseline?)`: el 5.º argumento es opcional (añadido al contrato). Sin él, la base de comparación es el primer `encoded` tras hidratar. Devuelve además de `{status, error, flush, resolveConflict}` lo que dice el plan.
-- `useProject(id)` devuelve `{status: 'loading'|'ready'|'missing'|'error', project, content, error, draft, discardDraft, reload}`. `ready` es la señal de hidratación; `draft` es el borrador local más reciente que lo guardado.
+- `useProject(id)` devuelve `{status: 'loading'|'ready'|'missing'|'error', project, content, error, draft, discardDraft, reload}`. `ready` es la señal de hidratación; `draft` es el borrador local más reciente que difiere de lo guardado.
 - `createSaveQueue(repo, id, initialRevision | null, opts?)`: con `null` no escribe hasta `hydrate(revision, lastSaved)`. Extras sobre el contrato: `hydrate`, `hasPending`, `dispose`, `state`.
-- `recoverableDraft`, `readDraft` y `clearDraft` están exportados de `application/saveQueue.ts` para «Recuperar cambios no guardados».
+- `recoverableDrafts`, `readDraft`, `clearDraft` y `draftKey(id, sessionId)` están exportados de `application/saveQueue.ts` para «Recuperar cambios no guardados».
 - Revisión inicial del contenido: **0** al crear; cada guardado sube una (las reglas lo exigen: `revision == resource.revision + 1`).
 - `ProjectRepo.remove` borra `content/main` y el proyecto en un batch; los archivos los borra antes `deleteProject`.
 - `window.EXCALIDRAW_ASSET_PATH = '/excalidraw-assets/'` se fija en `main.tsx`. El carril B debe importar `@excalidraw/excalidraw/index.css` en `NoteCanvas`.
@@ -77,6 +79,15 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 21. **Bundle**: `vite.config.ts` ya no usa `manualChunks` (arrastraba React y Radix al chunk de Excalidraw y `index.html` precargaba ≈ 1,8 MB gzip). Firestore se carga con `import()` (`infrastructure/firebase/firestore.ts`, como Storage). `ThemeToggle` y `UserMenu` viven en el chunk inicial, así que no inflan el del editor y no hizo falta moverlos a `ui/`.
 22. **`/note` a 1024 px**: la barra superior de B oculta el texto del estado (queda para lectores de pantalla) y acorta el título para que quepa «Biblioteca».
 
+### Correcciones de la revisión final (T7)
+
+23. **Guardar como copia** (`application/projects.ts`): `saveAsCopy` y `duplicateProject` comparten `copyProject`: crean el proyecto, copian los archivos con el mismo `fileId`, escriben el contenido al final y, si algo falla, borran la copia incompleta.
+24. **Borradores por pestaña** (`application/saveQueue.ts`): clave `draft:<id>:<sessionId>` (un `sessionId` por cola); la cola solo borra el suyo al confirmar. `recoverableDrafts(id, {data, revision})` sustituye a `recoverableDraft`: ofrece los de cualquier sesión cuyo contenido difiera del servidor, **sin descartar por fecha**, el más reciente primero; borra los idénticos al servidor y marca `stale` si su revisión base no es la guardada (los banners lo dicen). `useProject.draft` es el primero de la lista y `discardDraft` borra solo ese y pasa al siguiente. `DraftStorage` pide `length` y `key(i)`; `readDraft`/`clearDraft` reciben la clave completa.
+25. **Reparentar sin ciclos** (`editors/board/store/reparent.ts`): ningún nodo de la selección ni descendiente suyo es destino de otro; los destinos se resuelven a la vez sobre la geometría original. **Guardado validado**: `useEncodedContent` pasa `validateBoardContent` antes de codificar (`computeEncoded`); si falla, no hay `encoded` (no se guarda) y el editor muestra un banner con el motivo.
+26. **Validación** (`model/validate.ts`): `shape` ∈ `SHAPES`, `icon` ∈ `ICONS`, `fileId` string en imágenes y `style.{fill,stroke,textColor}` string y `{strokeWidth,opacity,fontSize}` número finito. `dashed`, `bold` y `align` no se validan (no rompen el pintado).
+27. **Borrar un frame** (`removeSelected`): los descendientes bloqueados sobreviven (con su subárbol) y pasan al ancestro superviviente con la posición absoluta conservada.
+28. **JSON sin imágenes**: el ítem pasa a «Descargar JSON (sin imágenes)» y el toast dice que no es una copia de seguridad completa. Transportar los binarios en el JSON **queda pendiente**.
+
 ### Bundle inicial (gzip, lo que pide `index.html`)
 
 | Medida                                 | Tamaño                             |
@@ -108,7 +119,7 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 
 ## Gates
 
-`pnpm lint` · `pnpm typecheck` · `pnpm test` (Vitest, 296) · `pnpm test:rules` (emuladores; exige Java 21 en el `PATH`; 25 casos) · `pnpm build`.
+`pnpm lint` · `pnpm typecheck` · `pnpm test` (Vitest) · `pnpm test:rules` (emuladores; exige Java 21 en el `PATH`; 25 casos) · `pnpm build`.
 
 ## Lo que sigue
 
