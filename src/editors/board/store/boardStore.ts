@@ -7,6 +7,7 @@ import type {
   BoardNode,
   BoardNodeData,
   IconName,
+  NodeStyle,
   ShapeKind,
   Viewport,
 } from '../model/board';
@@ -14,6 +15,9 @@ import { descendantsOf, sortParentsFirst } from '../model/geometry';
 
 // Store por instancia (invariante 6): zustand vanilla + zundo con partialize (solo nodes y edges, sin estado
 // de runtime), límite 100 y un gesto = un paso.
+
+/** `style` puede ser parcial: se mezcla con el estilo de cada nodo. */
+export type NodeDataPatch = Partial<Omit<BoardNodeData, 'style'>> & { style?: Partial<NodeStyle> };
 
 export type Tool = 'select' | 'hand' | 'shape' | 'text' | 'sticky' | 'frame' | 'connector' | 'icon' | 'image';
 
@@ -36,7 +40,7 @@ export interface BoardState {
   addNodes(nodes: BoardNode[]): void;
   addEdges(edges: BoardEdge[]): void;
   /** `patch.style` se mezcla con el estilo actual (puede ser parcial). */
-  updateNodeData(ids: readonly string[], patch: Partial<BoardNodeData>): void;
+  updateNodeData(ids: readonly string[], patch: NodeDataPatch): void;
   updateEdgeData(ids: readonly string[], patch: Partial<BoardEdgeData>): void;
   setNodes(fn: (nodes: BoardNode[]) => BoardNode[]): void;
   setEdges(fn: (edges: BoardEdge[]) => BoardEdge[]): void;

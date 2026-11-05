@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { makeNode, type BoardEdge, type BoardNode, type NodeStyle, type XY } from './board';
+import { makeNode, type BoardEdge, type BoardNode, type XY } from './board';
 import { descendantsOf, nodeSize, sortParentsFirst, toAbsolute, toRelative } from './geometry';
 
 // Operaciones puras del board (carril C2). Todas trabajan en coordenadas absolutas con
@@ -220,18 +220,6 @@ export function nudge(
   const roots = new Set(movable(nodes, ids).map((n) => n.id));
   return nodes.map((n) =>
     roots.has(n.id) ? { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } } : n,
-  );
-}
-
-/** Fusiona `patch` en el estilo de cada nodo (no reemplaza el estilo entero, que difiere entre nodos). */
-export function patchStyle(
-  nodes: readonly BoardNode[],
-  ids: readonly string[],
-  patch: Partial<NodeStyle>,
-): BoardNode[] {
-  const sel = new Set(ids);
-  return nodes.map((n) =>
-    sel.has(n.id) ? { ...n, data: { ...n.data, style: { ...n.data.style, ...patch } } } : n,
   );
 }
 

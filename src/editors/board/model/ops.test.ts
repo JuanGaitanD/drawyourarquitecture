@@ -8,7 +8,6 @@ import {
   distribute,
   duplicate,
   nudge,
-  patchStyle,
   rootsOf,
   selectOnly,
   sendToBack,
@@ -380,7 +379,7 @@ describe('duplicate', () => {
   });
 });
 
-describe('nudge, patchStyle, setLocked, selectOnly, rootsOf', () => {
+describe('nudge, setLocked, selectOnly, rootsOf', () => {
   it('nudge mueve solo los raíz y no los bloqueados', () => {
     const locked = { ...n('l', 0, 0), data: { ...n('l', 0, 0).data, locked: true } };
     const nodes = [n('p', 10, 10, 100, 100), n('c', 5, 5, 20, 20, 'p'), locked];
@@ -388,19 +387,6 @@ describe('nudge, patchStyle, setLocked, selectOnly, rootsOf', () => {
     expect(pos(out, 'p')).toEqual({ x: 20, y: 9 });
     expect(pos(out, 'c')).toEqual({ x: 5, y: 5 });
     expect(pos(out, 'l')).toEqual({ x: 0, y: 0 });
-  });
-
-  it('patchStyle fusiona sin pisar el resto del estilo de cada nodo', () => {
-    const a = n('a', 0, 0);
-    const b = {
-      ...n('b', 0, 0),
-      data: { ...n('b', 0, 0).data, style: { ...n('b', 0, 0).data.style, fontSize: 30 } },
-    };
-    const out = patchStyle([a, b], ['a', 'b'], { fill: '#ff0000' });
-    expect(out[0].data.style.fill).toBe('#ff0000');
-    expect(out[1].data.style.fontSize).toBe(30);
-    expect(out[1].data.style.fill).toBe('#ff0000');
-    expect(patchStyle([a, b], ['a'], { bold: true })[1]).toBe(b);
   });
 
   it('setLocked bloquea, desbloquea y admite «all»', () => {

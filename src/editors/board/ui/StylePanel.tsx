@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import { IconButton, Popover, PopoverContent, PopoverTrigger } from '@/ui';
 import type { BoardEdgeData, EdgePath, NodeKind, NodeStyle } from '../model/board';
-import { patchStyle } from '../model/ops';
 import { useBoardStore } from '../store/BoardStoreProvider';
 import chrome from './chrome.module.css';
 import { ColorGrid, Section, Segmented, SwatchDot, Toggle } from './controls';
@@ -59,7 +58,7 @@ export function StylePanel() {
   const of = (kinds: NodeKind[]) => nodes.filter((n) => kinds.includes(n.data.kind));
   const setStyle = (kinds: NodeKind[], patch: Partial<NodeStyle>) => {
     const ids = of(kinds).map((n) => n.id);
-    store.getState().setNodes((ns) => patchStyle(ns, ids, patch));
+    store.getState().updateNodeData(ids, { style: patch });
   };
   const setEdge = (patch: Partial<BoardEdgeData>) =>
     store.getState().updateEdgeData(
