@@ -4,6 +4,15 @@ import { nodeSize, toAbsolute } from '../model/geometry';
 
 // Helpers puros de BoardMenu (importar, plantillas, insertar). Sin React.
 
+export type ApplyMode = 'replace' | 'insert';
+
+/** «12 elementos y 9 conexiones» para confirmaciones y fichas. */
+export function describeContent(c: Pick<BoardContent, 'nodes' | 'edges'>): string {
+  const n = c.nodes.length;
+  const e = c.edges.length;
+  return `${n} ${n === 1 ? 'elemento' : 'elementos'} y ${e} ${e === 1 ? 'conexión' : 'conexiones'}`;
+}
+
 /** Nuevos ids para todos los nodos y aristas, conservando padres y extremos. Para insertar sin colisiones. */
 export function remapIds(content: BoardContent): BoardContent {
   const ids = new Map(content.nodes.map((n) => [n.id, nanoid()]));
