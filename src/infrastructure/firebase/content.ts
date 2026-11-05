@@ -1,14 +1,12 @@
-import { doc, getDoc, runTransaction } from 'firebase/firestore';
 import type { ContentRecord, ContentRepo } from '@/application/ports';
-import { db } from './firebase';
+import { loadFirestore } from './firestore';
 import { isPermissionDenied } from './projects';
-
-const contentRef = (id: string) => doc(db, 'projects', id, 'content', 'main');
 
 export const contentRepo: ContentRepo = {
   async load(id) {
+    const { fs, db } = await loadFirestore();
     try {
-      const snap = await getDoc(contentRef(id));
+      const snap = await fs.getDoc(fs.doc(db, 'projects', id, 'content', 'main'));
       if (!snap.exists()) return null;
       const d = snap.data();
       if (typeof d.data !== 'string' || d.schemaVersion !== 1)
@@ -26,16 +24,17 @@ export const contentRepo: ContentRepo = {
   },
 
   /** Transacción: solo escribe si la revisión guardada es la esperada; actualiza también `projects/{id}.updatedAt`. */
-  save(id, data, expectedRevision) {
-    return runTransaction(db, async (tx) => {
-      const ref = contentRef(id);
+  async save(id, data, expectedRevision) {
+    const { fs, db } = await loadFirestore();
+    return fs.runTransaction(db, async (tx) => {
+      const ref = fs.doc(db, 'projects', id, 'content', 'main');
       const snap = await tx.get(ref);
       if (!snap.exists() || Number(snap.data().revision) !== expectedRevision)
         return { conflict: true as const };
       const updatedAt = Date.now();
       const revision = expectedRevision + 1;
       tx.update(ref, { data, schemaVersion: 1, revision, updatedAt });
-      tx.update(doc(db, 'projects', id), { updatedAt });
+      tx.update(fs.doc(db, 'projects', id), { updatedAt });
       return { revision };
     });
   },
