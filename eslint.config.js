@@ -46,6 +46,7 @@ export default defineConfig([
     '.wigi',
     '.firebase',
     'coverage',
+    'api/_mcp.mjs',
     'public/excalidraw-assets',
     'playwright-report',
     'test-results',
@@ -61,6 +62,8 @@ export default defineConfig([
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
+  // Servidor MCP (función de Vercel): corre en Node.
+  { files: ['src/server/**/*.ts', 'api/**/*.ts'], languageOptions: { globals: { ...globals.node } } },
   {
     files: ['scripts/**/*.mjs', '*.config.{js,ts}'],
     extends: [js.configs.recommended],
