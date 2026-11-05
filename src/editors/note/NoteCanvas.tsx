@@ -16,6 +16,8 @@ export interface NoteHandle {
   applyRemote(content: NoteContent): Promise<void>;
   /** Fusión de dos contenidos codificados, para el guardado en transacción. */
   merge: ContentMerger;
+  /** Lo que esta pestaña acaba de escribir sin fusión: pasa a ser lo último conocido del servidor (fondo). */
+  saved(content: NoteContent): void;
 }
 
 /** Lo que el lienzo ofrece a su barra superior: la Biblioteca de Excalidraw con un botón propio. */

@@ -23,6 +23,7 @@ import { useTheme, useToast } from '@/ui';
 import { BoardEmbed } from './BoardEmbed';
 import {
   buildNoteContent,
+  pickBackground,
   referencedFileIds,
   unionFiles,
   type NoteContent,
@@ -123,6 +124,9 @@ export default function NoteCanvasInner({
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [uploads]);
+
+  // Fondo del último contenido del servidor que esta pestaña conoce (para fusionar el fondo sin pisar lo propio).
+  const knownBg = useRef(content.appState.viewBackgroundColor ?? '#ffffff');
 
   // initialData solo se lee al montar. Se abre la compuerta de onChange cuando ya se aplicó.
   const [initialData] = useState(() => async () => {
@@ -274,7 +278,10 @@ export default function NoteCanvasInner({
     if (!api || !onHandle) return;
     onHandle({
       drain,
-      merge: mergeNoteData,
+      merge: (l, r) => mergeNoteData(knownBg.current)(l, r),
+      saved(c) {
+        knownBg.current = c.appState.viewBackgroundColor ?? '#ffffff';
+      },
       async applyRemote(c) {
         known.current = unionFiles(known.current, c.files);
         const elements = reconcileScene(
@@ -282,7 +289,15 @@ export default function NoteCanvasInner({
           c.elements as never,
           api.getAppState(),
         );
-        api.updateScene({ elements, captureUpdate: CaptureUpdateAction.NEVER });
+        // El fondo remoto se toma salvo que esta pestaña lo haya cambiado y aún no esté guardado.
+        const remoteBg = c.appState.viewBackgroundColor ?? '#ffffff';
+        const bg = pickBackground(api.getAppState().viewBackgroundColor, knownBg.current, remoteBg);
+        knownBg.current = remoteBg;
+        api.updateScene({
+          elements,
+          ...(bg !== api.getAppState().viewBackgroundColor ? { appState: { viewBackgroundColor: bg } } : {}),
+          captureUpdate: CaptureUpdateAction.NEVER,
+        });
         const have = api.getFiles();
         await loadFiles(
           api,

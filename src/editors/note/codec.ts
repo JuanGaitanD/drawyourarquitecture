@@ -103,3 +103,13 @@ export function noteSame(a: string, b: string): boolean {
     return false;
   }
 }
+
+const WHITE = '#ffffff';
+/**
+ * Fondo tras fusionar sin base: si el local cambió desde lo último que se supo del servidor (`known`), gana el
+ * local (el cambio propio pendiente no se pisa); si no, se toma el remoto.
+ */
+export function pickBackground(local?: string, known?: string, remote?: string): string {
+  const l = local ?? WHITE;
+  return l !== (known ?? WHITE) ? l : (remote ?? WHITE);
+}

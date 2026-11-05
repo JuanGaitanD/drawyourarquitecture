@@ -138,8 +138,14 @@ function Session({
         return mergeRef.current(l, r);
       },
       // Sin fusión, la revisión escrita ya es la vista; con fusión, la instantánea de esa revisión traerá lo ajeno.
-      onSaved: (r: { revision: number; merged?: string }) => {
-        if (r.merged === undefined && r.revision > seen.current) seen.current = r.revision;
+      onSaved: (r: { data: string; revision: number; merged?: string }) => {
+        if (r.merged !== undefined) return;
+        if (r.revision > seen.current) seen.current = r.revision;
+        try {
+          handleRef.current?.saved(decodeNote(r.data));
+        } catch {
+          /* sin fondo conocido: el siguiente remoto lo corrige */
+        }
       },
     }),
     [],

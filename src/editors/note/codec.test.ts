@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  pickBackground,
   buildNoteContent,
   decodeNote,
   emptyNote,
@@ -74,5 +75,16 @@ describe('colaboración · archivos y comparación', () => {
     const gone = (id: string, updated: number) => ({ type: 'rectangle', id, isDeleted: true, updated });
     const c = buildNoteContent([gone('nuevo', now - 1000), gone('viejo', now - 2 * 3_600_000)], {}, {}, now);
     expect((c.elements as { id: string }[]).map((e) => e.id)).toEqual(['nuevo']);
+  });
+});
+
+describe('pickBackground', () => {
+  it('toma el fondo remoto si el local no lo cambió', () => {
+    expect(pickBackground('#fff', '#fff', '#ffe')).toBe('#ffe');
+    expect(pickBackground(undefined, '#ffffff', '#123456')).toBe('#123456');
+  });
+  it('conserva el local si lo cambió y el remoto no lo cambió o también lo cambió', () => {
+    expect(pickBackground('#000', '#fff', '#fff')).toBe('#000');
+    expect(pickBackground('#000', '#fff', '#ffe')).toBe('#000');
   });
 });
