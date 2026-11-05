@@ -54,9 +54,9 @@ Otros clientes con configuración JSON:
 
 Mermaid admite `flowchart`/`graph` (LR, TD…), formas `[]` `()` `([])` `{}` `(())` `[()]` `{{}}`, aristas `-->` `---` `-.->` `==>` con etiqueta, y `subgraph` anidados (pasan a frames). Los estilos (`style`, `classDef`…) se ignoran.
 
-Límites: título ≤ 120 caracteres; `mermaid` ≤ 100 000 caracteres; `text` ≤ 200 000 caracteres y ≤ 2000 bloques; contenido final ≤ 900 000 bytes (el tope del codec); cuerpo de la petición ≤ 1 MB.
+Límites: título ≤ 120 caracteres; `mermaid` ≤ 100 000 caracteres; `text` ≤ 200 000 caracteres y ≤ 2000 bloques; contenido final ≤ 8 MiB (el tope del codec; a partir de 900 000 bytes se guarda troceado, ver § 4); cuerpo de la petición ≤ 1 MB.
 
-Si el board está abierto en el editor mientras un agente lo cambia, el editor verá un conflicto de revisión al guardar (hasta que llegue la sincronización en tiempo real de la fase 2).
+Si el board o la nota están abiertos en el editor mientras un agente escribe, el editor recibe el cambio en vivo y lo fusiona por elemento (fase 2); no hay conflicto de revisión. La presencia y los cursores viven en Realtime Database y el servidor MCP no los toca: un agente no aparece como conectado.
 
 ### Errores
 
@@ -67,12 +67,14 @@ Si el board está abierto en el editor mientras un agente lo cambia, el editor v
 | 404    | El proyecto existe pero no tiene contenido. |
 | 429    | Respuesta HTTP: más de 60 peticiones en el minuto para ese token (`Retry-After`, en segundos, hasta la siguiente ventana). |
 | 400    | Id mal formado, tipo equivocado (nota vs. board), Mermaid no válido (con la línea) o contenido que no pasa `validateBoardContent`. |
-| 413    | Texto, Mermaid o contenido por encima de los límites. |
+| 409    | `update_board`: la revisión cambió cinco veces seguidas mientras se ampliaba (otra escritura en curso); reintenta. |
+| 413    | Texto, Mermaid o contenido por encima de los límites (8 MiB codificado). |
 | 405    | Cualquier método distinto de `POST`. |
 
 ## 4. Seguridad
 
-- **Las reglas de Firestore aplican tal cual.** El servidor no autoriza a mano: Firebase Admin solo hace de **identidad** (busca el token en `mcpTokens`, anota `lastUsedAt` y emite `createCustomToken(uid)`); los datos se leen y escriben con el **SDK web de Firebase** (`firebase/app`, `firebase/auth`, `firebase/firestore`) tras `signInWithCustomToken`, es decir, como la propia persona. Una app por uid, cacheada en la memoria de la función caliente (50 min, máximo 20). Por eso `firestore.rules` protege este camino igual que a la web, y los invariantes de escritura (campos cerrados, `ownerId` y `type` inmutables, `revision + 1`, ≤ 900 000 bytes) no se duplican. Los 403 salen de `permission-denied`.
+- **Las reglas de Firestore aplican tal cual.** El servidor no autoriza a mano: Firebase Admin solo hace de **identidad** (busca el token en `mcpTokens`, anota `lastUsedAt` y emite `createCustomToken(uid)`); los datos se leen y escriben con el **SDK web de Firebase** (`firebase/app`, `firebase/auth`, `firebase/firestore`) tras `signInWithCustomToken`, es decir, como la propia persona. Una app por uid, cacheada en la memoria de la función caliente (50 min, máximo 20). Por eso `firestore.rules` protege este camino igual que a la web, y los invariantes de escritura (campos cerrados, `ownerId` y `type` inmutables, `revision + 1`, `data` ≤ 900 000 bytes o `chunks` de 2 a 12) no se duplican. Los 403 salen de `permission-denied`.
+- **El contenido se lee y se escribe con el mismo repositorio que la app** (`createContentRepo`, `src/infrastructure/firebase/contentRepo.ts`) sobre el Firestore autenticado de la persona: no hay lectura ni escritura propias de `content/main`. Hasta 900 000 bytes es `{ data, schemaVersion, revision, updatedAt }`; por encima, `{ schemaVersion, revision, updatedAt, chunks: n }` (sin `data`, 2 ≤ n ≤ 12) y los trozos en `content/main/chunks/{i}`, en la misma transacción que la revisión (tope 8 MiB). `read_*` recompone los trozos; `update_board` guarda con `save` y la revisión leída; `create_*` con más de 900 000 bytes crean el proyecto con un contenido vacío (las reglas exigen `data` al crear `content/main`) y lo amplían a continuación con `save`. Test contra el emulador: crear, leer y ampliar un board de ≈ 1,2 MB (`tools.test.ts`, «contenido troceado»).
 - **Quién puede crear proyectos** (regla `canCreate()`): el dueño (`OWNER_UID` renderizado en las reglas) o una cuenta con **correo verificado** (`email_verified`) que esté en `allowedEmails/{correo en minúsculas}`. Se gestiona en Ajustes por correo (solo el dueño). El proyecto se crea siempre con `ownerId` = uid del token.
 - **Límite de tasa**: `rateLimits/{sha256 del token}` = `{uid, window, count}`; ventana fija de 1 min (`window` = minuto desde el epoch), 60 peticiones. La escribe el usuario autenticado y las reglas solo admiten empezar en 1, subir de uno en uno hasta 60 dentro de la ventana o abrir una ventana posterior (no se puede bajar ni reiniciar). Ventana fija: en el cambio de minuto cabe una ráfaga de hasta 2 × 60.
 - **Auditoría**: cada llamada a una herramienta crea `mcpAudit/{id}` = `{uid, tokenHash, tool, projectId?, ok, at, expireAt}` (sin argumentos ni contenido). Solo se crea (no se edita ni se borra) y cada persona lee solo las suyas. `expireAt` es un `Timestamp` a 30 días: **hay que activar la política TTL de Firestore sobre el campo `expireAt` de la colección `mcpAudit`** (consola: Firestore → Datos → TTL, o `gcloud firestore fields ttls update expireAt --collection-group=mcpAudit --enable-ttl`). Sin esa política las entradas no caducan.
@@ -81,7 +83,7 @@ Si el board está abierto en el editor mientras un agente lo cambia, el editor v
 - Las reglas de `mcpTokens` dejan a cada persona crear, listar y revocar **solo los suyos** (campos cerrados y `revoked == false` al crear; la única actualización del cliente es `revoked` de `false` a `true`: no puede escribir `lastUsedAt` ni reactivar). `allowedEmails` solo la escribe el dueño.
 - El contenido que entra (Mermaid, texto) se valida con `validateBoardContent` y el codec de nota, con límites de tamaño. Los errores inesperados devuelven un 500 genérico y no filtran detalles.
 - Los ids de proyecto son aleatorios de 20 caracteres y un proyecto inexistente da el mismo 403 que uno ajeno: la respuesta no confirma que existan.
-- `update_board` usa una transacción del SDK web (optimista): si otra escritura se cuela, la regla `revision == anterior + 1` rechaza el commit con `permission-denied`; el servidor relee la revisión y, si cambió, reintenta (hasta 5 veces) en vez de dar un 403 falso.
+- `update_board` lee el board, lo amplía y guarda con `save` (transacción) y la revisión leída. El SDK web es optimista: si otra escritura se cuela, `save` devuelve conflicto o la regla `revision == anterior + 1` rechaza el commit con `permission-denied`; el servidor relee la revisión y, si cambió, vuelve a leer y reintenta (hasta 5 veces, después 409) en vez de dar un 403 falso.
 
 ## 5. Despliegue (Vercel)
 
@@ -112,7 +114,7 @@ El compilador de funciones de Vercel transpila cada fichero de `api/` por separa
 Con los emuladores corriendo (`pnpm emulators`):
 
 ```
-# Tests de herramientas, límite, auditoría y extremo a extremo (cliente MCP del SDK contra el bundle en Node).
+# Tests de herramientas, límite, auditoría, contenido troceado y extremo a extremo (cliente MCP del SDK contra el bundle en Node).
 # Cargan las reglas de este repo en el emulador compartido y necesitan también Auth (9099).
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm test
 
