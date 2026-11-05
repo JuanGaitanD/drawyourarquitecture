@@ -15,6 +15,7 @@ import { contentRepo, projectRepo, saveAsCopy } from '../services';
 export interface AutosaveSync {
   /** Fusión contra el remoto cuando la revisión se desfasó (sin ella, el desfase es `conflicto`). */
   merge?: ContentMerger;
+  same?: (a: string, b: string) => boolean;
   onSaved?: (r: { data: string; revision: number; merged?: string }) => void;
 }
 
@@ -23,6 +24,8 @@ export interface Autosave {
   error: Error | null;
   /** Escribe ya lo pendiente (y reintenta tras un error o la vuelta de la conexión). */
   flush: () => Promise<void>;
+  /** Lo que otra persona escribió y el editor ya fusionó: la cola no lo reescribe (anti-eco). */
+  acceptRemote: (data: string) => void;
   /** Tras un conflicto: `reload` recarga la página; `copy` guarda lo local como proyecto nuevo y lo abre. */
   resolveConflict: (kind: 'reload' | 'copy') => Promise<void>;
 }
@@ -63,6 +66,7 @@ export function useAutosave(
   useEffect(() => {
     const q = createSaveQueue(contentRepo, id, null, {
       // Por ref y a demanda: el editor puede registrar su fusión después de montar este efecto.
+      same: syncRef.current?.same,
       merge: syncRef.current?.merge ? (l, r) => syncRef.current!.merge!(l, r) : undefined,
       onSaved: (r) => syncRef.current?.onSaved?.(r),
     });
@@ -129,5 +133,7 @@ export function useAutosave(
     [id, navigate],
   );
 
-  return { status: state.status, error: state.error ?? null, flush, resolveConflict };
+  const acceptRemote = useCallback((data: string) => queue.current?.acceptRemote(data), []);
+
+  return { status: state.status, error: state.error ?? null, flush, resolveConflict, acceptRemote };
 }

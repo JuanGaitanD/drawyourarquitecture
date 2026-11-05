@@ -21,7 +21,13 @@ import { ImageTooLargeError, optimizeImage } from '@/application/imageOptimize';
 import { fileStore } from '@/app/services';
 import { useTheme, useToast } from '@/ui';
 import { BoardEmbed } from './BoardEmbed';
-import { buildNoteContent, referencedFileIds, type NoteContent, type NoteFiles } from './codec';
+import {
+  buildNoteContent,
+  referencedFileIds,
+  unionFiles,
+  type NoteContent,
+  type NoteFiles,
+} from './codec';
 import {
   boardEmbedLink,
   embedOrigin,
@@ -270,7 +276,7 @@ export default function NoteCanvasInner({
       drain,
       merge: mergeNoteData,
       async applyRemote(c) {
-        known.current = { ...c.files, ...known.current };
+        known.current = unionFiles(known.current, c.files);
         const elements = reconcileScene(
           api.getSceneElementsIncludingDeleted() as never,
           c.elements as never,

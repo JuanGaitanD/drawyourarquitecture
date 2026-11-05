@@ -234,6 +234,94 @@ describe('saveQueue · fusión con el remoto', () => {
   });
 });
 
+describe('saveQueue · dos clientes sin ping-pong', () => {
+  type Rec = Parameters<Parameters<ContentRepo['subscribe']>[1]>[0];
+  const parse = (d: string) => JSON.parse(d) as string[];
+  const union = (a: string, b: string) => JSON.stringify([...new Set([...parse(a), ...parse(b)])].sort());
+
+  /** Servidor compartido: cada escritura se notifica a todos los suscriptores, también al que escribió. */
+  function server() {
+    let rev = 0;
+    let data = '[]';
+    let writes = 0;
+    const subs = new Set<(r: Rec) => void>();
+    const repo: ContentRepo = {
+      load: async () => null,
+      subscribe: (_id, cb) => (subs.add(cb), () => subs.delete(cb)),
+      async save(_id, d, expected, merge) {
+        let out = d;
+        if (expected !== rev) {
+          if (!merge) return { conflict: true };
+          out = merge(d, data);
+        }
+        rev += 1;
+        writes += 1;
+        data = out;
+        subs.forEach((cb) => cb({ data: out, schemaVersion: 1, revision: rev, updatedAt: 0 }));
+        return out === d ? { revision: rev } : { revision: rev, merged: out };
+      },
+    };
+    return { repo, writes: () => writes, data: () => data };
+  }
+
+  /** Un editor mínimo: estado local (conjunto), cola con fusión y la misma lógica de eco que los editores reales. */
+  function client(srv: ReturnType<typeof server>) {
+    const local = new Set<string>();
+    const enc = () => JSON.stringify([...local].sort());
+    let seen = 0;
+    const q = createSaveQueue(srv.repo, 'p', 0, {
+      storage: memoryStorage(),
+      merge: union,
+      onSaved: (r) => {
+        if (r.merged === undefined && r.revision > seen) seen = r.revision;
+      },
+    });
+    q.hydrate(0, '[]');
+    srv.repo.subscribe('p', (r) => {
+      if (r.revision <= seen) return; // el snapshot propio ya se vio
+      seen = r.revision;
+      parse(r.data).forEach((x) => local.add(x));
+      q.acceptRemote(r.data);
+      q.push(enc()); // el editor re-emite tras aplicar el remoto
+    });
+    return { add: (x: string) => (local.add(x), q.push(enc())), local, q };
+  }
+
+  it('ediciones simultáneas convergen y, al asentarse, nadie vuelve a escribir', async () => {
+    const srv = server();
+    const a = client(srv);
+    const b = client(srv);
+    a.add('a');
+    b.add('b');
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 4);
+    expect([...a.local].sort()).toEqual(['a', 'b']);
+    expect([...b.local].sort()).toEqual(['a', 'b']);
+    expect(srv.data()).toBe('["a","b"]');
+    const writes = srv.writes();
+    expect(writes).toBeLessThanOrEqual(3);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(srv.writes()).toBe(writes);
+  });
+
+  it('muchas ediciones alternas no multiplican las escrituras', async () => {
+    const srv = server();
+    const a = client(srv);
+    const b = client(srv);
+    for (let i = 0; i < 5; i++) {
+      a.add(`a${i}`);
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 50);
+      b.add(`b${i}`);
+      await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 50);
+    }
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS * 4);
+    expect(parse(srv.data())).toHaveLength(10);
+    // una escritura por edición como mucho (10), nunca más por eco
+    expect(srv.writes()).toBeLessThanOrEqual(10);
+    expect(a.q.state.status).toBe('guardado');
+    expect(b.q.state.status).toBe('guardado');
+  });
+});
+
 describe('saveQueue · borrador local', () => {
   it('escribe el borrador en cada cambio y lo borra al confirmar', async () => {
     const f = fakeRepo();

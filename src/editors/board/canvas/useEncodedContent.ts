@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import { ContentTooLargeError, encode } from '@/domain/codec';
 import type { Viewport } from '../model/board';
 import { validateBoardContent } from '../model/validate';
-import type { BoardSync } from '../sync';
 import type { BoardStore } from '../store/boardStore';
 
 const DELAY_MS = 250;
@@ -14,12 +13,12 @@ export interface EncodedContent {
   invalid: string | null;
 }
 
-export function computeEncoded(store: BoardStore, viewport: Viewport, sync?: BoardSync): EncodedContent {
+export function computeEncoded(store: BoardStore, viewport: Viewport): EncodedContent {
   const content = store.getState().toContent(viewport);
   const v = validateBoardContent(content);
   if (!v.ok) return { encoded: null, tooLarge: false, invalid: v.error };
   try {
-    return { encoded: encode(sync ? sync.stamp(content) : content), tooLarge: false, invalid: null };
+    return { encoded: encode(content), tooLarge: false, invalid: null };
   } catch (e) {
     if (e instanceof ContentTooLargeError) return { encoded: null, tooLarge: true, invalid: null };
     throw e;
@@ -35,8 +34,8 @@ const same = (a: EncodedContent, b: EncodedContent) =>
  * `drain` calcula ya lo pendiente (para `pagehide`, ocultar la pestaña o desmontar) y devuelve `null` si no hay.
  * Sigue valiendo después de desmontar: el cambio pendiente no depende del orden en que React limpia los efectos.
  */
-export function useEncodedContent(store: BoardStore, viewport: RefObject<Viewport>, sync?: BoardSync) {
-  const [state, setState] = useState(() => computeEncoded(store, viewport.current, sync));
+export function useEncodedContent(store: BoardStore, viewport: RefObject<Viewport>) {
+  const [state, setState] = useState(() => computeEncoded(store, viewport.current));
   const last = useRef({ nodes: store.getState().nodes, edges: store.getState().edges });
   const pending = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -49,7 +48,7 @@ export function useEncodedContent(store: BoardStore, viewport: RefObject<Viewpor
       clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         pending.current = false;
-        const next = computeEncoded(store, viewport.current, sync);
+        const next = computeEncoded(store, viewport.current);
         setState((cur) => (same(cur, next) ? cur : next));
       }, DELAY_MS);
     });
@@ -57,13 +56,13 @@ export function useEncodedContent(store: BoardStore, viewport: RefObject<Viewpor
       off();
       clearTimeout(timer.current); // `pending` se queda: `drain` aún puede recoger el último cambio
     };
-  }, [store, viewport, sync]);
+  }, [store, viewport]);
 
   const drain = (): string | null => {
     if (!pending.current) return null;
     pending.current = false;
     clearTimeout(timer.current);
-    const next = computeEncoded(store, viewport.current, sync);
+    const next = computeEncoded(store, viewport.current);
     setState((cur) => (same(cur, next) ? cur : next));
     return next.encoded;
   };

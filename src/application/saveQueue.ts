@@ -120,6 +120,8 @@ export interface SaveQueueOptions {
    * dar conflicto (colaboración en tiempo real). Sin él, el desfase es `conflicto` como antes.
    */
   merge?: ContentMerger;
+  /** Igualdad semántica de dos contenidos codificados (por defecto, igualdad de texto). Evita escrituras redundantes. */
+  same?: (a: string, b: string) => boolean;
   /** Tras cada guardado correcto. `merged` viene si el servidor tenía algo más y se escribió la fusión. */
   onSaved?: (r: { data: string; revision: number; merged?: string }) => void;
 }
@@ -132,6 +134,13 @@ export interface SaveQueue {
   onStatus(cb: (s: SaveState) => void): () => void;
   /** Abre el gate tras cargar con éxito: `lastSaved` es lo que hay en el servidor. */
   hydrate(revision: number, lastSaved: string): void;
+  /**
+   * Otra persona escribió `data` y el editor ya lo fusionó en su escena: pasa a ser lo último conocido del servidor,
+   * así la cola no vuelve a escribir lo que el editor re-emite igual (eco) y dos clientes no entran en ping-pong.
+   * No sube la revisión esperada: un guardado pendiente con contenido anterior a la fusión pasa por la fusión de la
+   * transacción en vez de pisar lo ajeno.
+   */
+  acceptRemote(data: string): void;
   readonly hydrated: boolean;
   readonly revision: number;
   readonly sessionId: string;
@@ -172,7 +181,9 @@ export function createSaveQueue(
     state = s;
     listeners.forEach((cb) => cb(s));
   };
-  const dirty = () => latest !== null && latest !== lastSaved;
+  const isSame = (a: string | null, b: string | null) =>
+    a === b || (a !== null && b !== null && (opts.same?.(a, b) ?? false));
+  const dirty = () => latest !== null && !isSame(latest, lastSaved);
 
   function writeDraft(data: string) {
     try {
@@ -223,7 +234,7 @@ export function createSaveQueue(
     push(data) {
       if (!hydrated || disposed) return;
       latest = data;
-      if (data === lastSaved) {
+      if (isSame(data, lastSaved)) {
         clearTimer();
         clearDraft(myDraft, storage);
         if (state.status === 'error') setState({ status: 'guardado' });
@@ -247,6 +258,15 @@ export function createSaveQueue(
       revision = rev;
       lastSaved = saved;
       hydrated = true;
+    },
+    acceptRemote(data) {
+      if (!hydrated || disposed) return;
+      lastSaved = data;
+      if (!dirty()) {
+        clearTimer();
+        clearDraft(myDraft, storage);
+        if (state.status === 'error') setState({ status: 'guardado' });
+      }
     },
     get hydrated() {
       return hydrated;

@@ -19,7 +19,7 @@ import { validateBoardContent } from './model/validate';
 import { BoardFilesContext, type BoardFiles } from './nodes';
 import { BoardStoreProvider } from './store/BoardStoreProvider';
 import { createBoardStore } from './store/boardStore';
-import { createBoardSync, mergeBoardData } from './sync';
+import { boardSame, createBoardSync } from './sync';
 import { ActionBar } from './ui/ActionBar';
 import { SearchBox } from './ui/SearchBox';
 import { StylePanel } from './ui/StylePanel';
@@ -184,10 +184,10 @@ function Loaded({
     return s;
   });
   const viewport = useRef<Viewport>(initial.viewport);
-  const [sync] = useState(() => createBoardSync(store, initial, revision));
-  const { encoded, tooLarge, invalid, drain } = useEncodedContent(store, viewport, sync);
-  const syncOpts = useMemo(() => ({ merge: mergeBoardData, onSaved: sync.onSaved }), [sync]);
-  const { status, flush, resolveConflict } = useAutosave(
+  const [sync] = useState(() => createBoardSync(store, initial, revision, viewport));
+  const { encoded, tooLarge, invalid, drain } = useEncodedContent(store, viewport);
+  const syncOpts = useMemo(() => ({ merge: sync.merge, same: boardSame, onSaved: sync.onSaved }), [sync]);
+  const { status, flush, resolveConflict, acceptRemote } = useAutosave(
     id,
     encoded,
     true,
@@ -196,7 +196,9 @@ function Loaded({
     drain,
     syncOpts,
   );
-  useRemoteContent(id, (r) => sync.onRemote(r, viewport.current));
+  useRemoteContent(id, (r) => {
+    if (sync.onRemote(r)) acceptRemote(r.data);
+  });
   const [title, setTitle] = useState(initialTitle);
   const [isPublic, setPublic] = useState(initialPublic);
   const rootRef = useRef<HTMLDivElement>(null);

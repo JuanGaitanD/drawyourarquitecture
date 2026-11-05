@@ -9,7 +9,7 @@ import type { ContentRecord } from '@/application/ports';
 import { ContentTooLargeError } from '@/domain/codec';
 import { normalizeTitle, roleOf, type Project } from '@/domain/project';
 import { Button, useToast } from '@/ui';
-import { decodeNote, encodeNote, type NoteContent } from './codec';
+import { decodeNote, encodeNote, noteSame, type NoteContent } from './codec';
 import styles from './NoteEditor.module.css';
 import { NoteCanvas, type NoteHandle } from './NoteCanvas';
 import { TopBar } from './TopBar';
@@ -127,6 +127,7 @@ function Session({
   }, []);
   const syncOpts = useMemo(
     () => ({
+      same: noteSame,
       merge: (l: string, r: string) => {
         if (!mergeRef.current) throw new Error('El editor aún no está listo para fusionar.');
         return mergeRef.current(l, r);
@@ -138,16 +139,6 @@ function Session({
     }),
     [],
   );
-  useRemoteContent(project.id, (r) => {
-    const h = handleRef.current;
-    if (!h || r.revision <= seen.current) return;
-    seen.current = r.revision;
-    try {
-      void h.applyRemote(decodeNote(r.data));
-    } catch {
-      /* contenido ilegible: se ignora, el guardado en transacción lo volverá a fusionar */
-    }
-  });
   const drain = useCallback((): string | null => {
     const c = drainRef.current?.();
     if (!c) return null;
@@ -161,6 +152,18 @@ function Session({
 
   // El lienzo solo llama a onChange tras aplicar initialData: aquí `hydrated` ya es cierto.
   const autosave = useAutosave(project.id, encoded, true, record.revision, undefined, drain, syncOpts);
+
+  useRemoteContent(project.id, (r) => {
+    const h = handleRef.current;
+    if (!h || r.revision <= seen.current) return;
+    seen.current = r.revision;
+    try {
+      void h.applyRemote(decodeNote(r.data));
+      autosave.acceptRemote(r.data);
+    } catch {
+      /* contenido ilegible: se ignora, el guardado en transacción lo volverá a fusionar */
+    }
+  });
 
   const onChange = useCallback((c: NoteContent) => {
     try {

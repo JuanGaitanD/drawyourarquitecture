@@ -1,7 +1,7 @@
 import { reconcileElements } from '@excalidraw/excalidraw';
 import type { AppState } from '@excalidraw/excalidraw/types';
 import type { ContentMerger } from '@/application/ports';
-import { decodeNote, encodeNote, type NoteContent } from './codec';
+import { decodeNote, encodeNote, unionFiles, type NoteContent } from './codec';
 
 type Els = Parameters<typeof reconcileElements>;
 
@@ -12,7 +12,7 @@ type Els = Parameters<typeof reconcileElements>;
 export function mergeNoteContent(local: NoteContent, remote: NoteContent): NoteContent {
   // `reconcileElements` solo mira del appState lo que se está editando; en un guardado no hay nada en curso.
   const elements = reconcileElements(local.elements as Els[0], remote.elements as Els[1], {} as AppState);
-  return { ...local, elements, files: { ...remote.files, ...local.files } };
+  return { ...local, elements, files: unionFiles(local.files, remote.files) };
 }
 
 export const mergeNoteData: ContentMerger = (local, remote) =>
