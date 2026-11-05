@@ -322,6 +322,23 @@ describe('saveQueue · dos clientes sin ping-pong', () => {
   });
 });
 
+describe('saveQueue · primer cambio rápido (colaboración)', () => {
+  it('tras un descanso el primer cambio sale a fastFirstMs y una ráfaga sigue agrupándose', async () => {
+    const f = fakeRepo(0);
+    const q = createSaveQueue(f.repo, 'p1', 0, { storage: memoryStorage(), fastFirstMs: 100 });
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 1);
+    q.push('1');
+    await vi.advanceTimersByTimeAsync(110);
+    expect(f.calls).toHaveLength(1); // salió sin esperar al debounce
+    q.push('2'); // justo después de escribir: ráfaga, debounce normal
+    await vi.advanceTimersByTimeAsync(110);
+    expect(f.calls).toHaveLength(1);
+    q.push('3');
+    await vi.advanceTimersByTimeAsync(DEBOUNCE_MS + 10);
+    expect(f.calls.map((c) => c.data)).toEqual(['1', '3']);
+  });
+});
+
 describe('saveQueue · borrador local', () => {
   it('escribe el borrador en cada cambio y lo borra al confirmar', async () => {
     const f = fakeRepo();

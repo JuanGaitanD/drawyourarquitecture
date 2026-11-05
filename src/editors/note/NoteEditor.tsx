@@ -128,6 +128,7 @@ function Session({
   const syncOpts = useMemo(
     () => ({
       same: noteSame,
+      fastFirstMs: 150,
       merge: (l: string, r: string) => {
         if (!mergeRef.current) throw new Error('El editor aún no está listo para fusionar.');
         return mergeRef.current(l, r);

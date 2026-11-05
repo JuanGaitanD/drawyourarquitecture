@@ -122,6 +122,11 @@ export interface SaveQueueOptions {
   merge?: ContentMerger;
   /** Igualdad semántica de dos contenidos codificados (por defecto, igualdad de texto). Evita escrituras redundantes. */
   same?: (a: string, b: string) => boolean;
+  /**
+   * Colaboración: si la cola lleva al menos `debounceMs` sin escribir, el primer cambio se escribe a los
+   * `fastFirstMs` en vez de a los `debounceMs`; una ráfaga de cambios sigue agrupándose (techo de escrituras igual).
+   */
+  fastFirstMs?: number;
   /** Tras cada guardado correcto. `merged` viene si el servidor tenía algo más y se escribió la fusión. */
   onSaved?: (r: { data: string; revision: number; merged?: string }) => void;
 }
@@ -174,6 +179,7 @@ export function createSaveQueue(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let inFlight: Promise<void> | null = null;
   let disposed = false;
+  let lastWriteAt = Number.NEGATIVE_INFINITY;
   let state: SaveState = { status: 'guardado' };
   const listeners = new Set<(s: SaveState) => void>();
 
@@ -207,6 +213,7 @@ export function createSaveQueue(
           const data = latest as string;
           setState({ status: 'guardando' });
           try {
+            lastWriteAt = now();
             const res = await repo.save(id, data, revision, opts.merge);
             if ('conflict' in res) {
               setState({ status: 'conflicto' });
@@ -241,8 +248,9 @@ export function createSaveQueue(
         return;
       }
       writeDraft(data);
-      clearTimer();
-      timer = setTimeout(() => void run(), debounceMs);
+      const fast = opts.fastFirstMs !== undefined && !timer && now() - lastWriteAt >= debounceMs;
+      clearTimer(); // una ráfaga reinicia el debounce; el primer cambio tras un descanso sale rápido
+      timer = setTimeout(() => void run(), fast ? opts.fastFirstMs : debounceMs);
     },
     async flush() {
       clearTimer();

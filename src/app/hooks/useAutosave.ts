@@ -16,6 +16,8 @@ export interface AutosaveSync {
   /** Fusión contra el remoto cuando la revisión se desfasó (sin ella, el desfase es `conflicto`). */
   merge?: ContentMerger;
   same?: (a: string, b: string) => boolean;
+  /** Colaboración: el primer cambio tras un descanso se escribe enseguida (ver `SaveQueueOptions`). */
+  fastFirstMs?: number;
   onSaved?: (r: { data: string; revision: number; merged?: string }) => void;
 }
 
@@ -67,6 +69,7 @@ export function useAutosave(
     const q = createSaveQueue(contentRepo, id, null, {
       // Por ref y a demanda: el editor puede registrar su fusión después de montar este efecto.
       same: syncRef.current?.same,
+      fastFirstMs: syncRef.current?.fastFirstMs,
       merge: syncRef.current?.merge ? (l, r) => syncRef.current!.merge!(l, r) : undefined,
       onSaved: (r) => syncRef.current?.onSaved?.(r),
     });
