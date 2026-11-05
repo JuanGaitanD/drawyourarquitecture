@@ -219,7 +219,11 @@ export function createSaveQueue(
               setState({ status: 'conflicto' });
               return;
             }
-            revision = res.revision;
+            // Si el servidor fusionó algo ajeno, el local aún no lo tiene (ni un pendiente anterior a la fusión):
+            // no se sube la revisión esperada, así el siguiente guardado vuelve a fusionar en vez de pisarlo.
+            // ponytail: mientras cada guardado devuelva `merged`, cada uno repite la fusión; se asienta cuando
+            // el contenido local ya incluye lo ajeno y la fusión devuelve lo mismo.
+            if (res.merged === undefined) revision = res.revision;
             lastSaved = data;
             opts.onSaved?.({ data, revision, merged: res.merged });
             if (latest === data) clearDraft(myDraft, storage);

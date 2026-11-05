@@ -214,14 +214,55 @@ describe('saveQueue · fusión con el remoto', () => {
     q.push('L1');
     await q.flush();
     expect(q.state.status).toBe('guardado');
-    expect(q.revision).toBe(2);
+    // lo escrito fue una fusión con algo ajeno: la revisión esperada no sube
+    expect(q.revision).toBe(0);
     // la cola ya no está sucia: no reescribe lo que ya mandó
     await q.flush();
     expect(f.calls).toHaveLength(1);
     q.push('L2');
     await q.flush();
-    expect(f.calls[1]).toEqual({ data: 'L2', expected: 2 });
+    expect(f.calls[1]).toEqual({ data: 'L2', expected: 0 });
     expect(q.state.status).toBe('guardado');
+  });
+
+  it('un pendiente encolado durante una fusión no pisa lo ajeno recién confirmado', async () => {
+    // Servidor con la lógica del adaptador: con la revisión esperada escribe tal cual; si no, fusiona.
+    let rev = 0;
+    let remote = 'A0|B0';
+    const calls: { data: string; expected: number }[] = [];
+    let release = (): void => undefined;
+    const repo: ContentRepo = {
+      load: async () => null,
+      subscribe: () => () => undefined,
+      async save(_id, data, expected, mergeFn) {
+        calls.push({ data, expected });
+        if (calls.length === 1) await new Promise<void>((r) => (release = r));
+        let out = data;
+        if (expected !== rev) out = mergeFn!(data, remote);
+        rev += 1;
+        remote = out;
+        return out === data ? { revision: rev } : { revision: rev, merged: out };
+      },
+    };
+    // A y B son campos independientes: gana el valor más alto de cada uno.
+    const fields = (s: string) => s.split('|').map((x) => Number(x.slice(1)));
+    const join = (a: number, b: number) => `A${a}|B${b}`;
+    const mergeAB = (l: string, r: string) => {
+      const [la, lb] = fields(l);
+      const [ra, rb] = fields(r);
+      return join(Math.max(la!, ra!), Math.max(lb!, rb!));
+    };
+    const q = createSaveQueue(repo, 'p1', 0, { storage: memoryStorage(), merge: mergeAB });
+    q.push('A1|B0');
+    const first = q.flush(); // A1/B0 en vuelo
+    await vi.advanceTimersByTimeAsync(0);
+    rev = 1; // otro cliente guardó B1 mientras tanto
+    remote = 'A0|B1';
+    q.push('A2|B0'); // pendiente anterior a lo ajeno
+    release();
+    await first;
+    await q.flush();
+    expect(remote).toBe('A2|B1');
   });
 
   it('sin merge el mismo desfase sigue siendo conflicto', async () => {
