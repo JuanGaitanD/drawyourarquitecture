@@ -424,6 +424,16 @@ describe('createUploadQueue.resume entre pestañas (D38)', () => {
     expect(restore).toHaveBeenCalledTimes(1);
   });
 
+  it('tras `dispose` la misma cola vuelve a subir lo nuevo (StrictMode desmonta y monta el efecto)', async () => {
+    const { m, store, locks } = shared();
+    m.clear();
+    const upload = vi.fn(() => Promise.resolve());
+    const q = createUploadQueue({ store: { upload }, projectId: 'p', persist: store, onFail: vi.fn(), sleep, locks });
+    q.dispose();
+    q.add('h', blob);
+    await vi.waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+  });
+
   it('sin Web Locks repone como antes', async () => {
     const { store } = shared();
     const restore = vi.fn();
