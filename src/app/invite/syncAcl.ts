@@ -12,23 +12,27 @@ export async function syncAcl(projectId: string, ownerId: string): Promise<void>
 
 const RETRY_MS = [5_000, 30_000, 120_000];
 
-/** `syncAcl` con reintentos espaciados mientras `isOpen()`; el último fallo se registra, no se silencia. */
+/**
+ * `syncAcl` con reintentos espaciados mientras `isOpen()`. Nunca lanza: devuelve `true` si publicó y `false` si falló
+ * definitivamente (el último fallo se registra, no se silencia) o se cerró antes de terminar.
+ */
 export async function syncAclWithRetry(
   projectId: string,
   ownerId: string,
   isOpen: () => boolean,
-): Promise<void> {
+): Promise<boolean> {
   for (let i = 0; ; i++) {
     try {
-      return await syncAcl(projectId, ownerId);
+      await syncAcl(projectId, ownerId);
+      return true;
     } catch (e) {
       const wait = RETRY_MS[i];
       if (wait === undefined || !isOpen()) {
         console.error('No se pudo sincronizar el espejo de acceso de la presencia', e);
-        return;
+        return false;
       }
       await new Promise((r) => setTimeout(r, wait));
-      if (!isOpen()) return;
+      if (!isOpen()) return false;
     }
   }
 }

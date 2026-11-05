@@ -194,6 +194,38 @@ describe('espejo de acceso · versión (D33)', () => {
     );
   });
 
+  it('D40: el invitado que entra entre la lectura y la publicación del dueño conserva su alta', async () => {
+    const vigente = { role: 'viewer' as const, expiresAt: Date.now() + 60_000 };
+    await seed((r) => r.ref(acl()).set({ version: 3, members: {}, invites: { [TOKEN]: vigente } }));
+    // El dueño lee Firestore (v3, sin el invitado); el invitado acepta y se registra; después publica el dueño.
+    const leido = snap(3, { members: {}, invites: { [TOKEN]: vigente } });
+    await assertSucceeds(
+      db(OTHER)
+        .ref(acl('/members/' + OTHER))
+        .set({ role: 'viewer', token: TOKEN }),
+    );
+    expect(await aclFor(OWNER).publish(room, leido)).toBe('ok');
+    expect((await read()).members).toEqual({ [OTHER]: { role: 'viewer', token: TOKEN } });
+    await assertSucceeds(db(OTHER).ref(`presence/${OWNER}/${P}`).once('value'));
+
+    // Quitar al miembro sube la versión: la publicación nueva lo borra aunque su invitación siga vigente.
+    expect(await aclFor(OWNER).publish(room, snap(4, { members: {}, invites: { [TOKEN]: vigente } }))).toBe('ok');
+    expect((await read()).members).toBeUndefined();
+    await assertFails(db(OTHER).ref(`presence/${OWNER}/${P}`).once('value'));
+  });
+
+  it('D40: sin invitación vigente en la instantánea, el alta de un invitado no se conserva', async () => {
+    await seed((r) =>
+      r.ref(acl()).set({
+        version: 3,
+        members: { [OTHER]: { role: 'viewer', token: TOKEN } },
+        invites: { [TOKEN]: { role: 'viewer', expiresAt: Date.now() + 60_000 } },
+      }),
+    );
+    expect(await aclFor(OWNER).publish(room, snap(3, { members: {}, invites: {} }))).toBe('ok');
+    expect((await read()).members).toBeUndefined();
+  });
+
   it('solo el dueño lee el espejo; un miembro o un extraño no', async () => {
     await assertSucceeds(db(OWNER).ref(acl()).once('value'));
     await assertFails(db(EDITOR).ref(acl()).once('value'));

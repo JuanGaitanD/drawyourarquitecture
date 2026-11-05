@@ -77,17 +77,21 @@ export const presenceRepo: PresenceRepo = {
   },
 };
 
+type GuestEntry = { role?: unknown; token?: unknown };
+
 /**
  * Espejo de acceso (ver `database.rules.json`). Lo publica el dueño entero y versionado: `{ version, members, invites }`
  * con la `aclRev` del proyecto. Una instantánea anterior a la publicada se descarta; publicar reemplaza todo, así que
- * lo que ya no está en Firestore desaparece. Los errores se propagan (el llamador reintenta o avisa).
+ * lo que ya no está en Firestore desaparece, salvo las altas de invitados de la misma versión con invitación vigente
+ * (D40: entraron entre la lectura de Firestore y la publicación; unirse no sube `aclRev`). Los errores se propagan
+ * (el llamador reintenta o avisa).
  */
 export function createPresenceAcl(load: () => Promise<DatabaseModule | null>): PresenceAcl {
   return {
     async publish(room, snap) {
       const mod = await load();
       if (!mod) return 'off';
-      const value = {
+      const base = {
         version: snap.version,
         members: Object.fromEntries(Object.entries(snap.members).map(([uid, role]) => [uid, { role }])),
         invites: snap.invites,
@@ -95,8 +99,18 @@ export function createPresenceAcl(load: () => Promise<DatabaseModule | null>): P
       // Transacción: compara con lo publicado y aborta si es más nuevo; las reglas lo imponen también en el servidor.
       const r = await mod.rtdb.runTransaction(
         mod.rtdb.ref(mod.db, aclPath(room)),
-        (cur: { version?: unknown } | null) =>
-          typeof cur?.version === 'number' && cur.version > snap.version ? undefined : value,
+        (cur: { version?: unknown; members?: Record<string, GuestEntry> } | null) => {
+          if (typeof cur?.version === 'number' && cur.version > snap.version) return undefined;
+          // D40: un invitado que se registró después de leer Firestore no está en `snap`. Con la misma versión nadie
+          // fue quitado (quitar o revocar sube `aclRev`), así que se conserva si su invitación sigue vigente.
+          const members: Record<string, unknown> = { ...base.members };
+          if (cur?.version === snap.version)
+            for (const [uid, g] of Object.entries(cur.members ?? {})) {
+              const inv = typeof g?.token === 'string' ? snap.invites[g.token] : undefined;
+              if (!(uid in members) && inv && inv.role === g.role) members[uid] = g; // con su token, por si llega otra publicación igual
+            }
+          return { ...base, members };
+        },
       );
       return r.committed ? 'ok' : 'stale';
     },
