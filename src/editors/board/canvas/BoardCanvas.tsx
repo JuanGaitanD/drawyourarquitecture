@@ -4,7 +4,6 @@ import {
   Background,
   BackgroundVariant,
   ConnectionMode,
-  ControlButton,
   Controls,
   MiniMap,
   ReactFlow,
@@ -18,7 +17,6 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Grid3x3, Magnet } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -255,24 +253,8 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
           return s.fill !== 'transparent' ? s.fill : s.stroke;
         }}
       />
-      <Controls showInteractive={false} position="bottom-left">
-        <ControlButton
-          onClick={() => store.setState((s) => ({ gridOn: !s.gridOn }))}
-          title="Cuadrícula"
-          aria-label="Mostrar cuadrícula"
-          aria-pressed={gridOn}
-        >
-          <Grid3x3 size={14} aria-hidden="true" />
-        </ControlButton>
-        <ControlButton
-          onClick={() => store.setState((s) => ({ snapOn: !s.snapOn }))}
-          title="Ajustar a la cuadrícula"
-          aria-label="Ajustar a la cuadrícula"
-          aria-pressed={snapOn}
-        >
-          <Magnet size={14} aria-hidden="true" />
-        </ControlButton>
-      </Controls>
+      {/* Cuadrícula y snap se conmutan desde la ActionBar. */}
+      <Controls showInteractive={false} position="bottom-left" />
     </ReactFlow>
   );
 }
