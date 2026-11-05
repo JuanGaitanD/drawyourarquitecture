@@ -69,6 +69,11 @@ export interface Member {
   role: Role;
 }
 
+export interface MemberJoin {
+  name: string;
+  token: string;
+}
+
 export interface InviteRepo {
   /** Dueño: crea un enlace de invitación (caduca en 7 días) y devuelve su token. */
   create(projectId: string, role: Role, createdBy: string): Promise<Invite>;
@@ -78,8 +83,13 @@ export interface InviteRepo {
   revoke(token: string): Promise<void>;
   /** Invitado: se añade a `members` y deja su rastro en `joins/{uid}` (un batch). */
   accept(invite: Invite, user: AuthUser): Promise<void>;
-  /** Dueño: nombres de quienes entraron por invitación, por uid. */
-  memberNames(projectId: string): Promise<Record<string, string>>;
+  /** Dueño: quiénes entraron por invitación (nombre y token con el que entraron), por uid. */
+  memberJoins(projectId: string): Promise<Record<string, MemberJoin>>;
+  /**
+   * Dueño: revoca la invitación y quita de `members` a quienes entraron con ese token (un batch). Devuelve los
+   * uid quitados.
+   */
+  revokeAndRemove(projectId: string, token: string): Promise<string[]>;
 }
 
 /** Quién está conectado a un proyecto. Latido cada 60 s; caduca a los 2 min. Los cursores no se persisten. */
