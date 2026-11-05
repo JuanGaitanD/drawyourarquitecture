@@ -4,6 +4,7 @@ import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import type { Firestore } from 'firebase-admin/firestore';
 import { generateToken, sha256Hex } from '../application/tokens';
 import { emptyBoard } from '../editors/board/model/board';
+import { getAdminAuth } from './admin';
 import { buildNote, encodeNote } from './note';
 import type { ToolContext } from './tools';
 import { getUserDb } from './userDb';
@@ -31,6 +32,18 @@ export async function loadRules(): Promise<void> {
 /** Contexto de herramientas autenticado como `uid` (SDK web + custom token del emulador de Auth). */
 export async function userCtx(uid: string): Promise<ToolContext> {
   return { db: await getUserDb(uid), uid };
+}
+
+/**
+ * Persona nueva, con correo verificado y en `allowedEmails`: puede crear proyectos y no arrastra los del dueño de
+ * prueba, que se acumulan en el emulador compartido (`list_projects` solo trae 200 y la prueba no encontraba el suyo).
+ */
+export async function seedAllowedUser(db: Firestore): Promise<string> {
+  const uid = uniq('invitada');
+  const email = `${uid}@example.com`;
+  await db.collection('allowedEmails').doc(email).set({ email, addedAt: 1 });
+  await getAdminAuth().createUser({ uid, email, emailVerified: true });
+  return uid;
 }
 
 export const uniq = (prefix: string) => `${prefix}-${randomUUID().slice(0, 8)}`;

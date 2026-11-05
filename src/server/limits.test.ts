@@ -28,14 +28,14 @@ describe.skipIf(!EMULATOR)('límite de tasa y auditoría · emulador', () => {
     await consumeRate(id.db, id, 11 * RATE_WINDOW_MS);
     const doc = (await getAdminDb().collection('rateLimits').doc(id.tokenHash).get()).data();
     expect(doc).toEqual({ uid: id.uid, window: 11, count: 1 });
-  });
+  }, 30_000); // ≈ 60 transacciones seguidas: cerca de los 5 s por defecto con la máquina cargada
 
   it('cada token tiene su propio contador', async () => {
     const [a, b] = [await identity(), await identity()];
     for (let i = 0; i < RATE_LIMIT; i++) await consumeRate(a.db, a, 1_000 + i);
     await expect(consumeRate(a.db, a, 2_000)).rejects.toMatchObject({ status: 429 });
     await expect(consumeRate(b.db, b, 2_000)).resolves.toBeUndefined();
-  });
+ }, 30_000);
 
   it('recordAudit guarda {uid, tokenHash, tool, projectId, ok, at, expireAt} y la lee solo su dueño', async () => {
     const id = await identity();

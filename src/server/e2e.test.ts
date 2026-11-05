@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { Firestore } from 'firebase-admin/firestore';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { getAdminDb } from './admin';
-import { EMULATOR, OWNER, loadRules, seedProject, seedToken, uniq } from './testkit';
+import { EMULATOR, OWNER, loadRules, seedAllowedUser, seedProject, seedToken, uniq } from './testkit';
 
 // De extremo a extremo: el bundle de producción (api/_mcp.mjs) en un proceso Node aparte, hablado con un
 // cliente MCP del SDK por Streamable HTTP. Necesita el emulador de Firestore.
@@ -71,7 +71,7 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
   });
 
   it('con token: lista las herramientas, crea un board desde Mermaid, lo lee y lo amplía', async () => {
-    const { token } = await seedToken(db, OWNER);
+    const { token } = await seedToken(db, await seedAllowedUser(db));
     const client = await connect(token);
     try {
       const tools = (await client.listTools()).tools.map((t) => t.name).sort();

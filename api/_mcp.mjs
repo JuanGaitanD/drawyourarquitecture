@@ -137,6 +137,7 @@ import {
 // src/domain/codec.ts
 var DOC_CONTENT_BYTES = 9e5;
 var MAX_CONTENT_BYTES = 8 * 1024 * 1024;
+var MAX_CONTENT_LABEL = `${MAX_CONTENT_BYTES / 1024 / 1024} MiB`;
 var ContentTooLargeError = class extends Error {
   bytes;
   constructor(bytes) {
