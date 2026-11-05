@@ -35,7 +35,7 @@ flowchart LR
   subgraph Firebase["Firebase (plan gratuito)"]
     FAuth["Auth · Google"]
     FS[("Firestore<br/>projects/{id}<br/>content/main {data | chunks, schemaVersion, revision}<br/>content/main/chunks/{i} {data}<br/>files/{fileId} + chunks/{i} {data: Bytes}<br/>allowedEmails · mcpTokens · rateLimits · mcpAudit")]
-    RTDB[("Realtime Database<br/>presence/{owner}/{pid}/{uid}<br/>acl/{owner}/{pid} (members, invites)")]
+    RTDB[("Realtime Database<br/>presence/{owner}/{pid}/{uid}/{sessionId}<br/>acl/{owner}/{pid} (members, invites, aclRev)")]
   end
   Vercel["Vercel Pro · estáticos + rewrites"] --> Browser
   MCP["api/mcp · servidor MCP<br/>Admin: solo identidad · SDK web autenticado: datos"]
@@ -60,7 +60,7 @@ SOLID sin ceremonia:
 `content/main` guarda `data` hasta 900 000 bytes (un documento de Firestore admite 1 MiB). Por encima guarda `chunks: n` (2 ≤ n ≤ 12, sin `data`) y los trozos van en `content/main/chunks/{i}`; meta y trozos se escriben en una transacción con la revisión esperada y los trozos sobrantes de un guardado más largo se borran. Tope práctico: 8 MiB (`MAX_CONTENT_BYTES`). Hay una sola implementación del puerto (`createContentRepo`, `infrastructure/firebase/contentRepo.ts`) con la parte pura en `application/contentChunks.ts`; la usan la app (`content.ts`) y el servidor MCP (`src/server/tools.ts`), cada uno con su cliente de Firestore.
 
 ## Presencia y cursores
-Viven en Realtime Database, no en Firestore (cada cursor sería una escritura de cuota): `presence/{ownerId}/{projectId}/{uid} = { name, color, x?, y?, at }`, con `onDisconnect().remove()` y el cursor con throttle de 80 ms. RTDB no lee Firestore, así que el dueño publica un espejo de acceso bajo su propio uid, `acl/{ownerId}/{projectId}/{members, invites}`; solo él escribe bajo esa rama (nadie puede reclamar el proyecto de otro) y un invitado se registra a sí mismo con el token de una invitación vigente. Firestore sigue siendo la fuente de verdad. Reglas en `database.rules.json`. Sin `VITE_FIREBASE_DATABASE_URL` la presencia se apaga.
+Viven en Realtime Database, no en Firestore (cada cursor sería una escritura de cuota): `presence/{ownerId}/{projectId}/{uid}/{sessionId} = { name, color, x?, y?, at }` (un nodo por pestaña, un avatar por uid), con `onDisconnect().remove()` y el cursor con throttle de 80 ms. RTDB no lee Firestore, así que el dueño publica un espejo de acceso bajo su propio uid, `acl/{ownerId}/{projectId}/{members, invites}` versionado con `aclRev` (las reglas rechazan versiones anteriores); solo él escribe bajo esa rama (nadie puede reclamar el proyecto de otro) y un invitado se registra a sí mismo con el token de una invitación vigente. Firestore sigue siendo la fuente de verdad. Reglas en `database.rules.json`. Sin `VITE_FIREBASE_DATABASE_URL` la presencia se apaga.
 
 ## Servidor MCP
 `api/mcp` (empaquetado en `api/_mcp.mjs`) identifica la petición con Admin (token → uid, `createCustomToken`) y opera con el SDK web de Firebase autenticado como esa persona (`src/server/userDb.ts`): las reglas de Firestore aplican tal cual y no hay autorización duplicada. Límite de tasa (`rateLimits`) y auditoría (`mcpAudit`) los escribe la propia persona bajo reglas. Detalle en `docs/mcp.md`.
