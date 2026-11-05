@@ -46,7 +46,7 @@ Otros clientes con configuración JSON:
 | `read_board`    | `id`                                      | Mermaid del diagrama (`toFlowchart`) y JSON compacto de nodos y aristas. El Mermaid pierde stickies, textos, iconos y estilos.              |
 | `create_note`   | `title`, `text`                           | Nota nueva. El texto se divide en bloques por línea en blanco; cada bloque es un elemento `text` de Excalidraw. `#`, `##`, `###` = títulos. |
 | `create_board`  | `title`, `mermaid`                        | Diagrama nuevo desde un flowchart de Mermaid, ordenado con dagre (el mismo `parseFlowchart` + `autoLayout` de la app).                      |
-| `update_board`  | `id`, `mermaid`, `mode` (`replace`\|`append`) | `replace` sustituye todo el contenido (las imágenes del board se pierden); `append` añade lo nuevo **debajo** de lo existente. Transacción con `revision + 1`. |
+| `update_board`  | `id`, `mermaid`                           | **Amplía** el board: añade lo nuevo **debajo** de lo existente y conserva lo que hay (posiciones, estilos, frames, stickies e imágenes). No hay modo de sustitución. Transacción con `revision + 1`. |
 
 Mermaid admite `flowchart`/`graph` (LR, TD…), formas `[]` `()` `([])` `{}` `(())` `[()]` `{{}}`, aristas `-->` `---` `-.->` `==>` con etiqueta, y `subgraph` anidados (pasan a frames). Los estilos (`style`, `classDef`…) se ignoran.
 

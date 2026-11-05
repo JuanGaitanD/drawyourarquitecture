@@ -86,8 +86,8 @@ export function createMcpServer(ctx: ToolContext): McpServer {
     'update_board',
     {
       description:
-        'Actualiza un diagrama desde Mermaid: «replace» sustituye todo el contenido; «append» añade lo nuevo debajo de lo existente.',
-      inputSchema: { id, mermaid, mode: z.enum(['replace', 'append']).default('append') },
+        'Amplía un diagrama desde Mermaid: añade lo nuevo debajo de lo existente y conserva lo que ya hay (posiciones, estilos, frames e imágenes).',
+      inputSchema: { id, mermaid },
     },
     (a) => run(() => updateBoard(ctx, a)),
   );

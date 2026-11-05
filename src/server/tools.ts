@@ -258,7 +258,7 @@ function placeBelow(base: BoardContent, add: BoardContent): BoardNode[] {
 
 export async function updateBoard(
   ctx: ToolContext,
-  args: { id: string; mermaid: string; mode: 'replace' | 'append' },
+  args: { id: string; mermaid: string },
 ): Promise<ToolResult> {
   if (!ID_RE.test(args.id)) throw new ToolError(400, 'Id de proyecto no válido.');
   const incoming = await boardFromMermaid(args.mermaid);
@@ -277,31 +277,28 @@ export async function updateBoard(
     if (!current || typeof current.data !== 'string')
       throw new ToolError(404, 'El proyecto no tiene contenido.');
 
-    let next: BoardContent = incoming;
-    if (args.mode === 'append') {
-      let existing: unknown;
-      try {
-        existing = decode(current.data);
-      } catch {
-        throw new ToolError(400, 'El diagrama actual está dañado (no es JSON).');
-      }
-      const checked = validateBoardContent(existing);
-      if (!checked.ok) throw new ToolError(400, `El diagrama actual no es válido: ${checked.error}`);
-      const merged = validateBoardContent({
-        ...checked.value,
-        nodes: [...checked.value.nodes, ...placeBelow(checked.value, incoming)],
-        edges: [...checked.value.edges, ...incoming.edges],
-      });
-      if (!merged.ok) throw new ToolError(400, `El resultado no es válido: ${merged.error}`);
-      next = merged.value;
+    let existing: unknown;
+    try {
+      existing = decode(current.data);
+    } catch {
+      throw new ToolError(400, 'El diagrama actual está dañado (no es JSON).');
     }
+    const checked = validateBoardContent(existing);
+    if (!checked.ok) throw new ToolError(400, `El diagrama actual no es válido: ${checked.error}`);
+    const merged = validateBoardContent({
+      ...checked.value,
+      nodes: [...checked.value.nodes, ...placeBelow(checked.value, incoming)],
+      edges: [...checked.value.edges, ...incoming.edges],
+    });
+    if (!merged.ok) throw new ToolError(400, `El resultado no es válido: ${merged.error}`);
+    const next: BoardContent = merged.value;
 
     const revision = (Number(current.revision) || 0) + 1;
     const t = now(ctx);
     tx.update(contentRef, { data: encodeOrFail(next), revision, updatedAt: t });
     tx.update(projectRef, { updatedAt: t });
     return {
-      text: `Diagrama actualizado (${args.mode}): revisión ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
+      text: `Diagrama ampliado: revisión ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
       data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length },
     };
   });

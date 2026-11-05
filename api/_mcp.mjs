@@ -1036,30 +1036,27 @@ async function updateBoard(ctx, args) {
     const current = cSnap.data();
     if (!current || typeof current.data !== "string")
       throw new ToolError(404, "El proyecto no tiene contenido.");
-    let next = incoming;
-    if (args.mode === "append") {
-      let existing;
-      try {
-        existing = decode(current.data);
-      } catch {
-        throw new ToolError(400, "El diagrama actual est\xE1 da\xF1ado (no es JSON).");
-      }
-      const checked = validateBoardContent(existing);
-      if (!checked.ok) throw new ToolError(400, `El diagrama actual no es v\xE1lido: ${checked.error}`);
-      const merged = validateBoardContent({
-        ...checked.value,
-        nodes: [...checked.value.nodes, ...placeBelow(checked.value, incoming)],
-        edges: [...checked.value.edges, ...incoming.edges]
-      });
-      if (!merged.ok) throw new ToolError(400, `El resultado no es v\xE1lido: ${merged.error}`);
-      next = merged.value;
+    let existing;
+    try {
+      existing = decode(current.data);
+    } catch {
+      throw new ToolError(400, "El diagrama actual est\xE1 da\xF1ado (no es JSON).");
     }
+    const checked = validateBoardContent(existing);
+    if (!checked.ok) throw new ToolError(400, `El diagrama actual no es v\xE1lido: ${checked.error}`);
+    const merged = validateBoardContent({
+      ...checked.value,
+      nodes: [...checked.value.nodes, ...placeBelow(checked.value, incoming)],
+      edges: [...checked.value.edges, ...incoming.edges]
+    });
+    if (!merged.ok) throw new ToolError(400, `El resultado no es v\xE1lido: ${merged.error}`);
+    const next = merged.value;
     const revision = (Number(current.revision) || 0) + 1;
     const t = now(ctx);
     tx.update(contentRef, { data: encodeOrFail(next), revision, updatedAt: t });
     tx.update(projectRef, { updatedAt: t });
     return {
-      text: `Diagrama actualizado (${args.mode}): revisi\xF3n ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
+      text: `Diagrama ampliado: revisi\xF3n ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
       data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length }
     };
   });
@@ -1125,8 +1122,8 @@ function createMcpServer(ctx) {
   server.registerTool(
     "update_board",
     {
-      description: "Actualiza un diagrama desde Mermaid: \xABreplace\xBB sustituye todo el contenido; \xABappend\xBB a\xF1ade lo nuevo debajo de lo existente.",
-      inputSchema: { id, mermaid, mode: z.enum(["replace", "append"]).default("append") }
+      description: "Ampl\xEDa un diagrama desde Mermaid: a\xF1ade lo nuevo debajo de lo existente y conserva lo que ya hay (posiciones, estilos, frames e im\xE1genes).",
+      inputSchema: { id, mermaid }
     },
     (a) => run(() => updateBoard(ctx, a))
   );

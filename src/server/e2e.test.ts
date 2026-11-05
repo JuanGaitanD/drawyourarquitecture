@@ -102,7 +102,6 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
       const updated = await call(client, 'update_board', {
         id,
         mermaid: 'flowchart LR\n  C2[Cache]',
-        mode: 'append',
       });
       expect(updated.text).toContain('revisión 1');
       expect((await call(client, 'read_board', { id })).text).toContain('Cache');
@@ -124,7 +123,6 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
       const w = await call(client, 'update_board', {
         id: foreign,
         mermaid: 'flowchart LR\nA-->B',
-        mode: 'replace',
       });
       expect(w.isError).toBe(true);
       expect(w.text).toMatch(/^403/);

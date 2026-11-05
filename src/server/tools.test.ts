@@ -189,17 +189,19 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
       return r;
     };
 
-    it('replace sustituye el contenido y sube la revisión', async () => {
+    it('ignora un `mode: replace` heredado: nunca sustituye el contenido', async () => {
       const id = (
         (await createBoard(as(OWNER), { title: 't', mermaid: 'flowchart LR\nA[Uno]-->B[Dos]' })).data as {
           id: string;
         }
       ).id;
-      const res = await updateBoard(as(OWNER), { id, mermaid: 'flowchart LR\nC[Tres]', mode: 'replace' });
-      expect((res.data as { revision: number }).revision).toBe(1);
-      const r = await nodes(id);
-      expect(r.nodes.map((n) => n.label)).toEqual(['Tres']);
-      expect(r.revision).toBe(1);
+      const before = await nodes(id);
+      const legacy = { id, mermaid: 'flowchart LR\nC[Tres]', mode: 'replace' } as Parameters<typeof updateBoard>[1];
+      await updateBoard(as(OWNER), legacy);
+      const after = await nodes(id);
+      expect(after.nodes.map((n) => n.label).sort()).toEqual(['Dos', 'Tres', 'Uno']);
+      const kept = after.nodes.filter((n) => before.nodes.some((o) => o.label === n.label && o.y === n.y));
+      expect(kept).toHaveLength(2);
     });
 
     it('append conserva lo existente y coloca lo nuevo debajo', async () => {
@@ -208,7 +210,7 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
           id: string;
         }
       ).id;
-      await updateBoard(as(OWNER), { id, mermaid: 'flowchart LR\nC[Tres]-->D[Cuatro]', mode: 'append' });
+      await updateBoard(as(OWNER), { id, mermaid: 'flowchart LR\nC[Tres]-->D[Cuatro]' });
       const r = await nodes(id);
       expect(r.nodes.map((n) => n.label).sort()).toEqual(['Cuatro', 'Dos', 'Tres', 'Uno']);
       const maxOld = Math.max(...r.nodes.filter((n) => ['Uno', 'Dos'].includes(n.label)).map((n) => n.y));
@@ -224,8 +226,8 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
         }
       ).id;
       await Promise.all([
-        updateBoard(as(OWNER), { id, mermaid: 'flowchart LR\nX[Uno]', mode: 'append' }),
-        updateBoard(as(OWNER), { id, mermaid: 'flowchart LR\nY[Dos]', mode: 'append' }),
+        updateBoard(as(OWNER), { id, mermaid: 'flowchart LR\nX[Uno]' }),
+        updateBoard(as(OWNER), { id, mermaid: 'flowchart LR\nY[Dos]' }),
       ]);
       const r = await nodes(id);
       expect(r.revision).toBe(2);
@@ -238,7 +240,7 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
         isPublic: true,
         members: { [EDITOR]: 'editor', [VIEWER]: 'viewer' },
       });
-      const args = { id, mermaid: 'flowchart LR\nA-->B', mode: 'append' as const };
+      const args = { id, mermaid: 'flowchart LR\nA-->B' };
       expect(await status(updateBoard(as(EDITOR), args))).toBe(0);
       expect(await status(updateBoard(as(VIEWER), args))).toBe(403);
       expect(await status(updateBoard(as(STRANGER), args))).toBe(403);
