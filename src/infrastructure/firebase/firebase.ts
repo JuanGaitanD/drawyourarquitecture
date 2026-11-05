@@ -4,7 +4,8 @@ import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
 // Único sitio que crea la app de Firebase. Con VITE_USE_EMULATORS=1 todo apunta a los emuladores locales.
 
 export const USE_EMULATORS = import.meta.env.VITE_USE_EMULATORS === '1';
-export const EMULATOR_PROJECT = 'demo-dya';
+/** `VITE_EMULATOR_PROJECT` aísla datos y reglas en el emulador compartido (el e2e usa `demo-dya-e2e`). */
+export const EMULATOR_PROJECT: string = import.meta.env.VITE_EMULATOR_PROJECT || 'demo-dya';
 export const EMULATOR_HOST = '127.0.0.1';
 export const EMULATOR_PORTS = { auth: 9099, firestore: 8080, database: 9000 } as const;
 
