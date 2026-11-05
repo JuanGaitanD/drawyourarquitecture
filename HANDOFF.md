@@ -195,7 +195,7 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 - El emulador compartido acumula proyectos de `owner-test`: `list_projects` solo trae 200, así que las pruebas que listan usan una persona nueva (`seedAllowedUser`).
 - D29 cerrada. Causa: `test:rules` y el e2e compartían el proyecto `demo-dya` del emulador con los demás carriles, que limpian Firestore entre pruebas, recargan reglas y cierran la base de tiempo real (`emulators:exec`). Ahora `test:rules` usa un proyecto por ejecución (`RULES_PROJECT`) y el e2e `demo-dya-e2e` con `global-setup.ts`. El emulador de Auth no separa por proyecto: las cuentas de prueba siguen en `demo-dya`.
 - Los embeds muestran la atribución «React Flow» (sin plan Pro).
-- **D22**: el e2e de colaboración está versionado (`tests/e2e/collab.spec.ts`). Siguen sin pruebas de componentes (Vitest corre en `node`; solo `BoardViewer.test.tsx` y `merge.test.ts` usan jsdom) ni e2e de las correcciones 4–6 de la revisión 2 (la revisión vive en `.wigi/`, no versionada).
+- **D22 cerrado** (D39, D41 y D42): pruebas de componentes con Testing Library, e2e de imágenes y de las correcciones 4–6 de la revisión 2, y `pnpm test` con proyecto de emulador propio. **Fallo abierto hallado por el e2e**: una nota recién abierta pierde lo que otra persona guardó mientras cargaba el lienzo (`onHandle` vuelca la bandeja remota antes de que Excalidraw aplique `initialData` y este la pisa); su prueba en `collab.spec.ts` usa `test.fail` hasta arreglarlo.
 - Un editor abierto mientras un agente escribe por MCP recibe el cambio en vivo y lo fusiona; un agente no aparece en la presencia.
 
 ## Imágenes en Firestore
