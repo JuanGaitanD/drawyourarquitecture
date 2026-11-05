@@ -6,6 +6,8 @@ import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
 export const USE_EMULATORS = import.meta.env.VITE_USE_EMULATORS === '1';
 /** `VITE_EMULATOR_PROJECT` aísla datos y reglas en el emulador compartido (el e2e usa `demo-dya-e2e`). */
 export const EMULATOR_PROJECT: string = import.meta.env.VITE_EMULATOR_PROJECT || 'demo-dya';
+/** El emulador de Auth resuelve siempre el proyecto del suite (el de `--project`), no el de `VITE_EMULATOR_PROJECT`. */
+export const EMULATOR_AUTH_PROJECT = 'demo-dya';
 export const EMULATOR_HOST = '127.0.0.1';
 export const EMULATOR_PORTS = { auth: 9099, firestore: 8080, database: 9000 } as const;
 
