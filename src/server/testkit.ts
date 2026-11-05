@@ -4,7 +4,7 @@ import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import type { Firestore } from 'firebase-admin/firestore';
 import { generateToken, sha256Hex } from '../application/tokens';
 import { emptyBoard } from '../editors/board/model/board';
-import { getAdminAuth } from './admin';
+import { EMULATOR_PROJECT, getAdminAuth } from './admin';
 import { buildNote, encodeNote } from './note';
 import type { ToolContext } from './tools';
 import { getUserDb } from './userDb';
@@ -25,7 +25,9 @@ export const OWNER = 'owner-test';
  */
 export async function loadRules(): Promise<void> {
   const rules = readFileSync('firestore.rules.tpl', 'utf8').replaceAll('__OWNER_UID__', OWNER);
-  const env = await initializeTestEnvironment({ projectId: 'demo-dya', firestore: { rules } });
+  // El proyecto es el de la ejecución (`GCLOUD_PROJECT`, lo fija vite.config.ts), el mismo que usan Admin y el SDK web.
+  const projectId = process.env.GCLOUD_PROJECT ?? EMULATOR_PROJECT;
+  const env = await initializeTestEnvironment({ projectId, firestore: { rules } });
   await env.cleanup();
 }
 

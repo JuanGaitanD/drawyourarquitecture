@@ -22,7 +22,9 @@ function getApp() {
   return app;
 }
 var getAdminDb = () => getFirestore(getApp());
-var getAdminAuth = () => getAuth(getApp());
+var getAdminAuth = () => getAuth(
+  usingEmulator() ? getApps().find((a) => a.name === "dya-auth") ?? initializeApp({ projectId: EMULATOR_PROJECT }, "dya-auth") : getApp()
+);
 function parseServiceAccount(raw) {
   if (!raw) throw new Error("Falta la variable de entorno FIREBASE_SERVICE_ACCOUNT.");
   try {
