@@ -51,6 +51,17 @@ Siguen T6 (e2e) y T8 (despliegue, pendiente de Juan).
 - Una invitación aceptada y luego revocada no expulsa: hay que quitar al miembro (se hace desde la misma ventana).
 - P3: ignorar `isDeleted` en notas; el servidor MCP ya puede escribir contenido de un board sin tocar nada de sincronización (no hay campos extra).
 
+### Revisión final 2 corregida (`.wigi/review/final-gpt-2.md`, un commit por hallazgo)
+
+1. **Cola vs. fusión** (`saveQueue.ts`): tras un guardado que el servidor fusionó (`merged`) **no se sube la revisión esperada**; el pendiente anterior a la fusión vuelve a pasar por la fusión de la transacción en vez de pisar lo ajeno. Coste: mientras cada guardado devuelva `merged` se repite la fusión (no se escribe más). Prueba: guardado diferido + segundo `push` + remoto antes del ACK.
+2. **Deshacer/rehacer del board** (`boardStore.applyRemote`): cada paso del historial (y el gesto en curso) recibe las altas y ediciones remotas y pierde los borrados remotos (`rebaseOnRemote`); lo colgado pasa a la raíz con su posición absoluta o se descarta. Pruebas: alta, edición y borrado ajenos entre deshacer y rehacer.
+3. **Ciclos de frames** (`model/merge.ts`): `mergeBoards` rompe el ciclo de forma determinista (el id menor pasa a la raíz; cada miembro conserva la posición absoluta que quiso su autor, usando la de su padre en `base`) y `onRemote` no aplica ni avanza la base con una fusión inválida (`sync.ts`). Pruebas: las dos orientaciones y el store.
+4. **Remoto antes del handle** (`remoteInbox.ts`): se retiene el más reciente y se aplica al registrar el handle de Excalidraw.
+5. **Fondo remoto** (`pickBackground`): `applyRemote` y la fusión del guardado toman el fondo remoto salvo que esta pestaña lo cambiara y no esté guardado (se compara con el último fondo conocido del servidor; el ACK propio lo actualiza vía `NoteHandle.saved`).
+6. **Imagen aún subiéndose** (`retryMissing`): el remoto reintenta con 1, 2 y 4 s antes de mostrar el aviso de «No se pudo cargar». **Límite**: si la subida tarda más de ~7 s sigue el aviso con «Reintentar»; el autor no notifica el fin de la subida (publicar la referencia tras confirmar la subida sería la solución completa).
+
+**Sin probar en navegador** (solo Vitest): 4, 5 y 6 dependen de Excalidraw; las pruebas cubren la lógica pura extraída (`remoteInbox`, `pickBackground`, `retryMissing`), no el cableado del lienzo. Ciclos de un solo nodo (`parentId` a sí mismo) no se tratan en la fusión: los rechaza `validateBoardContent`.
+
 ## Lo que hay
 
 | Pieza            | Dónde                                                                  | Estado                                                                                                 |
