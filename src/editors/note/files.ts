@@ -85,6 +85,8 @@ export interface UploadQueue {
   whenDone(cb: (fileId: string) => void): () => void;
   /** Reintenta lo que falló (botón «Reintentar» o vuelta de la conexión). */
   retryFailed(): void;
+  /** La imagen se borró antes de guardarse: se olvida del todo (cola, reintentos y copia en disco). */
+  discard(ids: Iterable<string>): void;
   /** Subidas que se perderían al cerrar la pestaña: sin terminar y sin copia en disco. */
   pending(): number;
 }
@@ -110,6 +112,7 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
     failed.delete(id);
     let lastError = new Error('La subida falló.');
     for (let attempt = 0; attempt <= delays.length; attempt++) {
+      if (!blobs.has(id)) return void running.delete(id); // descartada mientras esperaba
       try {
         await opts.store.upload(opts.projectId, id, blob);
         blobs.delete(id);
@@ -137,7 +140,11 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
         .put({ projectId: opts.projectId, fileId: id, blob, meta })
         .then(() => void onDisk.add(id))
         .catch(() => undefined)
-        .then(() => run(id));
+        .then(() => {
+          if (blobs.has(id)) return run(id);
+          // Descartada mientras se escribía en disco: la copia recién creada sobra.
+          if (onDisk.delete(id)) void store.remove(opts.projectId, id).catch(() => undefined);
+        });
     },
     async resume(published, restore) {
       if (!store) return;
@@ -157,6 +164,13 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
       for (const id of ids) {
         if (blobs.has(id) || !onDisk.delete(id)) continue; // aún sin subir: la copia en disco sigue siendo la red
         void store?.remove(opts.projectId, id).catch(() => undefined);
+      }
+    },
+    discard(ids) {
+      for (const id of ids) {
+        blobs.delete(id);
+        failed.delete(id);
+        if (onDisk.delete(id)) void store?.remove(opts.projectId, id).catch(() => undefined);
       }
     },
     whenDone(cb) {

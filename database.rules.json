@@ -47,21 +47,24 @@
       }
     },
 
-    // Presencia y cursores: solo el dueño y los miembros leen la sala; cada uno escribe únicamente su nodo.
-    // El nodo existe mientras haya conexión (`onDisconnect().remove()`): sin latidos ni caducidad.
+    // Presencia y cursores: solo el dueño y los miembros leen la sala; cada uno escribe únicamente bajo su uid.
+    // Cada pestaña es una sesión (`presence/$owner/$pid/$uid/$sid`) con su `onDisconnect().remove()`: el nodo existe
+    // mientras haya conexión (sin latidos ni caducidad) y cerrar una pestaña no borra a la otra.
     "presence": {
       "$owner": {
         "$pid": {
           ".read": "auth != null && (auth.uid === $owner || root.child('acl').child($owner).child($pid).child('members').child(auth.uid).exists())",
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && (!newData.exists() || auth.uid === $owner || root.child('acl').child($owner).child($pid).child('members').child(auth.uid).exists())",
-            ".validate": "newData.hasChildren(['name', 'color', 'at']) && newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('color').isString() && newData.child('color').val().matches(/^#[0-9a-fA-F]{6}$/) && newData.child('at').isNumber()",
-            "name": {},
-            "color": {},
-            "at": {},
-            "x": { ".validate": "newData.isNumber()" },
-            "y": { ".validate": "newData.isNumber()" },
-            "$other": { ".validate": false }
+            "$sid": {
+              ".validate": "$sid.matches(/^[A-Za-z0-9_-]{8,64}$/) && newData.hasChildren(['name', 'color', 'at']) && newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('color').isString() && newData.child('color').val().matches(/^#[0-9a-fA-F]{6}$/) && newData.child('at').isNumber()",
+              "name": {},
+              "color": {},
+              "at": {},
+              "x": { ".validate": "newData.isNumber()" },
+              "y": { ".validate": "newData.isNumber()" },
+              "$other": { ".validate": false }
+            }
           }
         }
       }

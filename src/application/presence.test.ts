@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { throttleCursor } from './presence';
+import { groupSessions, throttleCursor } from './presence';
 import { presenceColor } from './ports';
 
 describe('color de presencia', () => {
@@ -39,5 +39,26 @@ describe('throttleCursor', () => {
     t.cancel();
     vi.advanceTimersByTime(500);
     expect(send).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('groupSessions (D25)', () => {
+  const node = (at: number, extra: Record<string, unknown> = {}) => ({ name: 'Ana', color: '#2563eb', at, ...extra });
+
+  it('dos pestañas de la misma persona cuentan una vez, con el cursor de la que lo movió', () => {
+    const list = groupSessions({
+      ana: { a: node(5, { x: 1, y: 2 }), b: node(9) },
+      luis: { c: node(1, { name: 'Luis' }) },
+    });
+    expect(list).toEqual([
+      { uid: 'ana', name: 'Ana', color: '#2563eb', x: 1, y: 2, at: 9 },
+      { uid: 'luis', name: 'Luis', color: '#2563eb', x: undefined, y: undefined, at: 1 },
+    ]);
+  });
+
+  it('excluye al propio uid (sus otras pestañas no son otra persona) y tolera una sala vacía o con datos viejos', () => {
+    expect(groupSessions({ yo: { a: node(1) }, ana: { a: node(1) } }, 'yo').map((p) => p.uid)).toEqual(['ana']);
+    expect(groupSessions(null)).toEqual([]);
+    expect(groupSessions({ ana: { a: null }, luis: 'basura' as never })).toEqual([]);
   });
 });
