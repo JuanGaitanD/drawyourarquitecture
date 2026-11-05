@@ -54,6 +54,7 @@ async function canCreate(db2, uid, ownerUid = process.env.OWNER_UID) {
   if (ownerUid && uid === ownerUid) return true;
   return (await db2.collection("allowedUsers").doc(uid).get()).exists;
 }
+var LAST_USED_EVERY_MS = 36e5;
 async function authenticate(db2, header) {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? "");
   if (!m) throw new ToolError(401, "Falta el encabezado Authorization: Bearer <token>.");
@@ -65,7 +66,10 @@ async function authenticate(db2, header) {
   if (!data || data.revoked === true || typeof data.uid !== "string" || data.uid === "") {
     throw new ToolError(401, "Token no v\xE1lido o revocado.");
   }
-  await ref.update({ lastUsedAt: Date.now() }).catch(() => void 0);
+  const now2 = Date.now();
+  if (typeof data.lastUsedAt !== "number" || now2 - data.lastUsedAt >= LAST_USED_EVERY_MS) {
+    await ref.update({ lastUsedAt: now2 }).catch(() => void 0);
+  }
   return data.uid;
 }
 

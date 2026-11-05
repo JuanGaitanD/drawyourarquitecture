@@ -52,9 +52,12 @@ export async function canCreate(
   return (await db.collection('allowedUsers').doc(uid).get()).exists;
 }
 
+/** Cada llamada MCP no debe costar una escritura: `lastUsedAt` se refresca como mucho una vez por hora. */
+const LAST_USED_EVERY_MS = 3_600_000;
+
 /**
  * `Authorization: Bearer dya_…` → uid. Busca el sha256 en `mcpTokens`; sin token, con formato
- * inválido, inexistente o revocado lanza 401. Anota `lastUsedAt`.
+ * inválido, inexistente o revocado lanza 401. Anota `lastUsedAt` como mucho una vez por hora.
  */
 export async function authenticate(db: Firestore, header: string | undefined): Promise<string> {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? '');
@@ -67,6 +70,9 @@ export async function authenticate(db: Firestore, header: string | undefined): P
   if (!data || data.revoked === true || typeof data.uid !== 'string' || data.uid === '') {
     throw new ToolError(401, 'Token no válido o revocado.');
   }
-  await ref.update({ lastUsedAt: Date.now() }).catch(() => undefined);
+  const now = Date.now();
+  if (typeof data.lastUsedAt !== 'number' || now - data.lastUsedAt >= LAST_USED_EVERY_MS) {
+    await ref.update({ lastUsedAt: now }).catch(() => undefined);
+  }
   return data.uid;
 }

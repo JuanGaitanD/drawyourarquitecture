@@ -56,6 +56,20 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
       expect(await status(authenticate(db, `Basic ${ok.token}`))).toBe(401);
     });
 
+    it('lastUsedAt se escribe como mucho una vez por hora', async () => {
+      const { token, hash } = await seedToken(db, OWNER);
+      const ref = db.collection('mcpTokens').doc(hash);
+      await authenticate(db, `Bearer ${token}`);
+      const first = (await ref.get()).data()?.lastUsedAt as number;
+      await authenticate(db, `Bearer ${token}`);
+      expect((await ref.get()).data()?.lastUsedAt).toBe(first);
+
+      const old = Date.now() - 2 * 3_600_000;
+      await ref.update({ lastUsedAt: old });
+      await authenticate(db, `Bearer ${token}`);
+      expect((await ref.get()).data()?.lastUsedAt).toBeGreaterThan(old);
+    });
+
     it('canCreate: dueño y allowedUsers sí; el resto no', async () => {
       expect(await canCreate(db, OWNER)).toBe(true);
       expect(await canCreate(db, ALLOWED)).toBe(true);
