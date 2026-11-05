@@ -1,13 +1,22 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Excalidraw } from '@excalidraw/excalidraw';
-import '@excalidraw/excalidraw/index.css';
-import { ReactFlow } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import { App } from './app/App';
+import { ThemeProvider, ToastProvider, TooltipProvider } from './ui';
+import './ui/tokens.css';
+import './ui/base.css';
+
+// Fuentes de Excalidraw autoalojadas (public/excalidraw-assets/fonts). Debe fijarse antes de que se cargue
+// el motor, que es lazy: basta con hacerlo aquí, antes de montar nada.
+window.EXCALIDRAW_ASSET_PATH = '/excalidraw-assets/';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <div style={{ height: 300 }}><Excalidraw /></div>
-    <div style={{ height: 300 }}><ReactFlow nodes={[]} edges={[]} /></div>
+    <ThemeProvider>
+      <TooltipProvider>
+        <ToastProvider>
+          <App />
+        </ToastProvider>
+      </TooltipProvider>
+    </ThemeProvider>
   </StrictMode>,
 );
