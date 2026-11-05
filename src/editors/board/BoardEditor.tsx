@@ -150,7 +150,7 @@ function Loaded({
     return s;
   });
   const viewport = useRef<Viewport>(initial.viewport);
-  const { encoded, tooLarge, drain } = useEncodedContent(store, viewport);
+  const { encoded, tooLarge, invalid, drain } = useEncodedContent(store, viewport);
   const { status, flush, resolveConflict } = useAutosave(id, encoded, true, revision, undefined, drain);
   const [title, setTitle] = useState(initialTitle);
   const [isPublic, setPublic] = useState(initialPublic);
@@ -232,6 +232,14 @@ function Loaded({
               <div className={styles.banner} data-kind="danger" role="alert">
                 <span>
                   El diagrama supera el tamaño máximo (900 KB) y no se guarda. Quita imágenes o simplifícalo.
+                </span>
+              </div>
+            ) : null}
+            {invalid ? (
+              <div className={styles.banner} data-kind="danger" role="alert">
+                <span>
+                  El diagrama tiene un error ({invalid}) y no se guarda. Deshaz el último cambio para poder
+                  guardar de nuevo.
                 </span>
               </div>
             ) : null}
