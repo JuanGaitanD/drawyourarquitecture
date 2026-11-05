@@ -22,11 +22,14 @@ export interface SceneElementLike {
 }
 
 /**
- * Un elemento borrado se conserva una hora (Excalidraw usa `isDeleted` como tombstone): así el borrado llega a quien
- * edita a la vez o vuelve de estar sin conexión. ponytail: pasada una hora, un borrado puede resucitar en un cliente
- * que llevaba más tiempo desconectado; la nota no tiene `base` con la que deducirlo.
+ * Un elemento borrado se conserva 30 días (Excalidraw usa `isDeleted` como tombstone): así el borrado llega a quien
+ * edita a la vez o vuelve de estar sin conexión. Decisión (D18): purgar por `revision` solo sería correcto si la
+ * revisión del borrado fuera ≤ la base confirmada de **todos** los clientes posibles, y eso no se puede demostrar sin
+ * registrar la base de cada cliente (miembros que pueden estar desconectados indefinidamente, sin sesión que lo
+ * anuncie). Sin ese estado, el tiempo es la cota segura. ponytail: pasados 30 días un cliente que nunca volvió puede
+ * resucitar un borrado; si se llevara la base confirmada por miembro, purgar por `revision` en vez de por tiempo.
  */
-export const TOMBSTONE_TTL_MS = 60 * 60_000;
+export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60_000;
 
 /** Ids de archivo que usan las imágenes vivas de la escena. */
 export function referencedFileIds(elements: readonly unknown[]): string[] {
