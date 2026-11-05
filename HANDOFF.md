@@ -2,34 +2,32 @@
 
 ## Dónde estamos
 
-**T0 · Base terminada** en la rama `feat/base` (sin push). Los gates `lint`, `typecheck`, `test`, `test:rules` y `build` están en verde y el login y la navegación funcionan contra los emuladores (comprobado en Chrome: acceso con la cuenta de prueba, las cinco rutas más 404, tema claro y oscuro, cierre de sesión, sin errores de consola).
+**T5 · Integración terminada** en la rama `feat/base` (sin push): los carriles C1, C2, D, A y B están fusionados (`chore(merge): integrar carril <X>`, sin conflictos) y los pendientes cruzados resueltos. Gates `lint`, `typecheck`, `test` (296), `test:rules` (25) y `build` en verde. Bundle inicial **152,7 kB gzip** (objetivo < 250). Probado a mano en Chrome contra los emuladores (nota con imagen y board embebido, board con plantilla, Mermaid, ordenar, PNG, JSON, atajos, bloqueo, enlace público sin sesión, despublicar, conflicto entre pestañas, claro y oscuro a 1280 y 1024 px).
 
-Los carriles A, B, C1, C2 y D parten de esta rama. Todo lo que cruza carriles existe como **stub con la firma final** (lista abajo): se sustituye, no se renombra.
+Siguen T6 (e2e), T7 (revisión) y T8 (despliegue, pendiente de Juan).
 
 ## Lo que hay
 
-| Pieza | Dónde | Estado |
-|---|---|---|
-| Dominio | `src/domain/{project,codec}.ts` | Hecho y probado |
-| Aplicación | `src/application/{ports,projects,saveQueue}.ts` | Hecho y probado (gate de hidratación, cola serial, conflicto, borrador) |
-| Infraestructura | `src/infrastructure/firebase/*` | Hecho; Storage se carga con `import()` |
-| Modelo del board | `src/editors/board/model/{board,geometry,validate,fixtures}.ts` | Hecho y probado |
-| UI | `src/ui/*` | Tokens, tema (claro/oscuro/sistema), Dialog, DropdownMenu, Popover, Tooltip, Button, IconButton, Toast |
-| App | `src/app/*` | Router (5 rutas + 404), AuthGate, login, shell, hooks, `services.ts`, páginas lazy |
-| Reglas | `firestore.rules.tpl`, `storage.rules.tpl`, `scripts/render-rules.mjs` | 25 casos en `tests/rules` |
-| Despliegue | `firebase.json`, `firestore.indexes.json`, `cors.json`, `vercel.json` | Escritos, sin desplegar |
+| Pieza            | Dónde                                                                  | Estado                                                                                                 |
+| ---------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Dominio          | `src/domain/{project,codec}.ts`                                        | Hecho y probado                                                                                        |
+| Aplicación       | `src/application/{ports,projects,saveQueue}.ts`                        | Hecho y probado (gate de hidratación, cola serial, conflicto, borrador)                                |
+| Infraestructura  | `src/infrastructure/firebase/*`                                        | Hecho; Storage se carga con `import()`                                                                 |
+| Modelo del board | `src/editors/board/model/{board,geometry,validate,fixtures}.ts`        | Hecho y probado                                                                                        |
+| UI               | `src/ui/*`                                                             | Tokens, tema (claro/oscuro/sistema), Dialog, DropdownMenu, Popover, Tooltip, Button, IconButton, Toast |
+| App              | `src/app/*`                                                            | Router (5 rutas + 404), AuthGate, login, shell, hooks, `services.ts`, páginas lazy                     |
+| Reglas           | `firestore.rules.tpl`, `storage.rules.tpl`, `scripts/render-rules.mjs` | 25 casos en `tests/rules`                                                                              |
+| Despliegue       | `firebase.json`, `firestore.indexes.json`, `cors.json`, `vercel.json`  | Escritos, sin desplegar                                                                                |
 
-### Stubs (los sustituye cada carril)
+### Carriles integrados
 
-| Carril | Stub | Firma |
-|---|---|---|
-| A | `app/dashboard/Dashboard.tsx` · `app/viewer/Viewer.tsx` · `app/viewer/EmbedPage.tsx` | `Dashboard()` · `Viewer({type, id})` (llama a `useNoindex()`) · `EmbedPage({id})` |
-| B | `editors/note/NoteCanvas.tsx` · `NoteEditor.tsx` · `BoardEmbed.tsx` | `NoteCanvas({projectId, content, readonly, onChange?})` · `NoteEditor({id})` · `BoardEmbed({boardId, depth?})` |
-| C1 | `editors/board/BoardEditor.tsx` · `BoardViewer.tsx` · `store/boardStore.ts` | `BoardEditor({id})` · `BoardViewer({content})` · `createBoardStore()` lanza `not implemented`; `BoardState`, `Tool` y `BoardStore` ya tipados con el contrato |
-| C2 | `editors/board/ui/{Toolbar,StylePanel,ActionBar,SearchBox}.tsx` · `useShortcuts.ts` · `model/ops.ts` | componentes sin props (leen el store con `useBoard`) · `useShortcuts(containerRef)` · `align`, `distribute`, `bringToFront`, `sendToBack`, `wrapInFrame`, `duplicate` (lanzan `not implemented`) |
-| D | `editors/board/extras/BoardMenu.tsx` · `model/{mermaid,layout}.ts` | `BoardMenu({title, viewportRef})` · `parseFlowchart` / `toFlowchart` · `autoLayout(content, dir): Promise` |
-
-`BoardStoreProvider`, `useBoard`, `useBoardStore` y `BoardReadonlyContext` ya están implementados (fontanería de contexto). Los carriles no editan `domain/`, `application/`, `infrastructure/`, `ui/`, `app/` (salvo su carpeta) ni `model/{board,geometry,validate,fixtures}.ts`: lo que falte se anota en `HANDOFF-<carril>.md`.
+| Carril                | Qué trae                                                                                                                                                      | Dónde                                                                            |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| C1 · Núcleo del board | Store por instancia (zustand + zundo), 6 nodos, `LabeledEdge`, `BoardCanvas`, `BoardViewer`, `BoardEditor` (carga → validación → hidratación → `useAutosave`) | `editors/board/{store,canvas,nodes,edges}`, `BoardEditor.tsx`, `BoardViewer.tsx` |
+| C2 · UI del board     | `Toolbar`, `StylePanel`, `ActionBar`, `SearchBox`, atajos, `model/ops.ts`                                                                                     | `editors/board/ui`, `model/ops.ts`                                               |
+| D · Extras            | `BoardMenu` (plantillas, Mermaid, ordenar, PNG, JSON), `parseFlowchart`/`toFlowchart`, `autoLayout` (dagre por niveles)                                       | `editors/board/extras`, `model/{mermaid,layout}.ts`, `model/templates`           |
+| A · Panel y visor     | Panel, `/view/:type/:id`, `/embed/board/:id`                                                                                                                  | `app/dashboard`, `app/viewer`                                                    |
+| B · Nota              | Excalidraw con autosave, imágenes (cola de subida), embed de board, «Insertar diagrama», librería                                                             | `editors/note`                                                                   |
 
 ### Puntos de contacto que conviene conocer
 
@@ -65,18 +63,53 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 10. `vercel.json` también excluye `/excalidraw-assets/` del rewrite (los ficheros de `public/` ya se sirven antes del rewrite, pero así queda explícito) y le da caché de 7 días (los nombres no llevan hash).
 11. **CORS (`cors.json`)** abre `GET`/`HEAD` a cualquier origen: la lectura sigue protegida por las reglas y el token de Auth, no por el origen.
 
+### Decisiones de la integración (T5)
+
+12. **Un solo camino de borrado**: React Flow ya no borra (`deleteKeyCode={null}`); lo hace `useShortcuts` con `removeSelected` (respeta `locked`, limpia hijos de un frame y aristas colgantes, un paso de historial). Los atajos se montan con `<Shortcuts container>` dentro de los providers; `BoardMenu` recibe `getViewport` y `onContentChanged` (fitView tras medir).
+13. **Un solo camino de estilo**: `updateNodeData(ids, { style })` con estilo parcial (tipo `NodeDataPatch`); `patchStyle` de C2 se eliminó.
+14. **Bloqueados**: `toDisplayNodes` deja `locked` como no arrastrable, no borrable y no conectable, pero **seleccionable**. «Desbloquear todo» (ActionBar y Mod+L sin selección) se mantiene.
+15. **Herramienta imagen**: al elegirla abre el selector de archivo y coloca la imagen en el centro de la vista con la subida de C1 (ya no espera un clic en el lienzo).
+16. **Glifos**: `ui/glyphs.tsx` solo conserva rótulos y `ShapePreview`; los paths (`shapePath`) y el mapa de iconos (`iconComponent`) son los de `editors/board/nodes`.
+17. **UI de C2 sin ranuras**: Toolbar, StylePanel, SearchBox y ActionBar se posicionan solos dentro de `.stage`; las ranuras absolutas de C1 los dejaban a tamaño cero. Se quitaron de `Controls` los botones de cuadrícula y snap (ya están en la ActionBar).
+18. **Foco**: al terminar de editar un texto con Enter o Esc el foco vuelve al nodo (`store/returnFocus.ts`); sin eso los atajos callaban hasta el siguiente clic. `ui/Dialog` admite `initialFocus` y exporta `useReturnFocus` (borrar proyecto y reemplazar diagrama enfocan «Cancelar»; al cerrar, el foco vuelve al botón que abrió el menú).
+19. **Imágenes en lectura**: `BoardViewer` recibe `files={{ load }}` en `Viewer`, `EmbedPage` y `BoardEmbed`.
+20. **Último cambio**: `drainAndFlush` (`application/saveQueue.ts`, con test) pasa a la cola lo que retiene el throttle del editor (B 150 ms, C1 250 ms) y la escribe; `useAutosave` admite un 6.º argumento `drain` y escucha también `pagehide`. `useEncodedContent` y `NoteHandle.drain()` lo implementan. B ya no emite al desmontar el lienzo (los efectos del padre se limpian antes). Comprobado: crear una forma y recargar a los ~30 ms deja el borrador y se recupera.
+21. **Bundle**: `vite.config.ts` ya no usa `manualChunks` (arrastraba React y Radix al chunk de Excalidraw y `index.html` precargaba ≈ 1,8 MB gzip). Firestore se carga con `import()` (`infrastructure/firebase/firestore.ts`, como Storage). `ThemeToggle` y `UserMenu` viven en el chunk inicial, así que no inflan el del editor y no hizo falta moverlos a `ui/`.
+22. **`/note` a 1024 px**: la barra superior de B oculta el texto del estado (queda para lectores de pantalla) y acorta el título para que quepa «Biblioteca».
+
+### Bundle inicial (gzip, lo que pide `index.html`)
+
+| Medida                                 | Tamaño                             |
+| -------------------------------------- | ---------------------------------- |
+| T0 (sin editores)                      | ≈ 288 kB                           |
+| Rama integrada, con `manualChunks`     | 1 863,6 kB (Excalidraw precargado) |
+| Sin `manualChunks`, Firestore estático | 293,7 kB                           |
+| **Final (Firestore con `import()`)**   | **152,7 kB**                       |
+
+### Decisiones y desviaciones de los carriles
+
+- **C1**: `BoardState` añade `editingId`/`setEditingId`; `updateNodeData` mezcla el estilo parcial; `removeSelected` borra hijos y aristas colgantes y respeta `locked`. El color por defecto de texto suelto, iconos, título de frame y aristas usa tokens (legible en oscuro); lo dibujado es literal. Los frames van detrás por CSS (`z-index: -1`) y el texto suelto tiene alto automático. `window.__board` (solo `import.meta.env.DEV`) expone el store para pruebas.
+- **C2**: `model/ops.ts` añade `rootsOf`, `nudge`, `setLocked`, `selectOnly`. Los bloqueados no participan en alinear, distribuir ni mover; un padre y su hijo seleccionados juntos se mueven una sola vez; `wrapInFrame` mete el frame en el padre común; `duplicate` incluye descendientes. Los atajos escuchan `keydown` en captura y mandan sobre los de React Flow. El portapapeles es en memoria (por store), no el del sistema.
+- **D**: layout **por niveles** (dagre por frame, +32 px de relleno y 40 de cabecera) en vez de un grafo compound; `autoLayout` reescribe `sourceHandle`/`targetHandle` según el sentido; `parseFlowchart` devuelve también `direction`; gramática extra (hexágono, paralelogramo, `-.-`, `===`, `;`, comillas) e ignora `style`/`classDef`/`class`/`linkStyle`/`click`/`direction`; no admite `&` ni flechas bidireccionales. `toFlowchart` pierde stickies, textos, iconos y estilos. Reemplazar (plantilla, Mermaid, JSON) pide confirmación si el lienzo no está vacío. PNG: margen 48 px, lado máximo 4096 px de CSS (escala 2), fondo blanco fijo; JSON hasta 8 MB; `html-to-image` por `import()`.
+- **A**: «Error de red» + «Reintentar» también para contenido ilegible; un tipo equivocado en `/view/:type/:id` se trata como «No existe o es privado»; el dueño con sesión ve «Editar» en el visor; tabs manuales (no hay `@radix-ui/react-tabs`); un único ítem de menú alterna publicar/dejar de compartir y aparece «Copiar enlace».
+- **B**: `NoteCanvasProps` añade `topRight` y `onHandle`; `NoteHandle` añade `applyContent` y `drain`. Los avisos (conflicto, error, demasiado grande, «Recuperar») van en un banner bajo la barra de herramientas. El archivo se registra en `content.files` al detectarlo (no al terminar la subida); SVG o > 4 MiB se retiran de la escena con un toast; recuperar un borrador no es deshacible. En una nota pública un board incrustado solo se ve si **el board también es público** (si no, «Diagrama privado o inexistente»); «Abrir» va a `/view/board/:id` en lectura.
+
 ## Riesgos y deuda
 
-- **Bundle inicial ≈ 288 kB gzip** (app 112 + Firebase Auth/Firestore 172 + resto), por encima del objetivo de 250 kB de T5. Storage ya va aparte (11 kB). Si T5 lo exige: cargar Firestore con `import()` tras el login (`infrastructure/firebase/{projects,content}.ts`), como se hizo con Storage. Excalidraw (≈ 1,6 MB gzip) y React Flow ya van en chunks propios y solo se piden en las rutas de editor.
 - **Reglas de Storage en producción**: la lectura pública consulta `firestore.get(...)`; exige el rol IAM entre productos (T8) y el CORS del bucket con `cors.json`.
-- **Autosave**: `saveQueue` ignora lo que llega antes de hidratar. Un editor que no llame a `useAutosave` con `hydrated=true` jamás guardará (es lo esperado).
 - `ContentRepo.load` y `ProjectRepo.get` devuelven `null` ante `permission-denied` (privado y no existente se ven igual, a propósito); los demás errores se propagan.
-- Los tests de reglas escriben `firestore-debug.log` / `ui-debug.log` en la raíz (ignorados por git).
+- Los tests de reglas escriben `firestore-debug.log` / `ui-debug.log` en la raíz (ignorados por git). `pnpm test:rules` arranca sus emuladores en 9099/8080/9199: si ya hay otros corriendo, falla con «port taken»; entonces `node scripts/render-rules.mjs --emulator` y `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_STORAGE_EMULATOR_HOST=127.0.0.1:9199 pnpm exec vitest run --config vitest.rules.config.ts` (así se verificó en T5: 25 casos).
+- **Pendientes del board**: conector por clic origen → destino (hoy solo arrastrar desde un handle); el viewport se guarda con el siguiente cambio de contenido (pan y zoom solos no disparan guardado); el historial compara por JSON (O(n); pasar a referencia con tableros de miles de nodos, `ponytail` en `boardStore.ts`); cada forma nueva son dos pasos de historial (crear y escribir la etiqueta).
+- **Pendientes de la nota**: el toast «Reintentar» de subida con Storage caído solo está probado por test de la cola, no en navegador; con una subida agotada el binario solo sigue en memoria. Los `Abrir`/`Recargar` de un embed solo reciben el ratón cuando Excalidraw activa el embed (doble clic).
+- **Último cambio al cerrar la pestaña**: el borrador local se escribe de forma síncrona y se ofrece «Recuperar»; la escritura en Firestore al `pagehide` no está garantizada (el navegador puede cortarla).
+- Los embeds muestran la atribución «React Flow» (sin plan Pro). El título de la plantilla «Web de 3 capas» se parte en dos líneas (texto suelto estrecho).
+- Sin tests de componentes (Vitest corre en `node`, sin jsdom): la lógica no trivial está en funciones puras probadas; el comportamiento de UI se comprobó en Chrome. Lo cubrirá T6 (e2e).
+- El 400 de `identitytoolkit … /accounts` en consola con emuladores es el login de prueba (el usuario `owner-test` ya existe), no un error de la app.
 
-## Gates (T0)
+## Gates
 
-`pnpm lint` · `pnpm typecheck` · `pnpm test` (Vitest) · `pnpm test:rules` (emuladores; exige Java 21 en el `PATH`) · `pnpm build`.
+`pnpm lint` · `pnpm typecheck` · `pnpm test` (Vitest, 296) · `pnpm test:rules` (emuladores; exige Java 21 en el `PATH`; 25 casos) · `pnpm build`.
 
 ## Lo que sigue
 
-Carriles A, B, C1, C2 y D en paralelo desde `feat/base` (worktrees); después T5 integra (orden C1 → C2 → D → A → B), mide el bundle y prueba con emuladores; T6 e2e; T7 revisión; T8 despliegue (pendiente de Juan: proyecto Firebase en Blaze, su UID y la cuenta de Vercel).
+T6 e2e (`tests/e2e/smoke.spec.ts`: board con forma y conector que persisten tras recargar, nota con el board insertado, enlace público sin sesión) → T7 revisión → T8 despliegue (pendiente de Juan: proyecto Firebase en Blaze, su UID, la cuenta de Vercel y Analytics, que **no** está integrado).
