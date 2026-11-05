@@ -42,15 +42,20 @@ export function referencedFileIds(elements: readonly unknown[]): string[] {
 
 /**
  * Escena → contenido persistible. Sin borrados ni estado de interfaz (selección, scroll…): solo el
- * color de fondo. `files` conserva únicamente lo que una imagen viva referencia.
+ * color de fondo. `files` conserva únicamente lo que una imagen viva referencia. Las imágenes cuyo `fileId` está en
+ * `unconfirmed` (subida sin confirmar, D8) no se publican —ni el elemento ni su entrada en `files`—: quien las recibiera
+ * vería una imagen rota; se publican cuando la subida confirma.
  */
 export function buildNoteContent(
   elements: readonly unknown[],
   appState: { viewBackgroundColor?: string },
   known: NoteFiles,
   now = Date.now(),
+  unconfirmed: ReadonlySet<string> = new Set(),
 ): NoteContent {
-  const all = elements as readonly SceneElementLike[];
+  const all = (elements as readonly SceneElementLike[]).filter(
+    (e) => !(e.type === 'image' && e.fileId && unconfirmed.has(e.fileId)),
+  );
   const live = all.filter((e) => !e.isDeleted);
   const kept = all.filter((e) => !e.isDeleted || (typeof e.updated === 'number' && now - e.updated <= TOMBSTONE_TTL_MS));
   const files: NoteFiles = {};

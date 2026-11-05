@@ -78,6 +78,18 @@ describe('colaboración · archivos y comparación', () => {
     expect((c.elements as { id: string }[]).map((e) => e.id)).toEqual(['nuevo', '2h']);
   });
 
+  it('D8: una imagen con la subida sin confirmar no se publica (ni elemento ni archivo) hasta que confirma', () => {
+    const known = { a: { mimeType: 'image/webp', created: 1 }, b: { mimeType: 'image/webp', created: 2 } };
+    const els = [rect, img('a'), img('b')];
+    const hold = new Set(['b']);
+    const c = buildNoteContent(els, {}, known, 0, hold);
+    expect((c.elements as { id: string }[]).map((e) => e.id)).toEqual(['r1', 'a']);
+    expect(Object.keys(c.files)).toEqual(['a']);
+    const after = buildNoteContent(els, {}, known, 0, new Set());
+    expect(Object.keys(after.files).sort()).toEqual(['a', 'b']);
+    expect(after.elements).toHaveLength(3);
+  });
+
   it('D18: tras 2 h el tombstone sigue en lo guardado, con versión mayor que la del cliente que vuelve', () => {
     const t0 = 1_000_000_000_000;
     const rect = { type: 'rectangle', id: 'r', isDeleted: false, version: 1, updated: t0 - 1000 };
