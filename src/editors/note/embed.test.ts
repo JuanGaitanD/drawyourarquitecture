@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { boardEmbedLink, embedOrigin, parseBoardLink, validateEmbeddable, viewportCenter } from './embed';
+import {
+  boardEmbedLink,
+  embedOrigin,
+  newEmbeddable,
+  parseBoardLink,
+  validateEmbeddable,
+  viewportCenter,
+} from './embed';
 
 const O = 'https://dya.example';
 
@@ -35,5 +42,43 @@ describe('colocación', () => {
     const c = viewportCenter({ scrollX: -100, scrollY: 50, width: 1000, height: 600, zoom: { value: 2 } });
     expect(c).toEqual({ x: 350, y: 100 });
     expect(embedOrigin(c)).toEqual({ x: 30, y: -100 });
+  });
+});
+
+describe('newEmbeddable', () => {
+  it('trae todos los campos base y el enlace absoluto', () => {
+    const el = newEmbeddable({ x: 1, y: 2 }, boardEmbedLink('abc', O), 'id1');
+    expect(el).toMatchObject({
+      id: 'id1',
+      type: 'embeddable',
+      x: 1,
+      y: 2,
+      width: 640,
+      height: 400,
+      isDeleted: false,
+    });
+    const base = [
+      'strokeColor',
+      'backgroundColor',
+      'fillStyle',
+      'strokeWidth',
+      'strokeStyle',
+      'roundness',
+      'roughness',
+      'opacity',
+      'angle',
+      'seed',
+      'version',
+      'versionNonce',
+      'index',
+      'groupIds',
+      'frameId',
+      'boundElements',
+      'updated',
+      'link',
+      'locked',
+    ];
+    for (const k of base) expect(el).toHaveProperty(k);
+    expect(parseBoardLink(el.link, O)).toBe('abc');
   });
 });

@@ -1,3 +1,5 @@
+import { nanoid } from 'nanoid';
+
 // Embed de diagramas en la nota (plan · B): un elemento `embeddable` cuyo `link` es la URL absoluta
 // `/embed/board/<id>` del propio sitio. Se pinta con `renderEmbeddable`, no con iframe.
 
@@ -42,3 +44,40 @@ export const embedOrigin = (center: { x: number; y: number }) => ({
   x: Math.round(center.x - EMBED_SIZE.width / 2),
   y: Math.round(center.y - EMBED_SIZE.height / 2),
 });
+
+const int = () => Math.floor(Math.random() * 2 ** 31);
+
+/**
+ * Elemento `embeddable` COMPLETO (todos los campos de la base de Excalidraw 0.18.1). Se pasa después por
+ * `restoreElements`, que lo valida y le asigna el índice fraccionario.
+ */
+export function newEmbeddable(pos: { x: number; y: number }, link: string, id: string = nanoid()) {
+  return {
+    id,
+    type: 'embeddable' as const,
+    x: pos.x,
+    y: pos.y,
+    width: EMBED_SIZE.width,
+    height: EMBED_SIZE.height,
+    angle: 0,
+    strokeColor: '#1e1e1e',
+    backgroundColor: 'transparent',
+    fillStyle: 'solid' as const,
+    strokeWidth: 2,
+    strokeStyle: 'solid' as const,
+    roundness: null,
+    roughness: 0,
+    opacity: 100,
+    seed: int(),
+    version: 1,
+    versionNonce: int(),
+    index: null,
+    isDeleted: false,
+    groupIds: [] as string[],
+    frameId: null,
+    boundElements: null,
+    updated: Date.now(),
+    link,
+    locked: false,
+  };
+}
