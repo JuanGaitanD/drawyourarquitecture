@@ -219,3 +219,39 @@ describe('reparentNodes', () => {
     expect(validateBoardContent({ schemaVersion: 1, nodes: out, edges: [], viewport: { x: 0, y: 0, zoom: 1 } }).ok).toBe(true);
   });
 });
+
+describe('historial local y cambios remotos', () => {
+  const ids = (s: ReturnType<typeof createBoardStore>) => s.getState().nodes.map((n) => n.id);
+  const label = (s: ReturnType<typeof createBoardStore>, id: string) =>
+    s.getState().nodes.find((n) => n.id === id)?.data.label;
+
+  it('deshacer y rehacer lo propio no borra ni resucita el alta de otra persona', () => {
+    const s = loaded();
+    const mine = { ...makeNode('sticky', { x: 1, y: 1 }), id: 'mine' };
+    const theirs = { ...makeNode('sticky', { x: 2, y: 2 }), id: 'theirs' };
+    s.getState().addNodes([mine]);
+    s.getState().applyRemote([...s.getState().nodes, theirs], s.getState().edges);
+    s.temporal.getState().undo();
+    expect(ids(s)).toContain('theirs');
+    expect(ids(s)).not.toContain('mine');
+    s.temporal.getState().redo();
+    expect(ids(s)).toContain('theirs');
+    expect(ids(s)).toContain('mine');
+  });
+
+  it('deshacer lo propio no resucita lo que otra persona borró ni revierte su edición', () => {
+    const s = loaded();
+    move(s, 'user', 10);
+    const without = s.getState().nodes.filter((n) => n.id !== 'note').map((n) =>
+      n.id === 'api' ? { ...n, data: { ...n.data, label: 'remoto' } } : n,
+    );
+    s.getState().applyRemote(without, s.getState().edges.filter((e) => e.source !== 'note' && e.target !== 'note'));
+    s.temporal.getState().undo();
+    expect(ids(s)).not.toContain('note');
+    expect(label(s, 'api')).toBe('remoto');
+    s.temporal.getState().redo();
+    expect(ids(s)).not.toContain('note');
+    expect(label(s, 'api')).toBe('remoto');
+    expect(validateBoardContent(s.getState().toContent({ x: 0, y: 0, zoom: 1 })).ok).toBe(true);
+  });
+});

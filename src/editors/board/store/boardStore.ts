@@ -12,6 +12,7 @@ import type {
   Viewport,
 } from '../model/board';
 import { sortParentsFirst, toAbsolute, toRelative } from '../model/geometry';
+import { canon } from '../model/merge';
 
 // Store por instancia (invariante 6): zustand vanilla + zundo con partialize (solo nodes y edges, sin estado
 // de runtime), límite 100 y un gesto = un paso.
@@ -84,6 +85,41 @@ const partialize = (s: BoardState): HistoryState => ({
 // ponytail: igualdad por JSON, O(n) por cambio; con tableros muy grandes pasar a comparar por referencia.
 const same = (a: HistoryState, b: HistoryState) => JSON.stringify(a) === JSON.stringify(b);
 
+const diffIds = (a: readonly { id: string }[], b: readonly { id: string }[]) => {
+  const A = new Map(a.map((e) => [e.id, canon(e)]));
+  const B = new Map(b.map((e) => [e.id, canon(e)]));
+  return new Set([...A.keys(), ...B.keys()].filter((id) => A.get(id) !== B.get(id)));
+};
+
+/**
+ * Lleva a un paso del historial lo que cambió el remoto entre `before` y `after`: sus altas y ediciones se copian,
+ * sus borrados se quitan. Así deshacer/rehacer solo toca lo propio. Lo que queda colgando (padre o extremo de
+ * arista ausente en ese paso) se pasa a la raíz conservando la posición absoluta o se descarta.
+ */
+function rebaseOnRemote(h: Partial<HistoryState>, before: HistoryState, after: HistoryState): HistoryState {
+  const apply = <T extends { id: string }>(items: readonly T[], touched: Set<string>, now: readonly T[]) => {
+    const nowById = new Map(now.map((e) => [e.id, e]));
+    const out = items.filter((e) => !touched.has(e.id) || nowById.has(e.id)).map((e) => (touched.has(e.id) ? nowById.get(e.id)! : e));
+    const have = new Set(out.map((e) => e.id));
+    for (const id of touched) if (!have.has(id) && nowById.has(id)) out.push(nowById.get(id)!);
+    return out;
+  };
+  const merged = apply(h.nodes ?? [], diffIds(before.nodes, after.nodes), after.nodes);
+  const ids = new Set(merged.map((n) => n.id));
+  const everyNode = new Map([...after.nodes, ...merged].map((n) => [n.id, n] as const));
+  const nodes = sortParentsFirst(
+    merged.map((n) => {
+      if (!n.parentId || ids.has(n.parentId)) return n;
+      const { parentId: _p, ...rest } = n;
+      return { ...rest, position: toAbsolute(n, everyNode) } as BoardNode;
+    }),
+  );
+  const edges = apply(h.edges ?? [], diffIds(before.edges, after.edges), after.edges).filter(
+    (e) => ids.has(e.source) && ids.has(e.target),
+  );
+  return { nodes, edges };
+}
+
 /** Tras deshacer/rehacer devuelve a los nodos su `selected` y `measured` (el historial no los guarda). */
 function restoreRuntime(prev: readonly BoardNode[], next: BoardNode[]): BoardNode[] {
   const byId = new Map(prev.map((n) => [n.id, n]));
@@ -131,10 +167,17 @@ export function createBoardStore(): BoardStore {
           return { schemaVersion: 1, nodes: cleanNodes(nodes), edges: cleanEdges(edges), viewport };
         },
         applyRemote(nodes, edges) {
+          const before = partialize(get());
+          const next = sortParentsFirst(nodes);
+          const after: HistoryState = { nodes: cleanNodes(next), edges: cleanEdges(edges) };
+          const rebase = (h: Partial<HistoryState>) => rebaseOnRemote(h, before, after);
+          store.temporal.getState().pause();
+          set({ nodes: next, edges });
+          // El historial local no debe revertir lo ajeno: lo que cambió el remoto se lleva a cada paso guardado.
           const t = store.temporal.getState();
-          t.pause();
-          set({ nodes: sortParentsFirst(nodes), edges });
-          t.resume();
+          store.temporal.setState({ pastStates: t.pastStates.map(rebase), futureStates: t.futureStates.map(rebase) });
+          if (gesture) gesture = rebase(gesture);
+          else t.resume();
         },
         replaceAll: (nodes, edges) => set({ nodes: sortParentsFirst(nodes), edges }),
         addNodes: (nodes) => set((s) => ({ nodes: sortParentsFirst([...s.nodes, ...nodes]) })),
