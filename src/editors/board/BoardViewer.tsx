@@ -1,36 +1,39 @@
-import { ConnectionMode, ReactFlow, ReactFlowProvider } from '@xyflow/react';
+import { ConnectionMode, Panel, ReactFlow, ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useMemo } from 'react';
-import { useTheme } from '@/ui';
+import { Maximize } from 'lucide-react';
+import { IconButton, useTheme } from '@/ui';
 import { ARIA_LABELS } from './canvas/ariaLabels';
 import { toDisplayNodes } from './canvas/displayNodes';
 import flow from './canvas/flow.module.css';
 import { edgeTypes } from './edges';
 import type { BoardContent } from './model/board';
 import { BoardFilesContext, nodeTypes, type BoardFiles } from './nodes';
+import { BoardCursors } from './presenceCursors';
 import { BoardStoreProvider } from './store/BoardStoreProvider';
 import { createBoardStore } from './store/boardStore';
 import { BoardReadonlyContext } from './store/readonly';
-
-let loads = 0;
 
 export interface BoardViewerProps {
   content: BoardContent;
   /** Cuando se pasa, las imágenes se leen de `projects/{id}/files` (con `files`). */
   files?: BoardFiles;
+  /** Con él, el visor muestra y publica cursores (solo quien es miembro del proyecto, no embeds ni enlaces públicos). */
+  projectId?: string;
 }
 
 /**
  * Lectura del board (invariantes 6 y 7): React Flow con su propio store y sin edición. No arrastra, no conecta,
- * no selecciona y no reconecta; sí permite desplazarse y hacer zoom. Encuadra el contenido al montar.
+ * no selecciona y no reconecta; sí permite desplazarse y hacer zoom. Encuadra el contenido solo al montar (primera
+ * carga) o a petición con el botón «Encuadrar»: un cambio remoto actualiza los nodos sin mover la vista.
  */
-export function BoardViewer({ content, files }: BoardViewerProps) {
+export function BoardViewer({ content, files, projectId }: BoardViewerProps) {
   const { resolved } = useTheme();
-  // Un store nuevo por contenido; la `key` hace que React Flow reencuadre al llegar otro (Recargar en un embed).
-  const { store, key } = useMemo(() => {
+  // Un store nuevo por contenido; React Flow se conserva (sin `key`) para no perder el encuadre del lector.
+  const store = useMemo(() => {
     const s = createBoardStore();
     s.getState().load(content);
-    return { store: s, key: ++loads };
+    return s;
   }, [content]);
   const nodes = useMemo(() => toDisplayNodes(store.getState().nodes), [store]);
   const edges = store.getState().edges;
@@ -40,9 +43,8 @@ export function BoardViewer({ content, files }: BoardViewerProps) {
       <BoardReadonlyContext.Provider value={true}>
         <BoardFilesContext.Provider value={files ?? null}>
           <ReactFlowProvider>
-            <div style={{ width: '100%', height: '100%' }}>
+            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
               <ReactFlow
-                key={key}
                 className={flow.flow}
                 nodes={nodes}
                 edges={edges}
@@ -64,11 +66,27 @@ export function BoardViewer({ content, files }: BoardViewerProps) {
                 maxZoom={4}
                 zoomOnDoubleClick={false}
                 proOptions={{ hideAttribution: false }}
-              />
+              >
+                <FitButton />
+              </ReactFlow>
+              {projectId ? <BoardCursors projectId={projectId} /> : null}
             </div>
           </ReactFlowProvider>
         </BoardFilesContext.Provider>
       </BoardReadonlyContext.Provider>
     </BoardStoreProvider>
+  );
+}
+
+function FitButton() {
+  const { fitView } = useReactFlow();
+  return (
+    <Panel position="bottom-right">
+      <IconButton
+        label="Encuadrar el diagrama"
+        icon={<Maximize size={16} />}
+        onClick={() => void fitView({ padding: 0.12, maxZoom: 1.5, duration: 0 })}
+      />
+    </Panel>
   );
 }

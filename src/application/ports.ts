@@ -69,6 +69,11 @@ export interface Member {
   role: Role;
 }
 
+export interface MemberJoin {
+  name: string;
+  token: string;
+}
+
 export interface InviteRepo {
   /** Dueño: crea un enlace de invitación (caduca en 7 días) y devuelve su token. */
   create(projectId: string, role: Role, createdBy: string): Promise<Invite>;
@@ -78,25 +83,66 @@ export interface InviteRepo {
   revoke(token: string): Promise<void>;
   /** Invitado: se añade a `members` y deja su rastro en `joins/{uid}` (un batch). */
   accept(invite: Invite, user: AuthUser): Promise<void>;
-  /** Dueño: nombres de quienes entraron por invitación, por uid. */
-  memberNames(projectId: string): Promise<Record<string, string>>;
+  /** Dueño: quiénes entraron por invitación (nombre y token con el que entraron), por uid. */
+  memberJoins(projectId: string): Promise<Record<string, MemberJoin>>;
+  /**
+   * Dueño: revoca la invitación y quita de `members` a quienes entraron con ese token (un batch). Devuelve los
+   * uid quitados.
+   */
+  revokeAndRemove(projectId: string, token: string): Promise<string[]>;
 }
 
-/** Quién está conectado a un proyecto. Latido cada 60 s; caduca a los 2 min. Los cursores no se persisten. */
+/** Quién está conectado a un proyecto y dónde tiene el cursor (coordenadas de escena o de flujo; sin él, aún no lo movió). */
 export interface Presence {
   uid: string;
   name: string;
   color: string;
+  x?: number;
+  y?: number;
   at: number;
 }
-export const PRESENCE_BEAT_MS = 60_000;
-export const PRESENCE_TTL_MS = 120_000;
+
+/** Sala de presencia de un proyecto. Cuelga del dueño porque las reglas de Realtime Database no leen Firestore. */
+export interface PresenceRoom {
+  ownerId: string;
+  projectId: string;
+}
+
+export interface PresenceSession {
+  /** Publica el cursor (el llamador lo limita con `throttleCursor`). */
+  move(x: number, y: number): void;
+  /** Sale de la sala (el servidor también lo hace solo al perder la conexión: `onDisconnect`). */
+  close(): void;
+}
 
 export interface PresenceRepo {
-  beat(projectId: string, me: Omit<Presence, 'at'>): Promise<void>;
-  /** Mejor esfuerzo al salir: si la pestaña se cierra de golpe, el latido simplemente caduca. */
-  leave(projectId: string, uid: string): Promise<void>;
-  subscribe(projectId: string, cb: (list: Presence[]) => void, onError?: (e: Error) => void): () => void;
+  /**
+   * Entra en la sala: publica a `me`, avisa a `onList` con los demás conectados cada vez que cambian y devuelve la
+   * sesión. Sin Realtime Database configurado, es una sesión vacía (la colaboración sigue sin presencia).
+   */
+  join(
+    room: PresenceRoom,
+    me: { uid: string; name: string; color: string },
+    onList: (others: Presence[]) => void,
+    onError?: (e: Error) => void,
+  ): PresenceSession;
+}
+
+/**
+ * Espejo de acceso en Realtime Database (las reglas de presencia no leen Firestore). Firestore es la fuente de
+ * verdad; todo es de mejor esfuerzo y nunca debe romper el compartir.
+ */
+export interface PresenceAcl {
+  /** Dueño: publica o retira una invitación vigente. */
+  setInvite(
+    room: PresenceRoom,
+    token: string,
+    invite: { role: Role; expiresAt: number } | null,
+  ): Promise<void>;
+  /** Dueño: da de alta (con su rol) o quita a miembros. */
+  setMembers(room: PresenceRoom, members: Record<string, Role | null>): Promise<void>;
+  /** Invitado: se registra con el token con el que entró. */
+  joinWithInvite(room: PresenceRoom, uid: string, role: Role, token: string): Promise<void>;
 }
 
 /** Color estable por persona, de una paleta legible en claro y oscuro. */
@@ -106,7 +152,3 @@ export function presenceColor(uid: string): string {
   for (const ch of uid) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return PALETTE[h % PALETTE.length]!;
 }
-
-/** Los conectados: los que latieron hace menos de `PRESENCE_TTL_MS`, sin contar a `exceptUid`. */
-export const onlineNow = (list: readonly Presence[], now: number, exceptUid?: string): Presence[] =>
-  list.filter((p) => p.uid !== exceptUid && now - p.at <= PRESENCE_TTL_MS);

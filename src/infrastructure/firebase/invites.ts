@@ -7,7 +7,13 @@ const isRole = (r: unknown): r is Invite['role'] => r === 'editor' || r === 'vie
 
 function toInvite(token: string, d: Record<string, unknown>): Invite | null {
   if (typeof d.projectId !== 'string' || !isRole(d.role) || typeof d.createdBy !== 'string') return null;
-  return { token, projectId: d.projectId, role: d.role, createdBy: d.createdBy, expiresAt: Number(d.expiresAt) || 0 };
+  return {
+    token,
+    projectId: d.projectId,
+    role: d.role,
+    createdBy: d.createdBy,
+    expiresAt: Number(d.expiresAt) || 0,
+  };
 }
 
 export const inviteRepo: InviteRepo = {
@@ -33,7 +39,11 @@ export const inviteRepo: InviteRepo = {
   async listFor(projectId, uid) {
     const { fs, db } = await loadFirestore();
     const snap = await fs.getDocs(
-      fs.query(fs.collection(db, 'invites'), fs.where('createdBy', '==', uid), fs.where('projectId', '==', projectId)),
+      fs.query(
+        fs.collection(db, 'invites'),
+        fs.where('createdBy', '==', uid),
+        fs.where('projectId', '==', projectId),
+      ),
     );
     return snap.docs
       .map((d) => toInvite(d.id, d.data()))
@@ -55,9 +65,37 @@ export const inviteRepo: InviteRepo = {
     await batch.commit();
   },
 
-  async memberNames(projectId) {
+  async memberJoins(projectId) {
     const { fs, db } = await loadFirestore();
     const snap = await fs.getDocs(fs.collection(db, 'projects', projectId, 'joins'));
-    return Object.fromEntries(snap.docs.map((d) => [d.id, String(d.data().name ?? d.id)]));
+    return Object.fromEntries(
+      snap.docs.map((d) => [
+        d.id,
+        { name: String(d.data().name ?? d.id), token: String(d.data().token ?? '') },
+      ]),
+    );
+  },
+
+  async revokeAndRemove(projectId, token) {
+    const { fs, db } = await loadFirestore();
+    const joined = await fs.getDocs(
+      fs.query(fs.collection(db, 'projects', projectId, 'joins'), fs.where('token', '==', token)),
+    );
+    const uids = joined.docs.map((d) => d.id);
+    const batch = fs.writeBatch(db);
+    batch.delete(fs.doc(db, 'invites', token));
+    if (uids.length > 0) {
+      const [first, ...rest] = uids.map((uid) => new fs.FieldPath('members', uid));
+      batch.update(
+        fs.doc(db, 'projects', projectId),
+        first!,
+        fs.deleteField(),
+        ...rest.flatMap((f) => [f, fs.deleteField()]),
+        'updatedAt',
+        Date.now(),
+      );
+    }
+    await batch.commit();
+    return uids;
   },
 };

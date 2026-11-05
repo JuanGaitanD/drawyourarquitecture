@@ -9,6 +9,7 @@ import { decode } from '@/domain/codec';
 import { roleOf } from '@/domain/project';
 import { Button, useToast } from '@/ui';
 import { BoardViewer } from './BoardViewer';
+import { BoardCursors } from './presenceCursors';
 import { BoardCanvas } from './canvas/BoardCanvas';
 import {
   BackButton,
@@ -158,7 +159,7 @@ function ReadOnly({ id, title, initial }: { id: string; title: string; initial: 
         <UserMenu />
       </header>
       <div className={styles.stage}>
-        <BoardViewer content={content} files={files} />
+        <BoardViewer content={content} files={files} projectId={id} />
       </div>
     </div>
   );
@@ -327,6 +328,7 @@ function Loaded({
               <StylePanel />
               <SearchBox />
               <ActionBar />
+              <BoardCursors projectId={id} />
             </div>
           </div>
         </ReactFlowProvider>
