@@ -38,6 +38,18 @@ export function splitContent(data: string, size = DOC_CONTENT_BYTES): string[] {
 
 export const joinContent = (parts: readonly string[]): string => parts.join('');
 
+/**
+ * Une trozos leídos (`undefined` = ausente). Devuelve `null` si falta alguno: otro cliente pudo reducir el contenido
+ * (meta a `data`, trozos borrados) entre la lectura de la meta y la de los trozos. No es un error de formato hasta
+ * que persiste con la meta estable: quien lee reintenta (`READ_ATTEMPTS`).
+ */
+export function joinChunks(parts: readonly (string | undefined)[]): string | null {
+  return parts.every((p): p is string => typeof p === 'string') ? joinContent(parts) : null;
+}
+
+/** Intentos de una lectura o fusión que se topa con trozos ausentes antes de darlos por un formato roto. */
+export const READ_ATTEMPTS = 3;
+
 /** `chunks` de la meta de `content/main` si es válido (entero en [MIN_CHUNKS, MAX_CHUNKS]); `null` si no hay troceado. */
 export function chunkCount(meta: { chunks?: unknown }): number | null {
   const n = meta.chunks;

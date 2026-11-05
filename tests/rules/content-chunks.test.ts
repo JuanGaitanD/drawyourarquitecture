@@ -101,7 +101,13 @@ describe('reglas · contenido troceado', () => {
 
   it('el índice del trozo va de 0 a 11', async () => {
     const fs = as(OWNER);
-    await assertSucceeds(writeChunked(fs, 1, Array.from({ length: 12 }, () => 'x')));
+    await assertSucceeds(
+      writeChunked(
+        fs,
+        1,
+        Array.from({ length: 12 }, () => 'x'),
+      ),
+    );
     for (const i of [12, 'a']) {
       const b = writeBatch(fs); // ni el índice 12 ni uno no numérico caben, ni con `chunks` 12
       b.set(main(fs), meta(2, 12));
@@ -224,7 +230,64 @@ describe('contentRepo · contenido grande contra las reglas', () => {
         },
       } as typeof sdk,
     }));
-    expect(await racing.load('p')).toEqual({ data: small, schemaVersion: 1, revision: 2, updatedAt: expect.any(Number) });
+    expect(await racing.load('p')).toEqual({
+      data: small,
+      schemaVersion: 1,
+      revision: 2,
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  /** Repo cuyo `tx.get` de `content/main` deja que `other` guarde justo después de leer la meta (D45). */
+  function shrinkingAfterMeta(other: () => Promise<unknown>) {
+    let done = false;
+    const db = as(OWNER);
+    return createContentRepo(async () => ({
+      db: db as never,
+      fs: {
+        ...sdk,
+        runTransaction: (d: never, fn: (tx: sdk.Transaction) => Promise<unknown>) =>
+          sdk.runTransaction(d, (tx) =>
+            fn(
+              new Proxy(tx, {
+                get: (t, k) =>
+                  k !== 'get'
+                    ? Reflect.get(t, k)
+                    : async (ref: sdk.DocumentReference) => {
+                        const snap = await t.get(ref);
+                        if (!done && ref.path === 'projects/p/content/main' && snap.data()?.chunks) {
+                          done = true;
+                          await other();
+                        }
+                        return snap;
+                      },
+              }),
+            ),
+          ),
+      } as never,
+    }));
+  }
+
+  it('reducir el contenido tras leer la meta y antes de leer los trozos devuelve la versión pequeña (D45)', async () => {
+    const owner = repoFor(OWNER);
+    await owner.save('p', JSON.stringify({ t: x(1_500_000) }), 0); // revisión 1, troceado
+    const small = '{"t":"corto"}';
+    const racing = shrinkingAfterMeta(() => owner.save('p', small, 1));
+    expect(await racing.load('p')).toEqual({
+      data: small,
+      schemaVersion: 1,
+      revision: 2,
+      updatedAt: expect.any(Number),
+    });
+  });
+
+  it('la fusión al guardar tolera lo mismo: fusiona contra la versión pequeña (D45)', async () => {
+    const owner = repoFor(OWNER);
+    await owner.save('p', JSON.stringify({ t: x(1_500_000) }), 0); // revisión 1, troceado
+    const small = '{"t":"corto"}';
+    const racing = shrinkingAfterMeta(() => repoFor(EDITOR).save('p', small, 1));
+    const res = await racing.save('p', '{"mio":1}', 0, (local, r) => `${local}|${r}`);
+    expect(res).toEqual({ revision: 3, merged: `{"mio":1}|${small}` });
   });
 
   it('subscribe entrega el contenido recompuesto y los cambios posteriores', async () => {
@@ -272,7 +335,13 @@ describe('reglas · los trozos no cambian sin avanzar la revisión (D34)', () =>
 
   it('el guardado real (nuevo, más largo, más corto y de vuelta a data) sigue permitido, también con 12 trozos', async () => {
     await assertSucceeds(writeChunked(as(EDITOR), 1, ['a', 'b']));
-    await assertSucceeds(writeChunked(o, 2, Array.from({ length: 12 }, (_, i) => `t${i}`)));
+    await assertSucceeds(
+      writeChunked(
+        o,
+        2,
+        Array.from({ length: 12 }, (_, i) => `t${i}`),
+      ),
+    );
     await assertSucceeds(shrink(as(EDITOR), 3, 2, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11]));
     await assertSucceeds(shrink(o, 4, 1, [0, 1]));
     expect(await listChunks()).toEqual([]);
