@@ -83,21 +83,27 @@ export const presenceRepo: PresenceRepo = {
   },
 };
 
-/** Espejo de acceso (ver `database.rules.json`): mejor esfuerzo, nunca rompe el compartir. */
+/**
+ * Espejo de acceso (ver `database.rules.json`). Lo publica el dueño entero y versionado: `{ version, members, invites }`
+ * con la `aclRev` del proyecto. Una instantánea anterior a la publicada se descarta; publicar reemplaza todo, así que
+ * lo que ya no está en Firestore desaparece. Los errores se propagan (el llamador reintenta o avisa).
+ */
 export const presenceAcl: PresenceAcl = {
-  async setInvite(room, token, invite) {
+  async publish(room, snap) {
     const mod = await loadDatabase();
-    if (!mod) return;
-    await mod.rtdb.set(mod.rtdb.ref(mod.db, `${aclPath(room)}/invites/${token}`), invite);
-  },
-
-  async setMembers(room, members) {
-    const mod = await loadDatabase();
-    if (!mod || Object.keys(members).length === 0) return;
-    const patch = Object.fromEntries(
-      Object.entries(members).map(([uid, role]) => [uid, role ? { role } : null]),
+    if (!mod) return 'off';
+    const value = {
+      version: snap.version,
+      members: Object.fromEntries(Object.entries(snap.members).map(([uid, role]) => [uid, { role }])),
+      invites: snap.invites,
+    };
+    // Transacción: compara con lo publicado y aborta si es más nuevo; las reglas lo imponen también en el servidor.
+    const r = await mod.rtdb.runTransaction(
+      mod.rtdb.ref(mod.db, aclPath(room)),
+      (cur: { version?: unknown } | null) =>
+        typeof cur?.version === 'number' && cur.version > snap.version ? undefined : value,
     );
-    await mod.rtdb.update(mod.rtdb.ref(mod.db, `${aclPath(room)}/members`), patch);
+    return r.committed ? 'ok' : 'stale';
   },
 
   async joinWithInvite(room, uid, role, token) {

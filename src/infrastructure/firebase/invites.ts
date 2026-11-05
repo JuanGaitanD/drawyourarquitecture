@@ -1,5 +1,6 @@
-import type { InviteRepo } from '@/application/ports';
+import type { AclSnapshot, InviteRepo } from '@/application/ports';
 import { INVITE_TTL_MS, isExpired, newInviteToken, type Invite } from '@/domain/invite';
+import type { Role } from '@/domain/project';
 import { loadFirestore } from './firestore';
 import type { FirestoreModule } from './firestoreModule';
 import { isPermissionDenied } from './errors';
@@ -19,12 +20,26 @@ function toInvite(token: string, d: Record<string, unknown>): Invite | null {
 
 /** Fábrica con el Firestore inyectado: la app usa `loadFirestore`; las pruebas de reglas, el emulador autenticado. */
 export function createInviteRepo(loadFirestore: () => Promise<FirestoreModule>): InviteRepo {
+  /** Borra la invitación (si existe) y sube `aclRev` en el mismo batch; con el commit confirmado nadie más la acepta. */
+  async function closeInvite(projectId: string, token: string): Promise<void> {
+    const { fs, db } = await loadFirestore();
+    const invite = fs.doc(db, 'invites', token);
+    if (!(await fs.getDoc(invite)).exists()) return; // reintento: ya estaba cerrada
+    const batch = fs.writeBatch(db);
+    batch.delete(invite);
+    batch.update(fs.doc(db, 'projects', projectId), 'aclRev', fs.increment(1));
+    await batch.commit();
+  }
+
   return {
     async create(projectId, role, createdBy) {
       const { fs, db } = await loadFirestore();
       const token = newInviteToken();
       const expiresAt = Date.now() + INVITE_TTL_MS - 60_000; // margen para el reloj del servidor
-      await fs.setDoc(fs.doc(db, 'invites', token), { projectId, role, createdBy, expiresAt });
+      const batch = fs.writeBatch(db);
+      batch.set(fs.doc(db, 'invites', token), { projectId, role, createdBy, expiresAt });
+      batch.update(fs.doc(db, 'projects', projectId), 'aclRev', fs.increment(1)); // versión del espejo
+      await batch.commit();
       return { token, projectId, role, createdBy, expiresAt };
     },
 
@@ -54,9 +69,21 @@ export function createInviteRepo(loadFirestore: () => Promise<FirestoreModule>):
         .sort((a, b) => b.expiresAt - a.expiresAt);
     },
 
-    async revoke(token) {
+    revoke: closeInvite,
+
+    async aclSnapshot(projectId, ownerId) {
       const { fs, db } = await loadFirestore();
-      await fs.deleteDoc(fs.doc(db, 'invites', token));
+      // El proyecto va primero: si algo cambia mientras se lee, el contenido es igual o más nuevo que la versión.
+      const p = await fs.getDoc(fs.doc(db, 'projects', projectId));
+      if (!p.exists()) throw new Error('El proyecto no existe');
+      const d = p.data();
+      const members: Record<string, Role> = {};
+      for (const [uid, r] of Object.entries((d.members ?? {}) as Record<string, unknown>))
+        if (isRole(r)) members[uid] = r;
+      const invites: AclSnapshot['invites'] = {};
+      for (const i of await this.listFor(projectId, ownerId))
+        invites[i.token] = { role: i.role, expiresAt: i.expiresAt };
+      return { version: Number(d.aclRev) || 0, members, invites };
     },
 
     async accept(invite, user) {
@@ -83,8 +110,7 @@ export function createInviteRepo(loadFirestore: () => Promise<FirestoreModule>):
       const { fs, db } = await loadFirestore();
       // 1) Cerrar la invitación y esperar la confirmación: desde ahí las reglas (get del invite) rechazan cualquier
       //    aceptación nueva, así que `joins` ya no puede crecer. Si ya no existe (reintento), no hay nada que cerrar.
-      const invite = fs.doc(db, 'invites', token);
-      if ((await fs.getDoc(invite)).exists()) await fs.deleteDoc(invite);
+      await closeInvite(projectId, token);
       // 2) Con el cierre confirmado, quitar a todos los que entraron con ese token. Idempotente: si falla, la
       //    invitación ya está cerrada y se repite desde aquí.
       const joined = await fs.getDocs(

@@ -57,7 +57,11 @@ function ownerRepo(after: (step: string) => Promise<void>, failUpdate = false) {
     ...sdk,
     getDoc: wrap('getDoc', sdk.getDoc as never),
     getDocs: wrap('getDocs', sdk.getDocs as never),
-    deleteDoc: wrap('deleteDoc', sdk.deleteDoc as never),
+    writeBatch: (db: Db) => {
+      const b = sdk.writeBatch(db as never);
+      b.commit = wrap('commit', b.commit.bind(b));
+      return b;
+    },
     updateDoc: wrap('updateDoc', sdk.updateDoc as never),
   } as unknown as FirestoreModule['fs'];
   return createInviteRepo(async () => ({ fs, db: as(OWNER) as never }));
