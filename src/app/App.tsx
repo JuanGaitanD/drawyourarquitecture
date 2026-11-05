@@ -8,6 +8,7 @@ import { PageFallback } from './PageFallback';
 
 // Páginas lazy: los motores (Excalidraw, React Flow) solo se descargan en las rutas de editor.
 const Dashboard = lazy(() => import('./dashboard/Dashboard').then((m) => ({ default: m.Dashboard })));
+const Settings = lazy(() => import('./settings/Settings').then((m) => ({ default: m.Settings })));
 const Viewer = lazy(() => import('./viewer/Viewer').then((m) => ({ default: m.Viewer })));
 const EmbedPage = lazy(() => import('./viewer/EmbedPage').then((m) => ({ default: m.EmbedPage })));
 const NoteEditor = lazy(() => import('@/editors/note/NoteEditor').then((m) => ({ default: m.NoteEditor })));
@@ -27,6 +28,11 @@ export function App() {
           <Route path="/">
             <AuthGate>
               <Dashboard />
+            </AuthGate>
+          </Route>
+          <Route path="/settings">
+            <AuthGate>
+              <Settings />
             </AuthGate>
           </Route>
           <Route path="/note/:id">
