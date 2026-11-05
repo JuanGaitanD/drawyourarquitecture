@@ -2,13 +2,13 @@
 
 ## Dónde estamos
 
-**Rama `chore/deuda-tecnica` (sin push, sin desplegar):** integra los cinco carriles de deuda técnica (`docs/deuda.md`: D1–D21 cerradas; **D22** —e2e de colaboración y pruebas de componentes— sigue abierta). Orden de integración: L5 → L1 → L2 → L3 → L4 (`chore(merge): integrar deuda <Ln>`), más tres arreglos de integración: el servidor MCP usa el `contentRepo` troceado, los avisos de tamaño dicen 8 MiB y el benchmark del board mide en relación con una pasada de JSON. Gates en «Gates».
+**Rama `chore/deuda-tecnica` (sin push, sin desplegar):** integra los cinco carriles de deuda técnica (`docs/deuda.md`: D1–D21 cerradas; **D22** parcial: e2e de colaboración hecho, resto en D39 y D42; la iteración 2 (M1–M5) cerró D23–D29 y D31–D36; quedan D30 y D37–D43). Orden de integración: L5 → L1 → L2 → L3 → L4 (`chore(merge): integrar deuda <Ln>`), más tres arreglos de integración: el servidor MCP usa el `contentRepo` troceado, los avisos de tamaño dicen 8 MiB y el benchmark del board mide en relación con una pasada de JSON. Gates en «Gates».
 
 **Producción (2026-11-05 14:16):** https://drawyourarchitecture.vercel.app lleva las fases 1, 2 y 3 **tal como estaban antes de la deuda** (presencia en Firestore, MCP con Admin SDK y `allowedUsers`). Lo de esta rama exige pasos previos de Juan: ver «Para producción».
 
 **Qué hace la app hoy:** notas (Excalidraw) y diagramas (React Flow) con autosave, imágenes en Firestore sin Storage, enlaces públicos de solo lectura, invitaciones (editor/viewer) con sincronización en vivo y fusión por elemento, **presencia y cursores en Realtime Database**, contenido de hasta **8 MiB** (troceado a partir de 900 000 bytes), lista de permitidos por **correo verificado**, y un **servidor MCP** (`/api/mcp`, `docs/mcp.md`) que opera como la propia persona bajo las reglas de Firestore.
 
-Siguen: D22 (e2e de dos contextos y pruebas de componentes), la revisión final con GPT-6.1-sol de lo posterior a la revisión 2 (cuando haya cuota) y el despliegue (pendiente de Juan).
+Siguen: D30 y D37–D43 (pruebas de componentes, e2e de imágenes, cola de subidas en `application/`), la revisión final con GPT-6.1-sol de lo posterior a la revisión 2 (cuando haya cuota) y el despliegue (pendiente de Juan).
 
 ## Para producción (lo hace Juan, con la cuenta correcta)
 
@@ -180,6 +180,13 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 18. **Borrar un frame**: los descendientes bloqueados sobreviven con su subárbol y pasan al ancestro superviviente con la posición absoluta conservada.
 19. **Decisiones de C2/D/A/B**: autolayout por niveles (dagre por frame, +32 px de relleno y 40 de cabecera) con `sourceHandle`/`targetHandle` según el sentido; gramática Mermaid ampliada (hexágono, paralelogramo, `-.-`, `===`, `;`, comillas), ignora `style`/`classDef`/`class`/`linkStyle`/`click`/`direction`, sin `&` ni flechas bidireccionales; `toFlowchart` pierde stickies, textos, iconos y estilos. Reemplazar (plantilla, Mermaid, JSON) pide confirmación si el lienzo no está vacío. PNG: margen 48 px, lado máximo 4096 px de CSS (escala 2), fondo blanco. El archivo de una nota se registra en `content.files` al detectarlo; SVG o > 4 MiB se retiran con un toast. En una nota pública un board incrustado solo se ve si el board también es público.
 
+### Imágenes del board (iteración 2: D23, D27, D28)
+
+- **D27**: `uploadImages` (`extras/dyaFile.ts`) recibe `remove` (`BoardFiles.remove` → `fileStore.remove`); si una subida agota los reintentos borra lo ya subido y la imagen que falló (al mejor esfuerzo) y relanza. Importar sigue siendo «todo o nada» y ya no deja huérfanos.
+- **D28**: el portapapeles (`ClipPayload.projectId`) lleva el proyecto de origen. Al pegar en otro proyecto, `copyImages` (`ui/clipboard.ts`) baja cada binario con `BoardFiles.loadFrom`, lo sube con `fileId` nuevo (reintentos 1-2-4 s) y remapea los nodos antes de insertar; el pegado sigue siendo un paso de historial. Lo que no se puede leer (sin permiso, borrado) conserva su id, se ve como «Imagen no disponible» y avisa con un toast. Un portapapeles sin `projectId` (versión anterior) se pega como antes.
+- **D23**: las imágenes nuevas van por la cola de la nota (`createUploadQueue`, importada de `editors/note/files`) con `indexedDbPendingStore()` (`canvas/imageUploads.ts`). El nodo entra al **confirmarse la subida**, así que el contenido guardado nunca apunta a un archivo inexistente. Si los reintentos se agotan o se cierra la pestaña, el binario (con posición, tamaño y nombre) sigue en IndexedDB y se repone y sube al recuperar la conexión (`online`, o «Reintentar» en el aviso) o al montar `BoardEditor`. La copia en disco se borra cuando el contenido guardado ya contiene el nodo (o este se borró). Sin IndexedDB solo hay memoria, como antes.
+- **Límites** (D37, D38): `BoardEditor` importa la cola de `editors/note/files.ts` (acoplamiento entre editores); dos pestañas con lo mismo pendiente lo insertan dos veces.
+
 ## Riesgos y deuda
 
 - **Imágenes en Firestore**: cada lectura de un trozo de un proyecto público cuesta una lectura extra por el `get()` al proyecto en las reglas (50 000 lecturas/día); una imagen de 1 MiB son 2 trozos.
@@ -200,17 +207,16 @@ VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de pr
 
 ## Gates
 
-Sobre `chore/deuda-tecnica` tras integrar L5, L1, L2, L3 y L4 (Java: `export PATH="/c/Program Files/Eclipse Adoptium/jre-21.0.13.9-hotspot/bin:$PATH"`):
+Sobre `chore/deuda-tecnica` tras integrar la iteración 2 (M5, M3, M4, M2, M1; Java: `export PATH="/c/Program Files/Eclipse Adoptium/jre-21.0.13.9-hotspot/bin:$PATH"`):
 
-- `pnpm lint` y `pnpm typecheck`: en verde.
-- `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm test`: **472 pruebas** en 38 ficheros (con Auth 9099 y Firestore 8080 vivos; sin la variable se omiten las de `src/server`). Repetido 4 veces seguidas sin fallos tras estabilizar el benchmark y las pruebas del MCP.
-- `pnpm build`: en verde. Bundle inicial ≈ **160 kB gzip** (JS + CSS que pide `index.html`; objetivo < 250). Avisos de chunk > 500 kB de Excalidraw: aceptados.
-- `pnpm test:rules`: **93 pruebas** (6 ficheros: Firestore y Realtime Database). Con Firestore vivo en 8080 y sin nada en 9000, reutilizó el primero y arrancó solo `database` con `emulators:exec` (que lo cierra al terminar).
-- `pnpm test:e2e`: **3 pasan** (tres ejecuciones; una cuarta, justo después de `test:rules` en la misma tanda, falló en «diagrama: forma y conector persisten tras recargar» y no se reprodujo: ver «Riesgos y deuda»).
+- `pnpm lint`, `pnpm typecheck` y `pnpm build`: en verde.
+- `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm test`: **505 pruebas** en 41 ficheros.
+- `pnpm test:rules`: **113 pruebas** en 7 ficheros (Firestore y Realtime Database).
+- `pnpm test:e2e`: **7 pasan** (colaboración x4, humo x3).
 
 ## Lo que sigue
 
-D22 (e2e de colaboración de dos contextos, pruebas de componentes con jsdom, `merge.ts` de la nota) → revisión final con GPT-6.1-sol de lo posterior a la revisión 2 → despliegue (pendiente de Juan; ver «Para producción»).
+D30 y D37–D43 de `docs/deuda.md` → revisión final con GPT-6.1-sol de lo posterior a la revisión 2 → despliegue (pendiente de Juan; ver «Para producción»).
 
 ## Hoja de ruta por fases (decisión de Juan, 2026-11-05)
 
