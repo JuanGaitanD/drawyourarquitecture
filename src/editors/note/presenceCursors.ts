@@ -6,6 +6,7 @@ import type {
 } from '@excalidraw/excalidraw/types';
 import { useCallback, useEffect } from 'react';
 import { usePresence } from '@/app/hooks';
+import { cursorIdFor } from './cursorColor';
 
 /**
  * Cursores de las demás personas en la nota: se pasan a Excalidraw como `collaborators` (coordenadas de escena) y
@@ -26,7 +27,7 @@ export function useNoteCursors(
         pointer: { x: p.x, y: p.y, tool: 'pointer' },
         username: p.name,
         color: { background: p.color, stroke: p.color },
-        id: p.uid,
+        id: cursorIdFor(p.color), // Excalidraw 0.18.1 pinta por `id`, no por `color` (ver cursorColor.ts)
       });
     }
     api.updateScene({ collaborators });
