@@ -161,3 +161,51 @@ describe('D44 · el rastro `joins` no se reescribe solo', () => {
     expect(await ownerRepo(async () => undefined).revokeAndRemove('p', TOKEN_B)).toEqual([STRANGER]);
   });
 });
+
+describe('D51 · aceptar es idempotente (repo real, con el Firestore de quien acepta)', () => {
+  const userRepo = (uid: string) =>
+    createInviteRepo(async () => ({ fs: sdk as never, db: as(uid) as never }));
+  const invite = {
+    token: TOKEN,
+    projectId: 'p',
+    role: 'editor' as const,
+    createdBy: OWNER,
+    expiresAt: Date.now() + 1,
+  };
+  const user = (uid: string) => ({ uid, name: uid });
+  const joinOf = async (uid: string) =>
+    (await getDoc(doc(as(OWNER), 'projects', 'p', 'joins', uid))).data()?.token;
+
+  it('abrir dos veces seguidas el mismo enlace funciona y deja el rastro intacto', async () => {
+    await userRepo(STRANGER).accept(invite, user(STRANGER));
+    await userRepo(STRANGER).accept(invite, user(STRANGER));
+    expect(await members()).toContain(STRANGER);
+    expect(await joinOf(STRANGER)).toBe(TOKEN);
+  });
+
+  it('un miembro con ese mismo rol, concedido por el dueño, entra sin escribir', async () => {
+    await userRepo(EDITOR).accept(invite, user(EDITOR)); // no lanza
+    expect(await joinOf(EDITOR)).toBeUndefined(); // no se inventa un rastro
+  });
+
+  it('un miembro con otro rol sigue el flujo normal y cambia de rol', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'invites', TOKEN_B), {
+        projectId: 'p',
+        role: 'viewer',
+        createdBy: OWNER,
+        expiresAt: Date.now() + 3_600_000,
+      });
+    });
+    await userRepo(EDITOR).accept({ ...invite, token: TOKEN_B, role: 'viewer' }, user(EDITOR));
+    expect((await getDoc(doc(as(OWNER), 'projects', 'p'))).data()?.members[EDITOR]).toBe('viewer');
+    expect(await joinOf(EDITOR)).toBe(TOKEN_B);
+  });
+
+  it('el caso adversarial de D44 sigue denegado: no se reescribe `joins` solo', async () => {
+    await userRepo(STRANGER).accept(invite, user(STRANGER));
+    await assertFails(
+      setDoc(doc(as(STRANGER), 'projects', 'p', 'joins', STRANGER), { token: TOKEN, name: 'otro' }),
+    );
+  });
+});
