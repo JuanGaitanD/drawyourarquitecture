@@ -233,7 +233,10 @@ function Loaded({
     void uploads.resume();
     const retry = () => uploads.retryFailed();
     window.addEventListener('online', retry);
-    return () => window.removeEventListener('online', retry);
+    return () => {
+      window.removeEventListener('online', retry);
+      uploads.queue.dispose();
+    };
   }, [uploads]);
   const syncOpts = useMemo(
     () => ({

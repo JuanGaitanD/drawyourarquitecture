@@ -18,6 +18,8 @@ export interface UploadQueueOptions {
   onDone?: (fileId: string) => void;
   delays?: readonly number[];
   sleep?: (ms: number) => Promise<void>;
+  /** Por defecto `navigator.locks`. Con `null` (o sin él) se repone sin coordinar entre pestañas. */
+  locks?: LockManagerLike | null;
 }
 
 export interface UploadQueue {
@@ -38,7 +40,15 @@ export interface UploadQueue {
   discard(ids: Iterable<string>): void;
   /** Subidas que se perderían al cerrar la pestaña: sin terminar y sin copia en disco. */
   pending(): number;
+  /** Suelta el derecho sobre los pendientes en disco (al desmontar el editor) para que otra pestaña los reponga. */
+  dispose(): void;
 }
+
+/** Puerto mínimo de la Web Locks API (`navigator.locks`); en Vitest o navegadores sin ella no hay bloqueo (D38). */
+export type LockManagerLike = Pick<LockManager, 'request'>;
+
+const defaultLocks = (): LockManagerLike | undefined =>
+  typeof navigator === 'undefined' ? undefined : (navigator as { locks?: LockManagerLike }).locks;
 
 /**
  * Cola de subidas: cada archivo se sube a la vez y reintenta 3 veces (1-2-4 s). Con `persist`, cada binario se
@@ -53,6 +63,29 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
   const failed = new Set<string>();
   const listeners = new Set<(id: string) => void>();
   const onDisk = new Set<string>(); // con copia en disco (ahí se queda hasta `release`)
+  const locks = opts.locks === undefined ? defaultLocks() : opts.locks;
+  const holds = new Map<string, () => void>(); // pendientes que esta pestaña se encarga de reponer y subir
+
+  /**
+   * D38: el pendiente en disco es de una sola pestaña. El bloqueo `dya-pending:<fileId>` se mantiene hasta
+   * `release`, `discard` o `dispose` (o hasta que la pestaña muere: entonces otra lo recoge). `false`: otra pestaña
+   * ya se encarga. Sin Web Locks siempre es `true` (comportamiento anterior).
+   */
+  function claim(id: string): Promise<boolean> {
+    if (!locks) return Promise.resolve(true);
+    if (holds.has(id)) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      void locks
+        .request(`dya-pending:${id}`, { ifAvailable: true }, (lock) =>
+          lock ? new Promise<void>((free) => (holds.set(id, free), resolve(true))) : void resolve(false),
+        )
+        .catch(() => resolve(true)); // el bloqueo falló por otra razón: mejor reponer que perder la imagen
+    });
+  }
+  function unclaim(id: string) {
+    holds.get(id)?.();
+    holds.delete(id);
+  }
 
   async function run(id: string) {
     const blob = blobs.get(id);
@@ -87,12 +120,13 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
       // Primero a disco, luego a subir: así `release` nunca llega antes que el `put`. Si el disco falla se sube igual.
       void store
         .put({ projectId: opts.projectId, fileId: id, blob, meta })
-        .then(() => void onDisk.add(id))
+        .then(() => claim(id).then(() => void onDisk.add(id)))
         .catch(() => undefined)
         .then(() => {
           if (blobs.has(id)) return run(id);
           // Descartada mientras se escribía en disco: la copia recién creada sobra.
           if (onDisk.delete(id)) void store.remove(opts.projectId, id).catch(() => undefined);
+          unclaim(id);
         });
     },
     async resume(published, restore) {
@@ -102,10 +136,17 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
         if (published(f.fileId)) {
           void store.remove(opts.projectId, f.fileId).catch(() => undefined);
         } else if (!blobs.has(f.fileId)) {
-          blobs.set(f.fileId, f.blob);
-          onDisk.add(f.fileId);
-          restore(f);
-          void run(f.fileId);
+          if (!(await claim(f.fileId))) continue; // otra pestaña la repone
+          // Dentro del bloqueo se vuelve a leer: la otra pestaña pudo borrarla mientras tanto.
+          const fresh = (await store.list(opts.projectId).catch(() => [])).find((x) => x.fileId === f.fileId);
+          if (!fresh || blobs.has(f.fileId)) {
+            if (!blobs.has(f.fileId)) unclaim(f.fileId);
+            continue;
+          }
+          blobs.set(fresh.fileId, fresh.blob);
+          onDisk.add(fresh.fileId);
+          restore(fresh);
+          void run(fresh.fileId);
         }
       }
     },
@@ -113,6 +154,7 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
       for (const id of ids) {
         if (blobs.has(id) || !onDisk.delete(id)) continue; // aún sin subir: la copia en disco sigue siendo la red
         void store?.remove(opts.projectId, id).catch(() => undefined);
+        unclaim(id);
       }
     },
     discard(ids) {
@@ -120,8 +162,10 @@ export function createUploadQueue(opts: UploadQueueOptions): UploadQueue {
         blobs.delete(id);
         failed.delete(id);
         if (onDisk.delete(id)) void store?.remove(opts.projectId, id).catch(() => undefined);
+        unclaim(id);
       }
     },
+    dispose: () => [...holds.keys()].forEach(unclaim),
     whenDone(cb) {
       listeners.add(cb);
       return () => void listeners.delete(cb);

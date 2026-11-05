@@ -127,7 +127,10 @@ export default function NoteCanvasInner({
   useEffect(() => {
     const retry = () => uploads.retryFailed();
     window.addEventListener('online', retry);
-    return () => window.removeEventListener('online', retry);
+    return () => {
+      window.removeEventListener('online', retry);
+      uploads.dispose();
+    };
   }, [uploads]);
 
   // Aviso al cerrar la pestaña solo con subidas que se perderían (sin copia en IndexedDB).
