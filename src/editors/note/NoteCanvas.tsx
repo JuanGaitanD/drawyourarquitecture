@@ -1,15 +1,32 @@
-import { Stub } from '@/ui/Stub';
+import { lazy, Suspense, type ReactNode } from 'react';
+import { PageFallback } from '@/app/PageFallback';
 import type { NoteContent } from './codec';
 
-// STUB de T0 (firma final). Lo implementa el carril B: <Excalidraw> lazy, hidratación, archivos y embeds.
-// Con `readonly` usa viewModeEnabled y también resuelve archivos y embeds.
+/** Control imperativo para el editor que envuelve el lienzo (recuperar un borrador). */
+export interface NoteHandle {
+  /** Sustituye la escena por `content` (no entra en el historial) y carga sus imágenes. */
+  applyContent(content: NoteContent): Promise<void>;
+}
+
 export interface NoteCanvasProps {
   projectId: string;
   content: NoteContent;
   readonly: boolean;
+  /** Cada cambio de la escena (con un respiro de 150 ms). Nunca se llama antes de hidratar. */
   onChange?: (content: NoteContent) => void;
+  /** Barra de la esquina superior derecha (título, guardado, compartir…). Solo en edición. */
+  topRight?: ReactNode;
+  /** Entrega el control imperativo cuando el lienzo está listo (y `null` al desmontar). */
+  onHandle?: (handle: NoteHandle | null) => void;
 }
 
-export function NoteCanvas(_props: NoteCanvasProps) {
-  return <Stub name="NoteCanvas" lane="B" />;
+// El motor (Excalidraw ≈ 1,6 MB gzip) va en su propio chunk: quien importe NoteCanvas no lo arrastra.
+const NoteCanvasInner = lazy(() => import('./NoteCanvasInner'));
+
+export function NoteCanvas(props: NoteCanvasProps) {
+  return (
+    <Suspense fallback={<PageFallback label="Cargando la nota…" />}>
+      <NoteCanvasInner {...props} />
+    </Suspense>
+  );
 }
