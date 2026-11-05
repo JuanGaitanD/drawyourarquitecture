@@ -203,6 +203,30 @@ describe('contentRepo · contenido grande contra las reglas', () => {
     expect(await repoFor(OWNER).load('no-existe')).toBeNull();
   });
 
+  it('carga con el contenido encogiéndose a mitad de la lectura: devuelve el pequeño, no un falso error de formato (D36)', async () => {
+    const owner = repoFor(OWNER);
+    await owner.save('p', JSON.stringify({ t: x(1_500_000) }), 0); // revisión 1, troceado
+    const small = '{"t":"corto"}';
+    let shrunk = false;
+    const db = as(OWNER);
+    const racing = createContentRepo(async () => ({
+      db: db as never,
+      fs: {
+        ...sdk,
+        // Entre ver `chunks` y recomponer, otro editor guarda un contenido pequeño (revisión 2, sin trozos).
+        getDoc: async (ref: never) => {
+          const snap = await sdk.getDoc(ref);
+          if (!shrunk) {
+            shrunk = true;
+            await owner.save('p', small, 1);
+          }
+          return snap;
+        },
+      } as typeof sdk,
+    }));
+    expect(await racing.load('p')).toEqual({ data: small, schemaVersion: 1, revision: 2, updatedAt: expect.any(Number) });
+  });
+
   it('subscribe entrega el contenido recompuesto y los cambios posteriores', async () => {
     const owner = repoFor(OWNER);
     const first = JSON.stringify({ t: x(1_200_000) });
