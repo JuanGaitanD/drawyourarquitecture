@@ -231,26 +231,11 @@ describe('compartir · revocar y quitar', () => {
 });
 
 describe('presencia', () => {
-  const pres = (fs: ReturnType<typeof as>, uid: string) => doc(fs, 'projects', 'p', 'presence', uid);
-  const data = { name: 'Ana', color: '#e11d48', at: 1 };
-
-  it('un miembro escribe su documento y lo lee otro miembro', async () => {
-    await assertSucceeds(setDoc(pres(as(EDITOR), EDITOR), data));
-    await assertSucceeds(setDoc(pres(as(VIEWER), VIEWER), data));
-    await assertSucceeds(getDocs(collection(as(OWNER), 'projects', 'p', 'presence')));
-    await assertSucceeds(getDoc(pres(as(VIEWER), EDITOR)));
-  });
-
-  it('nadie escribe el documento de otro ni un no miembro el suyo', async () => {
-    await assertFails(setDoc(pres(as(EDITOR), VIEWER), data));
-    await assertFails(setDoc(pres(as(STRANGER), STRANGER), data));
-    await assertFails(getDocs(collection(as(STRANGER), 'projects', 'p', 'presence')));
-  });
-
-  it('valida campos y se borra solo el propio', async () => {
-    await assertFails(setDoc(pres(as(EDITOR), EDITOR), { ...data, extra: 1 }));
-    await assertFails(setDoc(pres(as(EDITOR), EDITOR), { ...data, at: 'ahora' }));
-    await assertSucceeds(setDoc(pres(as(EDITOR), EDITOR), data));
-    await assertFails(setDoc(pres(as(VIEWER), EDITOR), data));
+  it('Firestore ya no admite latidos: la presencia vive en Realtime Database', async () => {
+    const pres = (fs: ReturnType<typeof as>, uid: string) => doc(fs, 'projects', 'p', 'presence', uid);
+    const data = { name: 'Ana', color: '#e11d48', at: 1 };
+    await assertFails(setDoc(pres(as(OWNER), OWNER), data));
+    await assertFails(setDoc(pres(as(EDITOR), EDITOR), data));
+    await assertFails(getDocs(collection(as(OWNER), 'projects', 'p', 'presence')));
   });
 });

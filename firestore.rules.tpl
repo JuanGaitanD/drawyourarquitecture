@@ -32,9 +32,6 @@ service cloud.firestore {
     function canWrite(p) {
       return isProjectOwner(p) || memberRole(p) == 'editor';
     }
-    function isMemberOrOwner(p) {
-      return isProjectOwner(p) || memberRole(p) in ['editor', 'viewer'];
-    }
     function validMembers(m) {
       return m is map && m.size() <= 20 && m.values().hasOnly(['editor', 'viewer']);
     }
@@ -104,20 +101,6 @@ service cloud.firestore {
           && request.resource.data.name is string && request.resource.data.name.size() <= 80
           && validInvite(request.resource.data.token, id);
         allow delete: if isProjectOwner(projectDoc(id));
-      }
-
-      // Presencia (latido cada 60 s, caduca a los 2 min): solo dueño y miembros; cada uno escribe su propio documento.
-      // Los cursores no se persisten: cada escritura cuesta cuota.
-      match /presence/{uid} {
-        allow get, list: if isMemberOrOwner(projectDoc(id));
-        allow create, update: if request.auth != null && request.auth.uid == uid
-          && isMemberOrOwner(projectDoc(id))
-          && request.resource.data.keys().hasOnly(['name', 'color', 'at'])
-          && request.resource.data.keys().hasAll(['name', 'color', 'at'])
-          && request.resource.data.name is string && request.resource.data.name.size() <= 80
-          && request.resource.data.color is string && request.resource.data.color.size() <= 20
-          && request.resource.data.at is number;
-        allow delete: if request.auth != null && request.auth.uid == uid;
       }
 
       match /content/main {
