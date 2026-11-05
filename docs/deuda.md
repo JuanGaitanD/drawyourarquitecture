@@ -26,12 +26,12 @@ Fuente: `HANDOFF.md`, comentarios `ponytail:` del código y revisiones (`.wigi/r
 | D20 | L5 | Sin `og:image` | Imagen de marca PNG 1200×630 en `public/` y meta `og:image`/`twitter:card` | cerrado (commit 6c47104) |
 | D21 | L5 | Fuentes CJK (Xiaolai) excluidas de Excalidraw | Copiadas a `public/excalidraw-assets` (se descargan solo si se usan) | cerrado (commit b57db37) |
 | D22 | M3 | Sin pruebas de componentes ni e2e de colaboración | e2e versionado de dos contextos (edición simultánea, viewer, invitación) y de las correcciones 4–6 de la revisión 2 | abierto |
-| D23 | M1 | Board: binario de una imagen cuya subida agotó los reintentos queda solo en memoria | Usa `indexedDbPendingStore()` como la nota: se repone y sube al montar `BoardEditor` o al recuperar conexión | abierto |
+| D23 | M1 | Board: binario de una imagen cuya subida agotó los reintentos queda solo en memoria | Usa `indexedDbPendingStore()` como la nota: se repone y sube al montar `BoardEditor` o al recuperar conexión | cerrado (commit 91cd1a3) |
 | D24 | M2 | Nota: imagen borrada antes de confirmar su subida reaparece al reabrir | Borrar el pendiente de IndexedDB cuando el elemento se borra antes de confirmar | abierto |
 | D25 | M2 | Dos pestañas del mismo usuario comparten nodo de presencia | Nodo por sesión (`presence/{pid}/{uid}/{sessionId}`), avatar único por uid | abierto |
 | D26 | M2 | Excalidraw pinta los cursores con su paleta, no con el color del avatar | `collaborators` con `color: { background, stroke }` del avatar | abierto |
-| D27 | M1 | Importar `.dya.json` que falla a medias deja imágenes huérfanas | Borra lo subido si la importación no se completa | abierto |
-| D28 | M1 | Pegar entre proyectos pierde las imágenes | El portapapeles lleva `projectId` origen; al pegar en otro proyecto se copian los binarios (`load` + `upload`) antes de insertar | abierto |
+| D27 | M1 | Importar `.dya.json` que falla a medias deja imágenes huérfanas | Borra lo subido si la importación no se completa | cerrado (commit cf7922b) |
+| D28 | M1 | Pegar entre proyectos pierde las imágenes | El portapapeles lleva `projectId` origen; al pegar en otro proyecto se copian los binarios (`load` + `upload`) antes de insertar | cerrado (commit 1c99e9d) |
 | D29 | M3 | e2e falla de forma intermitente tras `test:rules` | Causa identificada y corregida (aislar reglas/datos del e2e); 5 corridas seguidas tras `test:rules` en verde | abierto |
 | D30 | orquestador | Sin verificar en Firebase real: `email`/`email_verified` en el token de `signInWithCustomToken`, troceado y MCP en Vercel | Verificado tras el despliegue (o claims añadidos en `createCustomToken`) | abierto |
 | D31 | M3 | `merge.ts` de la nota sin test (Excalidraw no carga en Vitest `node`) | Test con entorno jsdom (`// @vitest-environment jsdom`) del cliente que vuelve tras 2 h y de la unión de archivos | abierto |
