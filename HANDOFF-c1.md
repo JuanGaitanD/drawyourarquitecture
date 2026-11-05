@@ -4,14 +4,14 @@ Rama `lane/c1-board-core` (desde `feat/base`, sin push). Gates `lint`, `typechec
 
 ## Lo hecho
 
-| Pieza | Dónde |
-|---|---|
-| Store por instancia (zustand + zundo), historial por gesto, `removeSelected` atómico | `store/boardStore.ts` (+ test) |
-| Reparentar al soltar (centro del nodo → frame, posición convertida) | `store/reparent.ts` (+ test) |
-| 6 nodos: `ShapeNode` (las 14 formas en SVG), `TextNode`, `StickyNode`, `FrameNode`, `IconNode`, `ImageNode` | `nodes/` |
-| `LabeledEdge` (bezier/recta/escalón, flechas, discontinua, etiqueta editable) | `edges/` |
-| `BoardViewer` (solo lectura, store propio) | `BoardViewer.tsx` |
-| Canvas: crear con herramienta, conectar, reconectar, mover, redimensionar, reparentar, editar texto, bloquear, imagen | `canvas/BoardCanvas.tsx` |
+| Pieza                                                                                                                                                                           | Dónde                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Store por instancia (zustand + zundo), historial por gesto, `removeSelected` atómico                                                                                            | `store/boardStore.ts` (+ test)                                              |
+| Reparentar al soltar (centro del nodo → frame, posición convertida)                                                                                                             | `store/reparent.ts` (+ test)                                                |
+| 6 nodos: `ShapeNode` (las 14 formas en SVG), `TextNode`, `StickyNode`, `FrameNode`, `IconNode`, `ImageNode`                                                                     | `nodes/`                                                                    |
+| `LabeledEdge` (bezier/recta/escalón, flechas, discontinua, etiqueta editable)                                                                                                   | `edges/`                                                                    |
+| `BoardViewer` (solo lectura, store propio)                                                                                                                                      | `BoardViewer.tsx`                                                           |
+| Canvas: crear con herramienta, conectar, reconectar, mover, redimensionar, reparentar, editar texto, bloquear, imagen                                                           | `canvas/BoardCanvas.tsx`                                                    |
 | `BoardEditor`: carga → validación → hidratación → `useAutosave`, cabecera (volver, título, estado de guardado, compartir, tema, cuenta), avisos de conflicto, borrador y tamaño | `BoardEditor.tsx`, `canvas/EditorChrome.tsx`, `canvas/useEncodedContent.ts` |
 
 Orden de hitos: el store (hito 2) se hizo **antes** de los nodos porque estos lo necesitan (`useBoardStore`); los tres hitos están commiteados en orden.
@@ -24,7 +24,7 @@ Orden de hitos: el store (hito 2) se hizo **antes** de los nodos porque estos lo
 - **Selección de herramienta**: crear = `store.setTool('shape'|'text'|'sticky'|'frame'|'icon'|'image')` + clic en el lienzo (dentro de un frame también). Tras crear vuelve a `select` y abre la edición de texto. `connector`: muestra los handles y permite arrastrar; el clic origen→destino no está (ver pendientes).
 - **Undo/redo**: `store.temporal.getState().undo()/redo()` ya devuelven `selected` y `measured`. Un arrastre, un resize y un borrado son un paso cada uno.
 - **Borrar**: el canvas ya procesa `Backspace` y `Delete` con `removeSelected` (un paso); si `useShortcuts` también lo hace, no pasa nada (la segunda llamada no borra).
-- **Colores automáticos**: lo dibujado es literal; solo el color *por defecto* de texto suelto, iconos, título de frame y aristas usa tokens (`nodes/colors.ts`) para leerse en tema oscuro. Si el panel de estilo asigna cualquier otro color, se respeta tal cual (pasa a ser literal).
+- **Colores automáticos**: lo dibujado es literal; solo el color _por defecto_ de texto suelto, iconos, título de frame y aristas usa tokens (`nodes/colors.ts`) para leerse en tema oscuro. Si el panel de estilo asigna cualquier otro color, se respeta tal cual (pasa a ser literal).
 - **Frames** van detrás por CSS (`.react-flow__node-frame { z-index:-1 }` en `canvas/flow.module.css`).
 - **Texto suelto** tiene alto automático (`toDisplayNodes` no le pasa `height`).
 - **`window.__board`** (solo `import.meta.env.DEV`) expone el store para pruebas manuales.
