@@ -2,6 +2,8 @@
 
 ## Dónde estamos
 
+**Fases 1, 2 y 3 desplegadas (2026-11-05 14:16):** https://drawyourarchitecture.vercel.app. Fase 2: invitaciones por enlace (editor/viewer, revocables), sincronización en vivo con fusión por elemento, presencia con avatares (sin cursores). Fase 3: tokens en `/settings` y servidor MCP en `/api/mcp` (ver `docs/mcp.md`); Vercel tiene `FIREBASE_SERVICE_ACCOUNT` (secreto) y `OWNER_UID`. Reglas de producción desplegadas desde `.wigi/deploy/`. Pendiente: revisión final GPT-6.1-sol de todo lo posterior a la primera revisión (correcciones, imágenes en Firestore, fases 2 y 3).
+
 **Desplegado en producción (2026-11-05 13:09):** https://drawyourarchitecture.vercel.app (Vercel, equipo personal `juangaitands-projects`). Firebase `drawyourarchitecture` en plan gratuito: Firestore `(default)` con reglas e índices desplegados (`OWNER_UID` del dueño), Auth Google con el dominio de Vercel autorizado, Analytics `G-TPM775TWZ2`. Las reglas de producción se generan en `.wigi/deploy/` (no versionado) para no pisar las del emulador. Pendiente: revisión GPT-6.1-sol de lo cambiado tras la revisión final (correcciones, imágenes en Firestore, despliegue) cuando haya cuota.
 
 **T5 · Integración terminada** en la rama `feat/base` (sin push): los carriles C1, C2, D, A y B están fusionados (`chore(merge): integrar carril <X>`, sin conflictos) y los pendientes cruzados resueltos. Gates `lint`, `typecheck`, `test` (309), `test:rules` (25) y `build` en verde. Bundle inicial **152,7 kB gzip** (objetivo < 250). Probado a mano en Chrome contra los emuladores (nota con imagen y board embebido, board con plantilla, Mermaid, ordenar, PNG, JSON, atajos, bloqueo, enlace público sin sesión, despublicar, conflicto entre pestañas, claro y oscuro a 1280 y 1024 px).
