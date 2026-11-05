@@ -2,6 +2,8 @@
 
 ## Dónde estamos
 
+**Desplegado en producción (2026-11-05 13:09):** https://drawyourarchitecture.vercel.app (Vercel, equipo personal `juangaitands-projects`). Firebase `drawyourarchitecture` en plan gratuito: Firestore `(default)` con reglas e índices desplegados (`OWNER_UID` del dueño), Auth Google con el dominio de Vercel autorizado, Analytics `G-TPM775TWZ2`. Las reglas de producción se generan en `.wigi/deploy/` (no versionado) para no pisar las del emulador. Pendiente: revisión GPT-6.1-sol de lo cambiado tras la revisión final (correcciones, imágenes en Firestore, despliegue) cuando haya cuota.
+
 **T5 · Integración terminada** en la rama `feat/base` (sin push): los carriles C1, C2, D, A y B están fusionados (`chore(merge): integrar carril <X>`, sin conflictos) y los pendientes cruzados resueltos. Gates `lint`, `typecheck`, `test` (309), `test:rules` (25) y `build` en verde. Bundle inicial **152,7 kB gzip** (objetivo < 250). Probado a mano en Chrome contra los emuladores (nota con imagen y board embebido, board con plantilla, Mermaid, ordenar, PNG, JSON, atajos, bloqueo, enlace público sin sesión, despublicar, conflicto entre pestañas, claro y oscuro a 1280 y 1024 px).
 
 **Imágenes en Firestore, sin Storage** (decisión de Juan, 2026-11-05): `FileStore` guarda cada imagen troceada en `projects/{id}/files/{fileId}` + `chunks/{i}` y toda subida (nota y board) se optimiza antes (`application/imageOptimize.ts`). Ya no hay Storage, `cors.json` ni plan Blaze en el proyecto. Detalle en «Imágenes en Firestore».
