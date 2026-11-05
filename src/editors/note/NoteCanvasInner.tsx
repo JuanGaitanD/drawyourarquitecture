@@ -49,6 +49,7 @@ import {
 import { InsertBoardDialog } from './InsertBoardDialog';
 import { mergeNoteData, reconcileScene } from './merge';
 import { readLibrary, writeLibrary } from './library';
+import { useNoteCursors } from './presenceCursors';
 import type { NoteCanvasProps } from './NoteCanvas';
 import styles from './NoteCanvas.module.css';
 
@@ -73,6 +74,7 @@ export default function NoteCanvasInner({
   const [insertOpen, setInsertOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const toggleLibrary = useCallback(() => api?.toggleSidebar({ name: 'default' }), [api]);
+  const onPointerUpdate = useNoteCursors(projectId, api);
 
   // Estado del puente con Excalidraw. Vive en refs: no pinta nada y no debe re-renderizar el lienzo.
   const known = useRef<NoteFiles>({ ...content.files }); // archivos ya registrados en la nota
@@ -367,6 +369,7 @@ export default function NoteCanvasInner({
         excalidrawAPI={setApi}
         initialData={initialData}
         onChange={handleChange as ExcalidrawProps['onChange']}
+        onPointerUpdate={onPointerUpdate}
         theme={resolved}
         langCode="es-ES"
         viewModeEnabled={readonly}
