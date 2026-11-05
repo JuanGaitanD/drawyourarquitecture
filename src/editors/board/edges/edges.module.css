@@ -1,0 +1,28 @@
+.label {
+  position: absolute;
+  max-width: 220px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  pointer-events: all;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.label[data-selected] {
+  box-shadow: 0 0 0 1.5px var(--selection);
+}
+.input {
+  min-width: 4ch;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+}
