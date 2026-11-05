@@ -18,7 +18,8 @@
     "test": "vitest run",
     "test:rules": "node scripts/render-rules.mjs --emulator && firebase emulators:exec --only firestore,storage --project demo-dya \"vitest run --config vitest.rules.config.ts\"",
     "rules:render": "node scripts/render-rules.mjs",
-    "emulators": "node scripts/render-rules.mjs --emulator && firebase emulators:start --project demo-dya"
+    "emulators": "node scripts/render-rules.mjs --emulator && firebase emulators:start --project demo-dya",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@dagrejs/dagre": "3.1.3",
