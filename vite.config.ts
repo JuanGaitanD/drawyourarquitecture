@@ -19,6 +19,7 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'node',
+    setupFiles: ['src/test/setup.ts'],
     env: emulatorProject ? { GCLOUD_PROJECT: emulatorProject } : {},
     // Excalidraw se publica con un import de JSON sin atributo (open-color): lo transforma Vite en vez de Node.
     server: { deps: { inline: [/@excalidraw\/excalidraw/, /open-color/] } },
