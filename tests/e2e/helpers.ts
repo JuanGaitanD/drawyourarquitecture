@@ -1,4 +1,5 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test';
+import { crc32, deflateSync } from 'node:zlib';
 
 // Utilidades comunes de los e2e (humo y colaboración). Cada escenario crea sus propios datos.
 
@@ -89,4 +90,110 @@ export async function connect(page: Page, from: string, to: string) {
   await page.mouse.down();
   await page.mouse.move(b.x, b.y + b.height / 2, { steps: 12 });
   await page.mouse.up();
+}
+
+/** PNG sólido válido de `w`×`h` (RGB) generado al vuelo: sin binarios en el repositorio. */
+export function pngBytes(w = 96, h = 64, [r, g, b]: [number, number, number] = [220, 60, 60]): Buffer {
+  const chunk = (type: string, data: Buffer) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([head, body, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8); // 8 bits, RGB, sin entrelazado
+  const row = Buffer.concat([
+    Buffer.from([0]),
+    Buffer.from(Array.from({ length: w }, () => [r, g, b]).flat()),
+  ]);
+  const raw = Buffer.concat(Array.from({ length: h }, () => row));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
+
+/** Excalidraw (notas): suelta una imagen sobre el lienzo, como arrastrarla desde el escritorio. */
+export async function dropImage(page: Page, name: string, png: Buffer, at: { x: number; y: number }) {
+  await page.evaluate(
+    ({ b64, name, at }) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const dt = new DataTransfer();
+      dt.items.add(new File([bytes], name, { type: 'image/png' }));
+      const target = document.querySelector('.excalidraw__canvas.interactive') ?? document.body;
+      target.dispatchEvent(
+        new DragEvent('drop', {
+          dataTransfer: dt,
+          clientX: at.x,
+          clientY: at.y,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    },
+    { b64: png.toString('base64'), name, at },
+  );
+}
+
+// Colaboración de dos contextos (la usan collab.spec.ts e images.spec.ts). Necesita Realtime Database (presencia).
+export type Role = 'Puede editar' | 'Solo lectura';
+export type Scene = { h?: { elements: { type: string; isDeleted: boolean }[] } };
+
+/** El dueño abre «Compartir», crea un enlace con el rol y devuelve su URL. Deja el panel abierto. */
+export async function createInvite(owner: Page, role: Role): Promise<string> {
+  await owner.getByRole('button', { name: 'Compartir', exact: true }).click();
+  await owner.getByRole('combobox', { name: 'Rol de la invitación' }).selectOption({ label: role });
+  // En la nota, Excalidraw tiene otro botón «Crear enlace» (herramienta de enlace): se acota al panel.
+  await owner.getByRole('dialog').getByRole('button', { name: 'Crear enlace' }).click();
+  await expect(owner.getByText('Enlace de invitación copiado')).toBeVisible();
+  return owner.evaluate(() => navigator.clipboard.readText());
+}
+
+/** Segunda persona: contexto propio (sin la sesión del dueño) que entra con `uid` y acepta la invitación. */
+export async function joinAs(
+  browser: Browser,
+  baseURL: string,
+  link: string,
+  /** Prepara el contexto antes de abrir el enlace (p. ej. retrasar un chunk con `route`). */
+  prepare?: (context: BrowserContext) => Promise<unknown>,
+) {
+  // Cuenta de prueba nueva por ejecución: la lista de miembros del dueño no arrastra a nadie de otras pruebas.
+  const uid = `guest-${Math.random().toString(36).slice(2, 8)}`;
+  const context = await browser.newContext({ baseURL });
+  await context.addInitScript((u) => localStorage.setItem('dya:testUser', u), uid);
+  await prepare?.(context);
+  const page = await context.newPage();
+  await page.goto(new URL(link).pathname);
+  await page.getByRole('button', { name: 'Entrar con la cuenta de prueba' }).click();
+  await expect(page).toHaveURL(/\/(board|note)\/[^/]+$/);
+  return { context, page };
+}
+
+/** Rectángulos vivos del lienzo de Excalidraw (el hook de pruebas `window.h` existe en el servidor de desarrollo). */
+export const rectangles = (page: Page) =>
+  page.evaluate(
+    () =>
+      ((window as unknown as Scene).h?.elements ?? []).filter((e) => e.type === 'rectangle' && !e.isDeleted)
+        .length,
+  );
+
+/** Herramienta «Rectángulo» de Excalidraw y arrastre en el lienzo. */
+export async function drawRectangle(page: Page, from: { x: number; y: number }) {
+  await page.getByRole('radio', { name: 'Rectángulo' }).check({ force: true }); // el icono tapa el radio
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 90, from.y + 60, { steps: 6 });
+  await page.mouse.up();
+}
+
+export async function newNote(page: Page) {
+  await signIn(page);
+  await newProject(page, 'Nota');
+  await expect(page.getByRole('radio', { name: 'Rectángulo' })).toBeVisible();
 }
