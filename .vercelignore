@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+.wigi/
+node_modules/
+dist/
+*.log
