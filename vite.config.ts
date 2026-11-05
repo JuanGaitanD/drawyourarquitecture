@@ -2,23 +2,12 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Los motores pesados van en chunks propios y solo se piden en las rutas de editor.
+// Sin `manualChunks`: Excalidraw, React Flow, Firestore y Storage ya van en chunks propios por `import()` y
+// solo se piden al usarlos. Forzarlos con manualChunks hacía que el chunk arrastrara React, Radix y tslib y que
+// el arranque los descargara enteros (Excalidraw ≈ 1,5 MB gzip en la pantalla de acceso).
 export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.includes('@excalidraw')) return 'excalidraw';
-          if (id.includes('@xyflow')) return 'xyflow';
-          // Storage va aparte (solo lo cargan los editores, ver infrastructure/firebase/files.ts).
-          if (/node_modules\/(@firebase|firebase)\/storage/.test(id)) return 'firebase-storage';
-          if (/node_modules\/(@firebase|firebase)\//.test(id)) return 'firebase';
-        },
-      },
-    },
-  },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     environment: 'node',
