@@ -113,6 +113,53 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
     }
   });
 
+  it('audita cada herramienta en mcpAudit, con el uid y el hash del token', async () => {
+    const { token, hash } = await seedToken(db, OWNER);
+    const client = await connect(token);
+    try {
+      const created = await call(client, 'create_note', { title: 'Auditada', text: 'x' });
+      const id = /Nota creada: (\S+)/.exec(created.text)?.[1] as string;
+      await call(client, 'read_note', { id });
+      await call(client, 'read_board', { id: 'no-existe' });
+    } finally {
+      await client.close();
+    }
+    const rows = (await db.collection('mcpAudit').where('tokenHash', '==', hash).get()).docs.map((d) =>
+      d.data(),
+    );
+    const byTool = (tool: string) => rows.filter((r) => r.tool === tool);
+    expect(byTool('create_note')).toHaveLength(1);
+    expect(byTool('create_note')[0]).toMatchObject({ uid: OWNER, ok: true });
+    expect(byTool('read_note')[0]).toMatchObject({ ok: true });
+    expect(byTool('read_board')[0]).toMatchObject({ ok: false, projectId: 'no-existe' });
+    expect(rows.every((r) => r.expireAt.toMillis() > Date.now())).toBe(true);
+  });
+
+  it('por encima de 60 peticiones por minuto: 429 con Retry-After, y otro token sigue pasando', async () => {
+    // Que no se cruce una frontera de ventana a mitad de la prueba.
+    const left = 60_000 - (Date.now() % 60_000);
+    if (left < 15_000) await new Promise((r) => setTimeout(r, left + 200));
+    const { token } = await seedToken(db, OWNER);
+    const post = () =>
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      });
+    for (let i = 0; i < 60; i++) expect((await post()).status).toBe(200);
+    const over = await post();
+    expect(over.status).toBe(429);
+    const retry = Number(over.headers.get('retry-after'));
+    expect(retry).toBeGreaterThanOrEqual(1);
+    expect(retry).toBeLessThanOrEqual(60);
+    const other = await connect((await seedToken(db, OWNER)).token);
+    await other.close();
+  }, 60_000);
+
   it('proyecto ajeno: 403 en lectura y escritura; no aparece en list_projects', async () => {
     const foreign = await seedProject(db, { ownerId: STRANGER });
     const client = await connect((await seedToken(db, OWNER)).token);

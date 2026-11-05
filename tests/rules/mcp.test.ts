@@ -1,5 +1,7 @@
 import { assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import {
+  Timestamp,
+  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -155,5 +157,106 @@ describe('crear proyecto con allowedEmails', () => {
 
   it('el dueño sigue creando sin estar en la lista', async () => {
     await assertSucceeds(create(asOwner(), 'p1', OWNER));
+  });
+});
+
+describe('rateLimits', () => {
+  const limit = (over: Record<string, unknown> = {}) => ({ uid: STRANGER, window: 100, count: 1, ...over });
+  const ref = (fs: ReturnType<typeof asStranger>, hash = HASH) => doc(fs, 'rateLimits', hash);
+  const seedLimit = (over: Record<string, unknown> = {}) =>
+    env.withSecurityRulesDisabled((ctx) => setDoc(ref(ctx.firestore()), limit(over)));
+
+  it('solo el dueño del token crea la ventana, con count 1', async () => {
+    await seedToken();
+    await assertSucceeds(setDoc(ref(asStranger()), limit()));
+    await env.clearFirestore();
+    await seedToken();
+    await assertFails(setDoc(ref(asStranger()), limit({ count: 2 })));
+    await assertFails(setDoc(ref(asStranger()), limit({ uid: OWNER })));
+    await assertFails(setDoc(ref(asStranger()), limit({ extra: 1 })));
+    await assertFails(setDoc(ref(asOwner()), limit({ uid: OWNER })));
+    await assertFails(setDoc(ref(asAnon()), limit()));
+  });
+
+  it('sin un token propio con ese hash no se crea', async () => {
+    await assertFails(setDoc(ref(asStranger()), limit()));
+    await seedToken(HASH, { uid: OWNER });
+    await assertFails(setDoc(ref(asStranger()), limit()));
+  });
+
+  it('dentro de la ventana solo sube de uno en uno y hasta 60; no baja ni se reinicia', async () => {
+    await seedToken();
+    await seedLimit({ count: 59 });
+    const r = ref(asStranger());
+    await assertFails(updateDoc(r, { count: 1 }));
+    await assertFails(updateDoc(r, { count: 61 }));
+    await assertFails(updateDoc(r, { count: 58 }));
+    await assertFails(updateDoc(r, { window: 99, count: 1 }));
+    await assertSucceeds(updateDoc(r, { count: 60 }));
+    await assertFails(updateDoc(r, { count: 61 }));
+  });
+
+  it('una ventana posterior reinicia a count 1; no se puede cambiar el uid ni borrar', async () => {
+    await seedToken();
+    await seedLimit({ count: 60 });
+    const r = ref(asStranger());
+    await assertFails(updateDoc(r, { window: 101, count: 2 }));
+    await assertFails(updateDoc(r, { uid: OWNER }));
+    await assertSucceeds(updateDoc(r, { window: 101, count: 1 }));
+    await assertFails(deleteDoc(r));
+  });
+
+  it('la lee solo el dueño del token', async () => {
+    await seedToken();
+    await seedLimit();
+    await assertSucceeds(getDoc(ref(asStranger())));
+    await assertFails(getDoc(ref(asOwner())));
+    await assertFails(getDoc(ref(asAnon())));
+  });
+});
+
+describe('mcpAudit', () => {
+  const entry = (over: Record<string, unknown> = {}) => ({
+    uid: STRANGER,
+    tokenHash: HASH,
+    tool: 'read_board',
+    projectId: 'abc',
+    ok: true,
+    at: 1,
+    expireAt: Timestamp.fromMillis(1_000),
+    ...over,
+  });
+  const audits = (fs: ReturnType<typeof asStranger>) => collection(fs, 'mcpAudit');
+
+  it('cada persona crea las suyas, con un token propio y campos cerrados', async () => {
+    await seedToken();
+    await assertSucceeds(addDoc(audits(asStranger()), entry()));
+    const { projectId: _omit, ...sinProyecto } = entry();
+    await assertSucceeds(addDoc(audits(asStranger()), sinProyecto));
+    await assertFails(addDoc(audits(asStranger()), entry({ uid: OWNER })));
+    await assertFails(addDoc(audits(asOwner()), entry()));
+    await assertFails(addDoc(audits(asStranger()), entry({ tokenHash: 'b'.repeat(64) })));
+    await assertFails(addDoc(audits(asStranger()), entry({ tool: 'borrar_todo' })));
+    await assertFails(addDoc(audits(asStranger()), entry({ extra: 1 })));
+    await assertFails(addDoc(audits(asStranger()), entry({ expireAt: 1000 })));
+    await assertFails(addDoc(audits(asStranger()), entry({ ok: 'sí' })));
+    await assertFails(addDoc(audits(asStranger()), entry({ projectId: 'x'.repeat(129) })));
+    await assertFails(addDoc(audits(asAnon()), entry()));
+  });
+
+  it('solo se leen las propias; no se editan ni se borran', async () => {
+    await seedToken();
+    let id = '';
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      id = (await addDoc(audits(ctx.firestore()), entry())).id;
+    });
+    const mine = doc(asStranger(), 'mcpAudit', id);
+    await assertSucceeds(getDoc(mine));
+    await assertSucceeds(getDocs(query(audits(asStranger()), where('uid', '==', STRANGER))));
+    await assertFails(getDoc(doc(asOwner(), 'mcpAudit', id)));
+    await assertFails(getDocs(query(audits(asOwner()), where('uid', '==', STRANGER))));
+    await assertFails(getDocs(audits(asStranger())));
+    await assertFails(updateDoc(mine, { ok: false }));
+    await assertFails(deleteDoc(mine));
   });
 });

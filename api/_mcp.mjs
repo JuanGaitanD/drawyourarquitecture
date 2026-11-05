@@ -71,6 +71,51 @@ async function authenticate(db, header) {
   return { uid: data.uid, tokenHash };
 }
 
+// src/server/limits.ts
+import { Timestamp, addDoc, collection, doc, runTransaction } from "firebase/firestore";
+var RATE_LIMIT = 60;
+var RATE_WINDOW_MS = 6e4;
+var AUDIT_TTL_MS = 30 * 864e5;
+async function consumeRate(db, id2, nowMs = Date.now()) {
+  const ref = doc(db, "rateLimits", id2.tokenHash);
+  const window = Math.floor(nowMs / RATE_WINDOW_MS);
+  const allowed = await runTransaction(db, async (tx) => {
+    const d = (await tx.get(ref)).data();
+    if (!d) {
+      tx.set(ref, { uid: id2.uid, window, count: 1 });
+    } else if (d.window === window) {
+      if (d.count >= RATE_LIMIT) return false;
+      tx.update(ref, { window, count: d.count + 1 });
+    } else {
+      tx.update(ref, { window, count: 1 });
+    }
+    return true;
+  });
+  if (!allowed) {
+    const retryAfter = Math.max(1, Math.ceil(((window + 1) * RATE_WINDOW_MS - nowMs) / 1e3));
+    throw new ToolError(
+      429,
+      `Demasiadas peticiones (m\xE1ximo ${RATE_LIMIT} por minuto por token).`,
+      retryAfter
+    );
+  }
+}
+async function recordAudit(db, id2, e, at = Date.now()) {
+  try {
+    await addDoc(collection(db, "mcpAudit"), {
+      uid: id2.uid,
+      tokenHash: id2.tokenHash,
+      tool: e.tool,
+      ...e.projectId ? { projectId: e.projectId } : {},
+      ok: e.ok,
+      at,
+      expireAt: Timestamp.fromMillis(at + AUDIT_TTL_MS)
+    });
+  } catch (err) {
+    console.error("mcp: no se pudo registrar la auditor\xEDa", err);
+  }
+}
+
 // src/server/mcpServer.ts
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
@@ -78,13 +123,13 @@ import { z } from "zod";
 // src/server/tools.ts
 import {
   FieldPath,
-  collection,
-  doc,
+  collection as collection2,
+  doc as doc2,
   getDoc,
   getDocs,
   limit,
   query,
-  runTransaction,
+  runTransaction as runTransaction2,
   where,
   writeBatch
 } from "firebase/firestore";
@@ -852,7 +897,7 @@ function denied(fn) {
 }
 async function loadProject(ctx, id2, type) {
   if (!ID_RE.test(id2)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
-  const ref = doc(ctx.db, "projects", id2);
+  const ref = doc2(ctx.db, "projects", id2);
   const project = (await getDoc(ref)).data();
   if (!project) throw new ToolError(404, "El proyecto no existe.");
   if (type && project.type !== type) {
@@ -864,7 +909,7 @@ async function loadProject(ctx, id2, type) {
   return { ref, project };
 }
 async function loadContent(ref) {
-  const c = (await getDoc(doc(ref, "content", "main"))).data();
+  const c = (await getDoc(doc2(ref, "content", "main"))).data();
   if (!c || typeof c.data !== "string") throw new ToolError(404, "El proyecto no tiene contenido.");
   return { data: c.data, revision: Number(c.revision) || 0 };
 }
@@ -883,10 +928,10 @@ function checkTitle(title2) {
 }
 async function createProject(ctx, type, title2, data) {
   const t = now(ctx);
-  const ref = doc(collection(ctx.db, "projects"));
+  const ref = doc2(collection2(ctx.db, "projects"));
   const batch = writeBatch(ctx.db);
   batch.set(ref, { ownerId: ctx.uid, type, title: title2, isPublic: false, createdAt: t, updatedAt: t });
-  batch.set(doc(ref, "content", "main"), { data, schemaVersion: 1, revision: 0, updatedAt: t });
+  batch.set(doc2(ref, "content", "main"), { data, schemaVersion: 1, revision: 0, updatedAt: t });
   try {
     await batch.commit();
   } catch (e) {
@@ -915,7 +960,7 @@ async function boardFromMermaid(src) {
   return checked.value;
 }
 var listProjects = denied(async (ctx, args) => {
-  const col = collection(ctx.db, "projects");
+  const col = collection2(ctx.db, "projects");
   const [own, shared] = await Promise.all([
     getDocs(query(col, where("ownerId", "==", ctx.uid), limit(LIST_LIMIT))),
     getDocs(
@@ -1044,12 +1089,12 @@ var MAX_CONFLICT_RETRIES = 5;
 var updateBoard = denied(async (ctx, args) => {
   if (!ID_RE.test(args.id)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
   const incoming = await boardFromMermaid(args.mermaid);
-  const projectRef = doc(ctx.db, "projects", args.id);
-  const contentRef = doc(projectRef, "content", "main");
+  const projectRef = doc2(ctx.db, "projects", args.id);
+  const contentRef = doc2(projectRef, "content", "main");
   for (let attempt = 1; ; attempt++) {
     let readRevision = -1;
     try {
-      return await runTransaction(ctx.db, async (tx) => {
+      return await runTransaction2(ctx.db, async (tx) => {
         const [pSnap, cSnap] = await Promise.all([tx.get(projectRef), tx.get(contentRef)]);
         const project = pSnap.data();
         if (!project) throw new ToolError(404, "El proyecto no existe.");
@@ -1091,11 +1136,14 @@ var updateBoard = denied(async (ctx, args) => {
 });
 
 // src/server/mcpServer.ts
-async function run(fn) {
+async function run(ctx, tool, args, fn) {
+  const audit = (ok, projectId) => recordAudit(ctx.db, ctx.identity, { tool, projectId: projectId ?? args.id, ok });
   try {
     const r = await fn();
+    await audit(true, r.data?.id);
     return { content: [{ type: "text", text: r.text }] };
   } catch (e) {
+    await audit(false);
     if (e instanceof ToolError)
       return { isError: true, content: [{ type: "text", text: `${e.status}: ${e.message}` }] };
     console.error("mcp: error inesperado en una herramienta", e);
@@ -1105,7 +1153,8 @@ async function run(fn) {
 var id = z.string().min(1).max(128).describe("Id del proyecto (de list_projects).");
 var title = z.string().min(1).max(MAX_TITLE).describe("T\xEDtulo del proyecto.");
 var mermaid = z.string().min(1).max(MAX_MERMAID).describe("Flowchart de Mermaid (flowchart/graph con LR, TD\u2026; admite subgraph).");
-function createMcpServer(ctx) {
+function createMcpServer(mcp) {
+  const ctx = { db: mcp.db, uid: mcp.identity.uid };
   const server = new McpServer({ name: "drawyourarchitecture", version: "0.1.0" });
   server.registerTool(
     "list_projects",
@@ -1113,7 +1162,7 @@ function createMcpServer(ctx) {
       description: "Lista los proyectos propios y los compartidos contigo (notas y diagramas).",
       inputSchema: { type: z.enum(["note", "board"]).optional().describe("Filtra por tipo.") }
     },
-    (a) => run(() => listProjects(ctx, a))
+    (a) => run(mcp, "list_projects", {}, () => listProjects(ctx, a))
   );
   server.registerTool(
     "read_note",
@@ -1121,7 +1170,7 @@ function createMcpServer(ctx) {
       description: "Lee una nota: el texto de sus elementos en orden de lectura y un resumen.",
       inputSchema: { id }
     },
-    (a) => run(() => readNote(ctx, a))
+    (a) => run(mcp, "read_note", a, () => readNote(ctx, a))
   );
   server.registerTool(
     "read_board",
@@ -1129,7 +1178,7 @@ function createMcpServer(ctx) {
       description: "Lee un diagrama: su Mermaid (flowchart) y el JSON de nodos y aristas.",
       inputSchema: { id }
     },
-    (a) => run(() => readBoard(ctx, a))
+    (a) => run(mcp, "read_board", a, () => readBoard(ctx, a))
   );
   server.registerTool(
     "create_note",
@@ -1137,7 +1186,7 @@ function createMcpServer(ctx) {
       description: "Crea una nota con bloques de texto (separados por una l\xEDnea en blanco; \xAB# \xBB, \xAB## \xBB y \xAB### \xBB al inicio hacen t\xEDtulos).",
       inputSchema: { title, text: z.string().max(MAX_NOTE_TEXT).describe("Texto de la nota.") }
     },
-    (a) => run(() => createNote(ctx, a))
+    (a) => run(mcp, "create_note", {}, () => createNote(ctx, a))
   );
   server.registerTool(
     "create_board",
@@ -1145,7 +1194,7 @@ function createMcpServer(ctx) {
       description: "Crea un diagrama desde un flowchart de Mermaid y lo ordena autom\xE1ticamente.",
       inputSchema: { title, mermaid }
     },
-    (a) => run(() => createBoard(ctx, a))
+    (a) => run(mcp, "create_board", {}, () => createBoard(ctx, a))
   );
   server.registerTool(
     "update_board",
@@ -1153,7 +1202,7 @@ function createMcpServer(ctx) {
       description: "Ampl\xEDa un diagrama desde Mermaid: a\xF1ade lo nuevo debajo de lo existente y conserva lo que ya hay (posiciones, estilos, frames e im\xE1genes).",
       inputSchema: { id, mermaid }
     },
-    (a) => run(() => updateBoard(ctx, a))
+    (a) => run(mcp, "update_board", a, () => updateBoard(ctx, a))
   );
   return server;
 }
@@ -1251,10 +1300,11 @@ async function readBody(req) {
 async function handler(req, res) {
   if (req.method !== "POST") return send(res, 405, "Solo se admite POST.", { Allow: "POST" });
   try {
-    const { uid } = await authenticate(getAdminDb(), req.headers.authorization);
-    const db = await getUserDb(uid);
+    const identity = await authenticate(getAdminDb(), req.headers.authorization);
+    const db = await getUserDb(identity.uid);
+    await consumeRate(db, identity);
     const body = await readBody(req);
-    const server = createMcpServer({ db, uid });
+    const server = createMcpServer({ db, identity });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: void 0,
       enableJsonResponse: true
@@ -1272,7 +1322,7 @@ async function handler(req, res) {
         res,
         e.status,
         e.message,
-        e.status === 401 ? { "WWW-Authenticate": 'Bearer realm="drawyourarchitecture"' } : {}
+        e.status === 401 ? { "WWW-Authenticate": 'Bearer realm="drawyourarchitecture"' } : e.status === 429 ? { "Retry-After": String(e.retryAfter ?? 60) } : {}
       );
     }
     console.error("mcp: error inesperado", e);
