@@ -254,7 +254,9 @@ Un `tests/e2e/smoke.spec.ts` (Playwright + emuladores):
   - `firebase deploy --only firestore:rules,firestore:indexes,storage`.
   - IAM entre productos y CORS del bucket (`gcloud storage buckets update gs://<bucket> --cors-file=cors.json`, o Cloud Shell).
   - Dominio de Vercel en los dominios autorizados de Auth.
-- **Vercel**: `vercel --prod` con `VITE_FIREBASE_*`.
+- **Vercel**: `vercel --prod` con `VITE_FIREBASE_*` en el equipo personal `juangaitands-projects` (validado 2026-11-05: CLI como `juangaitand`).
+- **Analytics** (pedido por Juan): `firebase/analytics` en `infrastructure/firebase/analytics.ts`, cargado con `import()` solo en producción, si `isSupported()` y hay `VITE_FIREBASE_MEASUREMENT_ID`. Eventos: `project_create {type}`, `project_publish`, `board_embed_insert`, `export {format}`. Sin datos personales ni títulos. Usar la skill `firebase-analytics` del plugin oficial.
+- Plugin oficial de Firebase (skills `firebase-*`, MCP `firebase-tools mcp`): lo usan los agentes nuevos para reglas (`firestore-rules-creation`, `firebase-security-rules-auditor`), despliegue y Analytics.
 
 ## Estimación (con margen del 50 %)
 T0 40→60 · A/B/C1/C2/D en paralelo 75→110 · T5 25→40 · T6 15→20 · T7 30→45 · T8 15→25. **≈ 5 h**, con ~1 h ya consumida en investigación y plan. El recorte por prioridad (P1 fuera) es la válvula.
