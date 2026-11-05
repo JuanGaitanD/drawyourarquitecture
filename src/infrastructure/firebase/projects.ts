@@ -125,8 +125,11 @@ export const projectRepo: ProjectRepo = {
   async remove(id) {
     const { fs, db } = await loadFirestore();
     const ref = fs.doc(db, 'projects', id);
+    const main = fs.doc(ref, 'content', 'main');
     const batch = fs.writeBatch(db);
-    batch.delete(fs.doc(ref, 'content', 'main'));
+    // Los trozos del contenido (D17) no se borran con su padre.
+    (await fs.getDocs(fs.collection(main, 'chunks'))).docs.forEach((d) => batch.delete(d.ref));
+    batch.delete(main);
     batch.delete(ref);
     await batch.commit();
   },
