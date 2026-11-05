@@ -9,6 +9,7 @@ import flow from './canvas/flow.module.css';
 import { edgeTypes } from './edges';
 import type { BoardContent } from './model/board';
 import { BoardFilesContext, nodeTypes, type BoardFiles } from './nodes';
+import { BoardCursors } from './presenceCursors';
 import { BoardStoreProvider } from './store/BoardStoreProvider';
 import { createBoardStore } from './store/boardStore';
 import { BoardReadonlyContext } from './store/readonly';
@@ -17,6 +18,8 @@ export interface BoardViewerProps {
   content: BoardContent;
   /** Cuando se pasa, las imágenes se leen de `projects/{id}/files` (con `files`). */
   files?: BoardFiles;
+  /** Con él, el visor muestra y publica cursores (solo quien es miembro del proyecto, no embeds ni enlaces públicos). */
+  projectId?: string;
 }
 
 /**
@@ -24,7 +27,7 @@ export interface BoardViewerProps {
  * no selecciona y no reconecta; sí permite desplazarse y hacer zoom. Encuadra el contenido solo al montar (primera
  * carga) o a petición con el botón «Encuadrar»: un cambio remoto actualiza los nodos sin mover la vista.
  */
-export function BoardViewer({ content, files }: BoardViewerProps) {
+export function BoardViewer({ content, files, projectId }: BoardViewerProps) {
   const { resolved } = useTheme();
   // Un store nuevo por contenido; React Flow se conserva (sin `key`) para no perder el encuadre del lector.
   const store = useMemo(() => {
@@ -40,7 +43,7 @@ export function BoardViewer({ content, files }: BoardViewerProps) {
       <BoardReadonlyContext.Provider value={true}>
         <BoardFilesContext.Provider value={files ?? null}>
           <ReactFlowProvider>
-            <div style={{ width: '100%', height: '100%' }}>
+            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
               <ReactFlow
                 className={flow.flow}
                 nodes={nodes}
@@ -66,6 +69,7 @@ export function BoardViewer({ content, files }: BoardViewerProps) {
               >
                 <FitButton />
               </ReactFlow>
+              {projectId ? <BoardCursors projectId={projectId} /> : null}
             </div>
           </ReactFlowProvider>
         </BoardFilesContext.Provider>
