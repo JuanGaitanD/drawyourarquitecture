@@ -119,9 +119,7 @@ describe('compartir · invitaciones', () => {
   it('el dueño crea una invitación de su proyecto; otro no', async () => {
     const data = { projectId: 'p', role: 'viewer', createdBy: OWNER, expiresAt: Date.now() + 86_400_000 };
     await assertSucceeds(setDoc(doc(as(OWNER), 'invites', TOKEN), data));
-    await assertFails(
-      setDoc(doc(as(STRANGER), 'invites', TOKEN + 'b'), { ...data, createdBy: STRANGER }),
-    );
+    await assertFails(setDoc(doc(as(STRANGER), 'invites', TOKEN + 'b'), { ...data, createdBy: STRANGER }));
     await assertFails(setDoc(doc(as(OWNER), 'invites', TOKEN + 'c'), { ...data, projectId: 'ajeno' }));
   });
 
@@ -182,7 +180,9 @@ describe('compartir · invitaciones', () => {
   it('el rastro joins/{uid} no se escribe con un token inexistente ni a nombre de otro', async () => {
     await seedInvite();
     const fs = as(STRANGER);
-    await assertFails(setDoc(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: 'no-existe-0123456789abcd', name: 'x' }));
+    await assertFails(
+      setDoc(doc(fs, 'projects', 'p', 'joins', STRANGER), { token: 'no-existe-0123456789abcd', name: 'x' }),
+    );
     await assertFails(setDoc(doc(fs, 'projects', 'p', 'joins', 'otra-persona'), { token: TOKEN, name: 'x' }));
   });
 
@@ -200,9 +200,33 @@ describe('compartir · invitaciones', () => {
     await assertFails(getDocs(collection(as(STRANGER), 'invites')));
     await assertSucceeds(getDoc(doc(as(STRANGER), 'invites', TOKEN)));
     await assertFails(setDoc(doc(as(STRANGER), 'invites', TOKEN), { projectId: 'p' }));
-    await assertSucceeds(
-      getDocs(query(collection(as(OWNER), 'invites'), where('createdBy', '==', OWNER))),
+    await assertSucceeds(getDocs(query(collection(as(OWNER), 'invites'), where('createdBy', '==', OWNER))));
+  });
+});
+
+describe('compartir · revocar y quitar', () => {
+  it('el dueño borra la invitación y quita en un batch a quienes entraron con ella; un miembro no', async () => {
+    await seedInvite();
+    await assertSucceeds(join(as(STRANGER), STRANGER, 'editor'));
+    const owner = as(OWNER);
+    const joined = await assertSucceeds(
+      getDocs(query(collection(owner, 'projects', 'p', 'joins'), where('token', '==', TOKEN))),
     );
+    const b = writeBatch(owner);
+    b.delete(doc(owner, 'invites', TOKEN));
+    b.update(proj(owner), new FieldPath('members', joined.docs[0]!.id), deleteField(), 'updatedAt', 5);
+    await assertSucceeds(b.commit());
+    await assertFails(getDoc(content(as(STRANGER))));
+    await assertSucceeds(getDoc(content(as(EDITOR))));
+  });
+
+  it('un miembro no puede borrar la invitación ni quitar a otro miembro', async () => {
+    await seedInvite();
+    const e = as(EDITOR);
+    const b = writeBatch(e);
+    b.delete(doc(e, 'invites', TOKEN));
+    b.update(proj(e), new FieldPath('members', VIEWER), deleteField(), 'updatedAt', 5);
+    await assertFails(b.commit());
   });
 });
 
