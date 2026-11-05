@@ -81,7 +81,7 @@ import { z } from "zod";
 import { FieldPath } from "firebase-admin/firestore";
 
 // src/domain/codec.ts
-var MAX_CONTENT_BYTES = 9e5;
+var MAX_CONTENT_BYTES = 8 * 1024 * 1024;
 var ContentTooLargeError = class extends Error {
   bytes;
   constructor(bytes) {

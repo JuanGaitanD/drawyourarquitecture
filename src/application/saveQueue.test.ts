@@ -489,3 +489,31 @@ describe('drainAndFlush · el último cambio retenido por el throttle del editor
     expect(storage.map.size).toBe(0);
   });
 });
+
+describe('saveQueue · contenido grande (D17)', () => {
+  it('envía tal cual 6 MB al repo aunque el borrador local no quepa (cuota de localStorage)', async () => {
+    const f = fakeRepo();
+    const storage = memoryStorage();
+    storage.setItem = () => {
+      throw new DOMException('cuota', 'QuotaExceededError');
+    };
+    const big = JSON.stringify({ t: 'x'.repeat(6_000_000) });
+    const q = createSaveQueue(f.repo, 'p1', 0, { storage });
+    q.push(big);
+    await q.flush();
+    expect(f.calls).toHaveLength(1);
+    expect(f.calls[0]!.data).toBe(big);
+    expect(q.state.status).toBe('guardado');
+    expect(q.revision).toBe(1);
+  });
+
+  it('un contenido grande que pasa por la fusión se guarda y deja la cola limpia', async () => {
+    const f = fakeRepo(1);
+    const q = createSaveQueue(f.repo, 'p1', 0, { storage: memoryStorage(), merge: (l, r) => l + r });
+    f.remoteSave('{"ajeno":1}'); // el servidor va por delante: la transacción fusiona
+    q.push('y'.repeat(3_000_000));
+    await q.flush();
+    expect(q.state.status).toBe('guardado');
+    expect(q.hasPending()).toBe(false);
+  });
+});

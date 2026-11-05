@@ -20,11 +20,11 @@ Fuente: `HANDOFF.md`, comentarios `ponytail:` del código y revisiones (`.wigi/r
 | D14 | L4 | Exportar JSON no incluye imágenes | Exportar/importar un `.dya.json` con los binarios (base64) que se suben al importar | abierto |
 | D15 | L4 | Copiar/pegar no usa el portapapeles del sistema | Copiar escribe `application/x-dya+json` y texto Mermaid; pegar entre pestañas funciona | abierto |
 | D16 | L4 | Título de la plantilla «Web de 3 capas» se parte | Ancho correcto | abierto |
-| D17 | L5 | Contenido > 900 KB da error | Contenido troceado como los archivos (`content/main` + `content/chunks/{i}`), transacción con revisión intacta; límite práctico 8 MiB | abierto |
+| D17 | L5 | Contenido > 900 KB da error | Contenido troceado como los archivos (`content/main` + `content/chunks/{i}`), transacción con revisión intacta; límite práctico 8 MiB | cerrado (commit d61436f, bdaa4be) |
 | D18 | L3 | Borrado de nota puede resucitar tras > 1 h desconectado | Tombstones con `revision` del servidor en vez de tiempo; purgar solo lo confirmado por todos o > 30 días | abierto |
-| D19 | L5 | `pnpm test:rules` falla si los emuladores ya corren | El script detecta emuladores vivos (puerto 8080) y reutiliza; si no, `emulators:exec` | abierto |
-| D20 | L5 | Sin `og:image` | Imagen de marca PNG 1200×630 en `public/` y meta `og:image`/`twitter:card` | abierto |
-| D21 | L5 | Fuentes CJK (Xiaolai) excluidas de Excalidraw | Copiadas a `public/excalidraw-assets` (se descargan solo si se usan) | abierto |
+| D19 | L5 | `pnpm test:rules` falla si los emuladores ya corren | El script detecta emuladores vivos (puerto 8080) y reutiliza; si no, `emulators:exec` | cerrado (commit 73815c0) |
+| D20 | L5 | Sin `og:image` | Imagen de marca PNG 1200×630 en `public/` y meta `og:image`/`twitter:card` | cerrado (commit 6c47104) |
+| D21 | L5 | Fuentes CJK (Xiaolai) excluidas de Excalidraw | Copiadas a `public/excalidraw-assets` (se descargan solo si se usan) | cerrado (commit b57db37) |
 | D22 | L6 (tras integrar) | Sin pruebas de componentes ni e2e de colaboración | e2e versionado de dos contextos (edición simultánea, viewer, invitación) y de las correcciones 4–6 de la revisión 2 | abierto |
 
 Aceptado (no es deuda): `null` ante `permission-denied` (privado = inexistente), borrador local como red de seguridad al cerrar la pestaña, atribución de React Flow, avisos de chunk > 500 kB de Excalidraw.
