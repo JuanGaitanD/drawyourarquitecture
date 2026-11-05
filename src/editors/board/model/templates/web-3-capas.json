@@ -1,0 +1,549 @@
+{
+  "schemaVersion": 1,
+  "nodes": [
+    {
+      "id": "title",
+      "type": "text",
+      "position": {
+        "x": 0,
+        "y": -80
+      },
+      "width": 160,
+      "height": 40,
+      "data": {
+        "label": "Web de 3 capas",
+        "style": {
+          "fill": "transparent",
+          "stroke": "transparent",
+          "strokeWidth": 0,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 24,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": true
+        },
+        "kind": "text"
+      }
+    },
+    {
+      "id": "user",
+      "type": "icon",
+      "position": {
+        "x": 48,
+        "y": 212
+      },
+      "width": 64,
+      "height": 64,
+      "data": {
+        "label": "Usuario",
+        "icon": "user",
+        "style": {
+          "fill": "transparent",
+          "stroke": "#1f2937",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "icon"
+      }
+    },
+    {
+      "id": "f-pres",
+      "type": "frame",
+      "position": {
+        "x": 240,
+        "y": 144
+      },
+      "width": 368,
+      "height": 200,
+      "data": {
+        "label": "Presentación",
+        "style": {
+          "fill": "#dbeafe80",
+          "stroke": "#2563eb",
+          "strokeWidth": 1,
+          "dashed": true,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": false
+        },
+        "kind": "frame"
+      }
+    },
+    {
+      "id": "f-logic",
+      "type": "frame",
+      "position": {
+        "x": 688,
+        "y": 0
+      },
+      "width": 464,
+      "height": 488,
+      "data": {
+        "label": "Lógica de negocio",
+        "style": {
+          "fill": "#dcfce780",
+          "stroke": "#16a34a",
+          "strokeWidth": 1,
+          "dashed": true,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": false
+        },
+        "kind": "frame"
+      }
+    },
+    {
+      "id": "f-data",
+      "type": "frame",
+      "position": {
+        "x": 1232,
+        "y": 16
+      },
+      "width": 224,
+      "height": 456,
+      "data": {
+        "label": "Datos",
+        "style": {
+          "fill": "#fef3c780",
+          "stroke": "#d97706",
+          "strokeWidth": 1,
+          "dashed": true,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": false
+        },
+        "kind": "frame"
+      }
+    },
+    {
+      "id": "spa",
+      "type": "shape",
+      "position": {
+        "x": 176,
+        "y": 72
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "SPA\n(React)",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dbeafe",
+          "stroke": "#2563eb",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-pres"
+    },
+    {
+      "id": "cdn",
+      "type": "icon",
+      "position": {
+        "x": 32,
+        "y": 88
+      },
+      "width": 64,
+      "height": 64,
+      "data": {
+        "label": "CDN",
+        "icon": "cloud",
+        "style": {
+          "fill": "transparent",
+          "stroke": "#1f2937",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "icon"
+      },
+      "parentId": "f-pres"
+    },
+    {
+      "id": "gw",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 216
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "API Gateway",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dcfce7",
+          "stroke": "#16a34a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-logic"
+    },
+    {
+      "id": "orders",
+      "type": "shape",
+      "position": {
+        "x": 272,
+        "y": 360
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Servicio de pedidos",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dcfce7",
+          "stroke": "#16a34a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-logic"
+    },
+    {
+      "id": "users",
+      "type": "shape",
+      "position": {
+        "x": 272,
+        "y": 216
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Servicio de usuarios",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dcfce7",
+          "stroke": "#16a34a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-logic"
+    },
+    {
+      "id": "auth",
+      "type": "shape",
+      "position": {
+        "x": 272,
+        "y": 72
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Autenticación\n(OAuth 2)",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dcfce7",
+          "stroke": "#16a34a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-logic"
+    },
+    {
+      "id": "pg",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 72
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "PostgreSQL",
+        "shape": "cylinder",
+        "style": {
+          "fill": "#fef3c7",
+          "stroke": "#d97706",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-data"
+    },
+    {
+      "id": "redis",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 216
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Redis\n(caché)",
+        "shape": "cylinder",
+        "style": {
+          "fill": "#fef3c7",
+          "stroke": "#d97706",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-data"
+    },
+    {
+      "id": "s3",
+      "type": "icon",
+      "position": {
+        "x": 80,
+        "y": 360
+      },
+      "width": 64,
+      "height": 64,
+      "data": {
+        "label": "Object storage",
+        "icon": "hard-drive",
+        "style": {
+          "fill": "transparent",
+          "stroke": "#1f2937",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "icon"
+      },
+      "parentId": "f-data"
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "type": "labeled",
+      "source": "user",
+      "target": "spa",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "HTTPS"
+      }
+    },
+    {
+      "id": "e2",
+      "type": "labeled",
+      "source": "cdn",
+      "target": "spa",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "estáticos"
+      }
+    },
+    {
+      "id": "e3",
+      "type": "labeled",
+      "source": "spa",
+      "target": "gw",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "REST / JSON"
+      }
+    },
+    {
+      "id": "e4",
+      "type": "labeled",
+      "source": "gw",
+      "target": "orders",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2
+      }
+    },
+    {
+      "id": "e5",
+      "type": "labeled",
+      "source": "gw",
+      "target": "users",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2
+      }
+    },
+    {
+      "id": "e6",
+      "type": "labeled",
+      "source": "gw",
+      "target": "auth",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": true,
+        "color": "#475569",
+        "width": 2,
+        "label": "valida token"
+      }
+    },
+    {
+      "id": "e7",
+      "type": "labeled",
+      "source": "orders",
+      "target": "pg",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "SQL"
+      }
+    },
+    {
+      "id": "e8",
+      "type": "labeled",
+      "source": "users",
+      "target": "pg",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "SQL"
+      }
+    },
+    {
+      "id": "e9",
+      "type": "labeled",
+      "source": "orders",
+      "target": "redis",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "caché"
+      }
+    },
+    {
+      "id": "e10",
+      "type": "labeled",
+      "source": "orders",
+      "target": "s3",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "facturas"
+      }
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  }
+}
