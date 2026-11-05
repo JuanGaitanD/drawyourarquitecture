@@ -6,6 +6,7 @@ import {
   Button,
   Dialog,
   DialogContent,
+  useReturnFocus,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -32,7 +33,7 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
   const wantsRename = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const wasRenaming = useRef(false);
-  const wasConfirming = useRef(false);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   // Al terminar de renombrar el input desaparece: el foco vuelve a la tarjeta, no al cuerpo del documento.
   useEffect(() => {
@@ -40,11 +41,8 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
     wasRenaming.current = renaming;
   }, [renaming]);
 
-  // Al cancelar el diálogo, Radix intenta devolver el foco al ítem del menú, que ya no existe: va al botón de opciones.
-  useEffect(() => {
-    if (wasConfirming.current && !confirmDelete) triggerRef.current?.focus();
-    wasConfirming.current = confirmDelete;
-  }, [confirmDelete]);
+  // El diálogo se abre desde un menú: al cerrarlo el foco vuelve al botón de opciones, no al cuerpo.
+  useReturnFocus(confirmDelete, triggerRef);
 
   const fail = (title: string, retry?: () => void) =>
     toast({
@@ -230,6 +228,7 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
       <Dialog open={confirmDelete} onOpenChange={(o) => busy !== 'delete' && setConfirmDelete(o)}>
         <DialogContent
           size="sm"
+          initialFocus={cancelRef}
           title={`¿Borrar «${project.title}»?`}
           description={
             project.isPublic
@@ -238,7 +237,7 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
           }
           footer={
             <>
-              <Button disabled={busy === 'delete'} onClick={() => setConfirmDelete(false)}>
+              <Button ref={cancelRef} disabled={busy === 'delete'} onClick={() => setConfirmDelete(false)}>
                 Cancelar
               </Button>
               <Button variant="danger" loading={busy === 'delete'} onClick={() => void remove()}>

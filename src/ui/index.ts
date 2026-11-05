@@ -2,7 +2,14 @@
 export { Button, type ButtonProps } from './Button';
 export { IconButton, type IconButtonProps } from './IconButton';
 export { Tooltip, TooltipProvider, type TooltipProps } from './Tooltip';
-export { Dialog, DialogClose, DialogContent, DialogTrigger, type DialogContentProps } from './Dialog';
+export {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTrigger,
+  useReturnFocus,
+  type DialogContentProps,
+} from './Dialog';
 export {
   DropdownMenu,
   DropdownMenuContent,

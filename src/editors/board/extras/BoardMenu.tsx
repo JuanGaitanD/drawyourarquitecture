@@ -14,6 +14,7 @@ import {
   Button,
   Dialog,
   DialogContent,
+  useReturnFocus,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -70,7 +71,10 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
   // Al terminar una importación se reinicia el diálogo de Mermaid (borra el texto pegado).
   const [importKey, setImportKey] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   const empty = nodeCount === 0;
+  // Los diálogos se abren desde el menú: al cerrarlos el foco vuelve al botón «Diagrama».
+  useReturnFocus(dialog !== null || pending !== null, trigger);
 
   const viewport = useCallback(() => getViewport?.() ?? ORIGIN, [getViewport]);
   const getContent = useCallback(() => store.getState().toContent(viewport()), [store, viewport]);
@@ -171,7 +175,13 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="secondary" icon={<Workflow size={16} />} aria-label="Menú del diagrama">
+          <Button
+            ref={trigger}
+            size="sm"
+            variant="secondary"
+            icon={<Workflow size={16} />}
+            aria-label="Menú del diagrama"
+          >
             Diagrama
             <ChevronDown size={14} aria-hidden="true" />
           </Button>
