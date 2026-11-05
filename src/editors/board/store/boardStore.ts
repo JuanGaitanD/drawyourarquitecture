@@ -1,5 +1,5 @@
-import type { TemporalState } from 'zundo';
-import type { StoreApi } from 'zustand/vanilla';
+import { temporal, type TemporalState } from 'zundo';
+import { createStore, type StoreApi } from 'zustand/vanilla';
 import type {
   BoardContent,
   BoardEdge,
@@ -10,9 +10,10 @@ import type {
   ShapeKind,
   Viewport,
 } from '../model/board';
+import { descendantsOf, sortParentsFirst } from '../model/geometry';
 
-// STUB de T0 (firma final del contrato, plan · «Contratos»). Lo implementa el carril C1:
-// zustand vanilla + zundo con partialize (solo nodes y edges), límite 100, un gesto = un paso.
+// Store por instancia (invariante 6): zustand vanilla + zundo con partialize (solo nodes y edges, sin estado
+// de runtime), límite 100 y un gesto = un paso.
 
 export type Tool = 'select' | 'hand' | 'shape' | 'text' | 'sticky' | 'frame' | 'connector' | 'icon' | 'image';
 
@@ -24,6 +25,8 @@ export interface BoardState {
   pendingIcon: IconName;
   gridOn: boolean;
   snapOn: boolean;
+  /** Id del nodo o la arista cuyo texto se edita (superset del contrato: lo usan nodos y canvas). */
+  editingId: string | null;
 
   /** Reemplaza el contenido y limpia el historial. */
   load(content: BoardContent): void;
@@ -32,12 +35,15 @@ export interface BoardState {
   replaceAll(nodes: BoardNode[], edges: BoardEdge[]): void;
   addNodes(nodes: BoardNode[]): void;
   addEdges(edges: BoardEdge[]): void;
+  /** `patch.style` se mezcla con el estilo actual (puede ser parcial). */
   updateNodeData(ids: readonly string[], patch: Partial<BoardNodeData>): void;
   updateEdgeData(ids: readonly string[], patch: Partial<BoardEdgeData>): void;
   setNodes(fn: (nodes: BoardNode[]) => BoardNode[]): void;
   setEdges(fn: (edges: BoardEdge[]) => BoardEdge[]): void;
+  /** Borra lo seleccionado, los hijos de un frame y las aristas colgantes, en un solo paso. Lo bloqueado no. */
   removeSelected(): void;
   setTool(tool: Tool): void;
+  setEditingId(id: string | null): void;
   /** Guarda el snapshot y pausa el historial. */
   beginGesture(): void;
   /** Reanuda el historial y empuja el snapshot: un gesto = un paso. */
@@ -47,7 +53,141 @@ export interface BoardState {
 export type HistoryState = Pick<BoardState, 'nodes' | 'edges'>;
 export type BoardStore = StoreApi<BoardState> & { temporal: StoreApi<TemporalState<HistoryState>> };
 
+export const HISTORY_LIMIT = 100;
+
+/** Estado de runtime de React Flow: ni se persiste ni entra al historial. */
+type Runtime = { selected?: boolean; dragging?: boolean; measured?: unknown; resizing?: boolean };
+
+export function cleanNodes(nodes: readonly BoardNode[]): BoardNode[] {
+  return nodes.map((n) => {
+    const { selected: _s, dragging: _d, measured: _m, resizing: _r, ...rest } = n as BoardNode & Runtime;
+    return rest as BoardNode;
+  });
+}
+export function cleanEdges(edges: readonly BoardEdge[]): BoardEdge[] {
+  return edges.map((e) => {
+    const { selected: _s, ...rest } = e;
+    return rest as BoardEdge;
+  });
+}
+
+const partialize = (s: BoardState): HistoryState => ({
+  nodes: cleanNodes(s.nodes),
+  edges: cleanEdges(s.edges),
+});
+// ponytail: igualdad por JSON, O(n) por cambio; con tableros muy grandes pasar a comparar por referencia.
+const same = (a: HistoryState, b: HistoryState) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Tras deshacer/rehacer devuelve a los nodos su `selected` y `measured` (el historial no los guarda). */
+function restoreRuntime(prev: readonly BoardNode[], next: BoardNode[]): BoardNode[] {
+  const byId = new Map(prev.map((n) => [n.id, n]));
+  return next.map((n) => {
+    const p = byId.get(n.id) as (BoardNode & Runtime) | undefined;
+    if (!p) return n;
+    const out: BoardNode & Runtime = { ...n };
+    if (p.measured) out.measured = p.measured;
+    if (p.selected) out.selected = true;
+    return out;
+  });
+}
+
 /** Un store por instancia (invariante 6): dos pestañas o un embed no comparten estado. */
 export function createBoardStore(): BoardStore {
-  throw new Error('createBoardStore: not implemented (carril C1)');
+  let gesture: HistoryState | null = null;
+
+  const store: BoardStore = createStore<BoardState>()(
+    temporal(
+      (set, get) => ({
+        nodes: [],
+        edges: [],
+        tool: 'select',
+        pendingShape: 'rectangle',
+        pendingIcon: 'server',
+        gridOn: true,
+        snapOn: true,
+        editingId: null,
+
+        load(content) {
+          const t = store.temporal.getState();
+          t.pause();
+          gesture = null;
+          set({
+            nodes: sortParentsFirst(content.nodes),
+            edges: content.edges,
+            editingId: null,
+            tool: 'select',
+          });
+          t.clear();
+          t.resume();
+        },
+        toContent: (viewport) => {
+          const { nodes, edges } = get();
+          return { schemaVersion: 1, nodes: cleanNodes(nodes), edges: cleanEdges(edges), viewport };
+        },
+        replaceAll: (nodes, edges) => set({ nodes: sortParentsFirst(nodes), edges }),
+        addNodes: (nodes) => set((s) => ({ nodes: sortParentsFirst([...s.nodes, ...nodes]) })),
+        addEdges: (edges) => set((s) => ({ edges: [...s.edges, ...edges] })),
+        updateNodeData: (ids, patch) => {
+          const only = new Set(ids);
+          set((s) => ({
+            nodes: s.nodes.map((n) =>
+              only.has(n.id)
+                ? { ...n, data: { ...n.data, ...patch, style: { ...n.data.style, ...patch.style } } }
+                : n,
+            ),
+          }));
+        },
+        updateEdgeData: (ids, patch) => {
+          const only = new Set(ids);
+          set((s) => ({
+            edges: s.edges.map((e) => (only.has(e.id) ? { ...e, data: { ...e.data!, ...patch } } : e)),
+          }));
+        },
+        setNodes: (fn) => set((s) => ({ nodes: fn(s.nodes) })),
+        setEdges: (fn) => set((s) => ({ edges: fn(s.edges) })),
+        removeSelected: () =>
+          set((s) => {
+            const gone = new Set(s.nodes.filter((n) => n.selected && !n.data.locked).map((n) => n.id));
+            for (const id of [...gone]) descendantsOf(id, s.nodes).forEach((d) => gone.add(d));
+            const nodes = s.nodes.filter((n) => !gone.has(n.id));
+            const edges = s.edges.filter((e) => !e.selected && !gone.has(e.source) && !gone.has(e.target));
+            return nodes.length === s.nodes.length && edges.length === s.edges.length ? s : { nodes, edges };
+          }),
+        setTool: (tool) => set({ tool }),
+        setEditingId: (editingId) => set({ editingId }),
+
+        beginGesture() {
+          if (gesture) return;
+          gesture = partialize(get());
+          store.temporal.getState().pause();
+        },
+        endGesture() {
+          const t = store.temporal.getState();
+          t.resume();
+          const start = gesture;
+          gesture = null;
+          if (!start || same(start, partialize(get()))) return;
+          store.temporal.setState({
+            pastStates: [...t.pastStates, start].slice(-HISTORY_LIMIT),
+            futureStates: [],
+          });
+        },
+      }),
+      { partialize, equality: same, limit: HISTORY_LIMIT },
+    ),
+  );
+
+  // undo/redo devuelven a los nodos su selección y medida (partialize las descarta).
+  const t = store.temporal;
+  for (const k of ['undo', 'redo'] as const) {
+    const orig = t.getState()[k];
+    t.setState({
+      [k]: (steps?: number) => {
+        const prev = store.getState().nodes;
+        orig(steps);
+        store.setState((s) => ({ nodes: restoreRuntime(prev, s.nodes) }));
+      },
+    });
+  }
+  return store;
 }
