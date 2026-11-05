@@ -1,5 +1,5 @@
 import { Copy, Ellipsis, Globe, GlobeLock, Link as LinkIcon, Pencil, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type Ref } from 'react';
 import { Link } from 'wouter';
 import { MAX_TITLE_LENGTH, normalizeTitle, type Project } from '@/domain/project';
 import {
@@ -28,13 +28,23 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
   const [busy, setBusy] = useState<'duplicate' | 'delete' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const linkRef = useRef<HTMLAnchorElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wantsRename = useRef(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const wasRenaming = useRef(false);
+  const wasConfirming = useRef(false);
 
   // Al terminar de renombrar el input desaparece: el foco vuelve a la tarjeta, no al cuerpo del documento.
   useEffect(() => {
     if (wasRenaming.current && !renaming) linkRef.current?.focus();
     wasRenaming.current = renaming;
   }, [renaming]);
+
+  // Al cancelar el diálogo, Radix intenta devolver el foco al ítem del menú, que ya no existe: va al botón de opciones.
+  useEffect(() => {
+    if (wasConfirming.current && !confirmDelete) triggerRef.current?.focus();
+    wasConfirming.current = confirmDelete;
+  }, [confirmDelete]);
 
   const fail = (title: string, retry?: () => void) =>
     toast({
@@ -122,12 +132,6 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
       <time dateTime={new Date(project.updatedAt).toISOString()} title={formatAbsolute(project.updatedAt)}>
         {formatRelative(project.updatedAt, now)}
       </time>
-      {project.isPublic ? (
-        <span className={styles.public}>
-          <Globe size={12} aria-hidden="true" />
-          Público
-        </span>
-      ) : null}
     </span>
   );
 
@@ -141,7 +145,7 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
         <div className={styles.surface}>
           {preview}
           <span className={styles.body}>
-            <RenameInput title={project.title} onDone={(v) => void rename(v)} />
+            <RenameInput ref={inputRef} title={project.title} onDone={(v) => void rename(v)} />
             {meta}
           </span>
         </div>
@@ -155,6 +159,13 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
         </Link>
       )}
 
+      {project.isPublic && !busy ? (
+        <span className={styles.public}>
+          <Globe size={12} aria-hidden="true" />
+          Público
+        </span>
+      ) : null}
+
       {busy ? (
         <span className={styles.busyLabel} role="status">
           {busy === 'duplicate' ? 'Duplicando…' : 'Borrando…'}
@@ -165,6 +176,7 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <IconButton
+              ref={triggerRef}
               label={`Opciones de «${project.title}»`}
               icon={<Ellipsis size={18} />}
               variant="solid"
@@ -176,11 +188,20 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
           <DropdownMenuContent
             align="end"
             onCloseAutoFocus={(e) => {
-              // Si se eligió «Renombrar», el foco es del input, no del botón de opciones.
-              if (renaming) e.preventDefault();
+              // Si se eligió «Renombrar», Radix devolvería el foco al botón de opciones: es del input.
+              if (!wantsRename.current) return;
+              wantsRename.current = false;
+              e.preventDefault();
+              inputRef.current?.focus();
             }}
           >
-            <DropdownMenuItem icon={<Pencil size={16} />} onSelect={() => setRenaming(true)}>
+            <DropdownMenuItem
+              icon={<Pencil size={16} />}
+              onSelect={() => {
+                wantsRename.current = true;
+                setRenaming(true);
+              }}
+            >
               Renombrar
             </DropdownMenuItem>
             <DropdownMenuItem icon={<Copy size={16} />} onSelect={() => void duplicate()}>
@@ -232,7 +253,15 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
 }
 
 /** Renombrado en contexto: Enter y salir del campo confirman; Escape cancela; vacío no cambia nada. */
-function RenameInput({ title, onDone }: { title: string; onDone: (value: string) => void }) {
+function RenameInput({
+  title,
+  onDone,
+  ref,
+}: {
+  title: string;
+  onDone: (value: string) => void;
+  ref: Ref<HTMLInputElement>;
+}) {
   const done = useRef(false);
   const finish = (value: string) => {
     if (done.current) return;
@@ -246,11 +275,11 @@ function RenameInput({ title, onDone }: { title: string; onDone: (value: string)
   };
   return (
     <input
+      ref={ref}
       className={styles.rename}
       defaultValue={title}
       maxLength={MAX_TITLE_LENGTH}
       aria-label={`Nuevo nombre de «${title}»`}
-      autoFocus
       onFocus={(e) => e.currentTarget.select()}
       onKeyDown={onKeyDown}
       onBlur={(e) => finish(e.currentTarget.value)}
