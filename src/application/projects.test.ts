@@ -3,7 +3,7 @@ import type { Project } from '@/domain/project';
 import type { ContentRepo, FileStore, Identity, ProjectRepo } from './ports';
 import { createProjectUseCases } from './projects';
 
-function setup(opts: { signedIn?: boolean } = {}) {
+function setup(opts: { signedIn?: boolean; failUpload?: boolean } = {}) {
   const log: string[] = [];
   const projects = new Map<string, Project>();
   const contents = new Map<string, string>();
@@ -55,6 +55,7 @@ function setup(opts: { signedIn?: boolean } = {}) {
   };
   const fileStore: FileStore = {
     async upload(pid, fid, blob) {
+      if (opts.failUpload) throw new Error('sin red');
       if (!files.has(pid)) files.set(pid, new Map());
       files.get(pid)!.set(fid, blob);
       log.push(`upload:${pid}/${fid}`);
@@ -120,5 +121,18 @@ describe('casos de uso de proyectos', () => {
     const id = await uc.saveAsCopy('src', '{"local":1}');
     expect(projects.get(id)?.title).toBe('Mi board (copia)');
     expect(contents.get(id)).toBe('{"local":1}');
+  });
+
+  it('saveAsCopy copia los archivos del origen antes de escribir el contenido', async () => {
+    const { uc, log } = setup();
+    const id = await uc.saveAsCopy('src', '{"local":1}');
+    expect(log).toEqual([`create:${id}`, `upload:${id}/f1`, `upload:${id}/f2`, `content:${id}`]);
+  });
+
+  it('saveAsCopy borra la copia incompleta si falla al copiar un archivo', async () => {
+    const { uc, log, projects } = setup({ failUpload: true });
+    await expect(uc.saveAsCopy('src', '{"local":1}')).rejects.toThrow('sin red');
+    expect(log).toContain('remove:new1');
+    expect(projects.has('new1')).toBe(false);
   });
 });

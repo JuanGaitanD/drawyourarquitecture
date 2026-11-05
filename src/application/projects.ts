@@ -31,16 +31,14 @@ export function createProjectUseCases(deps: ProjectDeps) {
     );
   }
 
-  /** Copia los archivos y, al final, el contenido: una copia a medias nunca apunta a archivos que faltan. */
-  async function duplicateProject(id: string): Promise<string> {
-    const [src, rec] = await Promise.all([deps.projects.get(id), deps.content.load(id)]);
-    if (!src || !rec) throw new Error('El proyecto no existe.');
-    const newId = await createProject(src.type, `${src.title} (copia)`);
+  /** Copia los archivos de `srcId` y, al final, escribe `data`: una copia a medias nunca apunta a archivos que faltan. */
+  async function copyProject(srcId: string, type: ProjectType, title: string, data: string): Promise<string> {
+    const newId = await createProject(type, `${title} (copia)`);
     try {
-      for (const fileId of await deps.files.list(id)) {
-        await deps.files.upload(newId, fileId, await deps.files.load(id, fileId));
+      for (const fileId of await deps.files.list(srcId)) {
+        await deps.files.upload(newId, fileId, await deps.files.load(srcId, fileId));
       }
-      const res = await deps.content.save(newId, rec.data, 0);
+      const res = await deps.content.save(newId, data, 0);
       if ('conflict' in res) throw new Error('Conflicto al copiar el contenido.');
     } catch (e) {
       await deleteProject(newId).catch(() => undefined);
@@ -49,14 +47,17 @@ export function createProjectUseCases(deps: ProjectDeps) {
     return newId;
   }
 
-  /** «Guardar como copia» tras un conflicto de revisión: un proyecto nuevo con los datos locales. */
+  async function duplicateProject(id: string): Promise<string> {
+    const [src, rec] = await Promise.all([deps.projects.get(id), deps.content.load(id)]);
+    if (!src || !rec) throw new Error('El proyecto no existe.');
+    return copyProject(id, src.type, src.title, rec.data);
+  }
+
+  /** «Guardar como copia» tras un conflicto de revisión: un proyecto nuevo con los datos locales y los archivos del origen. */
   async function saveAsCopy(id: string, data: string): Promise<string> {
     const src = await deps.projects.get(id);
     if (!src) throw new Error('El proyecto no existe.');
-    const newId = await createProject(src.type, `${src.title} (copia)`);
-    const res = await deps.content.save(newId, data, 0);
-    if ('conflict' in res) throw new Error('Conflicto al guardar la copia.');
-    return newId;
+    return copyProject(id, src.type, src.title, data);
   }
 
   /** Archivos → content → proyecto. */
