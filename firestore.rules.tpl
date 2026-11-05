@@ -124,7 +124,8 @@ service cloud.firestore {
         // Hereda la lectura del padre.
         allow get: if canRead(projectDoc(id));
 
-        // Se crea en el mismo batch que el proyecto: getAfter ve el proyecto ya escrito.
+        // Se crea en el mismo batch que el proyecto: getAfter ve el proyecto ya escrito. Siempre con `data` (el
+        // contenido inicial es pequeño); el troceado solo aparece al guardar.
         allow create: if canCreate()
           && getAfter(/databases/$(database)/documents/projects/$(id)).data.ownerId == request.auth.uid
           && request.resource.data.keys().hasOnly(['data', 'schemaVersion', 'revision', 'updatedAt'])
@@ -135,16 +136,35 @@ service cloud.firestore {
           && request.resource.data.revision == 0
           && request.resource.data.updatedAt is number;
 
-        // Escriben el dueño y los editores. La revisión es monótona: cada guardado sube exactamente una.
+        // Escriben el dueño y los editores. La revisión es monótona: cada guardado sube exactamente una. El
+        // contenido cabe en `data` (≤ 900 000) o va troceado: sin `data` y con `chunks` entero de 2 a 12
+        // (8 MiB / 900 000 B); los trozos se escriben en la misma transacción.
         allow update: if canWrite(projectDoc(id))
-          && request.resource.data.keys().hasOnly(['data', 'schemaVersion', 'revision', 'updatedAt'])
-          && request.resource.data.data is string
-          && request.resource.data.data.size() <= 900000
           && request.resource.data.schemaVersion == 1
           && request.resource.data.revision == resource.data.revision + 1
-          && request.resource.data.updatedAt is number;
+          && request.resource.data.updatedAt is number
+          && ((request.resource.data.keys().hasOnly(['data', 'schemaVersion', 'revision', 'updatedAt'])
+              && request.resource.data.data is string
+              && request.resource.data.data.size() <= 900000)
+            || (request.resource.data.keys().hasOnly(['schemaVersion', 'revision', 'updatedAt', 'chunks'])
+              && request.resource.data.chunks is int
+              && request.resource.data.chunks >= 2
+              && request.resource.data.chunks <= 12));
 
         allow delete: if isProjectOwner(projectDoc(id));
+
+        // Trozos del contenido: la lectura es la del contenido; escriben el dueño y los editores; el que guarda
+        // un contenido más corto borra los sobrantes; el dueño los lista (para borrar el proyecto).
+        match /chunks/{i} {
+          allow get: if canRead(projectDoc(id));
+          allow list: if isProjectOwner(projectDoc(id));
+          allow create, update: if canWrite(projectDoc(id))
+            && i.matches('[0-9]|1[01]')
+            && request.resource.data.keys().hasOnly(['data'])
+            && request.resource.data.data is string
+            && request.resource.data.data.size() <= 900000;
+          allow delete: if canWrite(projectDoc(id));
+        }
       }
 
       // Imágenes en trozos (plan · invariante 3). La lectura hereda la del proyecto; escriben dueño y editores.
