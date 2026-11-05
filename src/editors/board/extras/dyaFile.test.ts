@@ -180,7 +180,8 @@ describe('.dya.json · topes de exportación e importación (D35)', () => {
     const blob = base64ToBlob(back.files['f7'].base64, back.files['f7'].mimeType);
     expect(blob.size).toBe(4 * MIB);
     expect(new Uint8Array(await blob.arrayBuffer())[0]).toBe(8);
-  });
+    // Mueve > 40 MiB por base64: con la suite en paralelo supera los 5 s por defecto.
+  }, 30_000);
 
   it('exportar lo que no se podría importar falla en vez de descargar el archivo', async () => {
     const { file } = await buildDya(withImages(), async () => png([1, 2, 3]));
