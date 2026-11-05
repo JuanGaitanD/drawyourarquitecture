@@ -9,6 +9,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == '__OWNER_UID__';
     }
 
+    // Quién puede crear proyectos: el dueño o quien él haya añadido en allowedUsers (fase 3).
+    // ponytail: P2 introduce canCreate() en su bloque de projects; al integrar, unificar ambas.
+    function isAllowedCreator() {
+      return isOwner()
+        || (request.auth != null && exists(/databases/$(database)/documents/allowedUsers/$(request.auth.uid)));
+    }
+
     function projectDoc(id) {
       return get(/databases/$(database)/documents/projects/$(id)).data;
     }
@@ -22,7 +29,7 @@ service cloud.firestore {
       allow get: if (isOwner() && resource.data.ownerId == request.auth.uid) || resource.data.isPublic == true;
       allow list: if isOwner() && resource.data.ownerId == request.auth.uid;
 
-      allow create: if isOwner()
+      allow create: if isAllowedCreator()
         && request.resource.data.keys().hasOnly(['ownerId', 'type', 'title', 'isPublic', 'createdAt', 'updatedAt'])
         && request.resource.data.keys().hasAll(['ownerId', 'type', 'title', 'isPublic', 'createdAt', 'updatedAt'])
         && request.resource.data.ownerId == request.auth.uid
@@ -47,7 +54,7 @@ service cloud.firestore {
         allow get: if (isOwner() && projectDoc(id).ownerId == request.auth.uid) || projectDoc(id).isPublic == true;
 
         // Se crea en el mismo batch que el proyecto: getAfter ve el proyecto ya escrito.
-        allow create: if isOwner()
+        allow create: if isAllowedCreator()
           && getAfter(/databases/$(database)/documents/projects/$(id)).data.ownerId == request.auth.uid
           && request.resource.data.keys().hasOnly(['data', 'schemaVersion', 'revision', 'updatedAt'])
           && request.resource.data.keys().hasAll(['data', 'schemaVersion', 'revision', 'updatedAt'])
@@ -106,6 +113,41 @@ service cloud.firestore {
           allow delete: if isOwner() && projectDoc(id).ownerId == request.auth.uid;
         }
       }
+    }
+
+    // Lista de permitidos (fase 3): solo el dueño la escribe; cada persona lee su propia entrada.
+    match /allowedUsers/{uid} {
+      allow get: if request.auth != null && (request.auth.uid == uid || isOwner());
+      allow list: if isOwner();
+      allow create, update: if isOwner()
+        && request.resource.data.keys().hasOnly(['email', 'addedAt'])
+        && request.resource.data.keys().hasAll(['email', 'addedAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 0
+        && request.resource.data.email.size() <= 254
+        && request.resource.data.addedAt is number;
+      allow delete: if isOwner();
+    }
+
+    // Tokens del servidor MCP (fase 3): el id es el sha256 (hex) del token; el valor nunca se guarda.
+    // El cliente crea y revoca los suyos; `lastUsedAt` y la lectura por hash los hace el servidor (Admin).
+    match /mcpTokens/{hash} {
+      allow get, list: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if request.auth != null
+        && hash.matches('[0-9a-f]{64}')
+        && request.resource.data.keys().hasOnly(['uid', 'label', 'createdAt', 'revoked'])
+        && request.resource.data.keys().hasAll(['uid', 'label', 'createdAt', 'revoked'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.label is string
+        && request.resource.data.label.size() > 0
+        && request.resource.data.label.size() <= 60
+        && request.resource.data.createdAt is number
+        && request.resource.data.revoked == false;
+      // Solo se puede pasar revoked a true (no se reactiva ni se borra).
+      allow update: if request.auth != null
+        && resource.data.uid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revoked'])
+        && request.resource.data.revoked == true;
     }
   }
 }
