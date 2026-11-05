@@ -36,7 +36,10 @@ export function useShortcuts(container: RefObject<HTMLElement | null>): void {
       if (e.defaultPrevented || isShortcutBlocked(e.target as HTMLElement | null, e)) return;
       const action = resolveShortcut(e);
       if (!action) return;
+      // Fase de captura + stopPropagation: así los atajos mandan sobre los de React Flow (flechas, Supr)
+      // aunque el foco esté en un nodo, y no se ejecutan dos veces.
       e.preventDefault();
+      e.stopPropagation();
       if (action.type === 'search') {
         window.dispatchEvent(new Event(SEARCH_EVENT));
         return;
@@ -50,11 +53,11 @@ export function useShortcuts(container: RefObject<HTMLElement | null>): void {
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key.startsWith('Arrow')) endNudge();
     };
-    el.addEventListener('keydown', onKeyDown);
+    el.addEventListener('keydown', onKeyDown, true);
     el.addEventListener('keyup', onKeyUp);
     el.addEventListener('focusout', endNudge);
     return () => {
-      el.removeEventListener('keydown', onKeyDown);
+      el.removeEventListener('keydown', onKeyDown, true);
       el.removeEventListener('keyup', onKeyUp);
       el.removeEventListener('focusout', endNudge);
       endNudge();
