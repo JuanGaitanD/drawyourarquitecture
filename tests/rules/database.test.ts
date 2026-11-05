@@ -5,7 +5,10 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import * as rtdb from 'firebase/database';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { AclSnapshot } from '../../src/application/ports';
+import { createPresenceAcl } from '../../src/infrastructure/firebase/presence';
 
 // Reglas de Realtime Database (presencia y espejo de acceso). Necesitan el emulador `database` (9000 por defecto,
 // o FIREBASE_DATABASE_EMULATOR_HOST). La API del test es la compat de firebase (`ref().set()`).
@@ -40,7 +43,7 @@ const node = (uid: string) => `presence/${OWNER}/${P}/${uid}`;
 const me = (over: Record<string, unknown> = {}) => ({ name: 'Ana', color: '#2563eb', at: 1, ...over });
 
 beforeEach(async () => {
-  await seed((r) => r.ref(acl('/members/' + EDITOR)).set({ role: 'editor' }));
+  await seed((r) => r.ref(acl()).set({ version: 1, members: { [EDITOR]: { role: 'editor' } } }));
 });
 
 describe('espejo de acceso', () => {
@@ -115,6 +118,90 @@ describe('espejo de acceso', () => {
         .ref(acl('/members/' + EDITOR))
         .remove(),
     );
+  });
+});
+
+const snap = (version: number, over: Partial<AclSnapshot> = {}): AclSnapshot => ({
+  version,
+  members: { [EDITOR]: 'editor' },
+  invites: {},
+  ...over,
+});
+/** El repo real del dueño (o de `uid`) sobre el emulador: el módulo modular opera sobre la base de pruebas. */
+const aclFor = (uid: string) => createPresenceAcl(async () => ({ rtdb, db: db(uid) as never }));
+const room = { ownerId: OWNER, projectId: P };
+const read = async () => {
+  let v: { version?: number; members?: Record<string, unknown> } = {};
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    v = (await ctx.database().ref(acl()).once('value')).val() ?? {};
+  });
+  return v;
+};
+
+describe('espejo de acceso · versión (D33)', () => {
+  it('el dueño no escribe una versión anterior a la publicada, ni sin versión', async () => {
+    const full = (version?: number) => ({
+      ...(version === undefined ? {} : { version }),
+      members: { [EDITOR]: { role: 'editor' } },
+    });
+    await assertFails(db(OWNER).ref(acl()).set(full(0)));
+    await assertFails(db(OWNER).ref(acl()).set(full()));
+    await assertSucceeds(db(OWNER).ref(acl()).set(full(1))); // la misma versión: idempotente
+    await assertSucceeds(db(OWNER).ref(acl()).set(full(2)));
+    await assertFails(db(OWNER).ref(acl()).set(full(1)));
+    await assertFails(db(OWNER).ref(acl()).set({ version: -1, members: {} }));
+    await assertFails(
+      db(OWNER)
+        .ref(acl())
+        .set({ ...full(3), intruso: 1 }),
+    );
+    await assertSucceeds(db(OWNER).ref(acl()).remove()); // el proyecto se elimina
+  });
+
+  it('un snapshot antiguo se rechaza: no restaura a un miembro expulsado', async () => {
+    const quitado = 'expulsado-uid';
+    // Pestaña 1 lee Firestore (v1, con el miembro); pestaña 2 lo quita y publica v2; después publica la pestaña 1.
+    const viejo = snap(1, { members: { [EDITOR]: 'editor', [quitado]: 'viewer' } });
+    expect(await aclFor(OWNER).publish(room, snap(2))).toBe('ok');
+    expect(await aclFor(OWNER).publish(room, viejo)).toBe('stale');
+    expect((await read()).members).toEqual({ [EDITOR]: { role: 'editor' } });
+    await assertFails(db(quitado).ref(`presence/${OWNER}/${P}`).once('value'));
+    // Y las reglas lo impiden aunque el cliente no comprobara nada (escritura directa con la versión vieja).
+    await assertFails(
+      db(OWNER)
+        .ref(acl())
+        .set({ version: 1, members: { [quitado]: { role: 'viewer' } } }),
+    );
+  });
+
+  it('publicar reemplaza la lista completa: los sobrantes de miembros e invitaciones desaparecen', async () => {
+    await seed((r) =>
+      r.ref(acl()).set({
+        version: 3,
+        members: { [EDITOR]: { role: 'editor' }, sobrante: { role: 'viewer' } },
+        invites: { [TOKEN]: { role: 'viewer', expiresAt: Date.now() + 60_000 } },
+      }),
+    );
+    expect(await aclFor(OWNER).publish(room, snap(4))).toBe('ok');
+    expect(await read()).toEqual({ version: 4, members: { [EDITOR]: { role: 'editor' } } });
+    await assertFails(db('sobrante').ref(`presence/${OWNER}/${P}`).once('value'));
+    // Sin la invitación publicada, nadie se registra con ese token.
+    await assertFails(
+      db(OTHER)
+        .ref(acl('/members/' + OTHER))
+        .set({ role: 'viewer', token: TOKEN }),
+    );
+  });
+
+  it('solo el dueño lee el espejo; un miembro o un extraño no', async () => {
+    await assertSucceeds(db(OWNER).ref(acl()).once('value'));
+    await assertFails(db(EDITOR).ref(acl()).once('value'));
+    await assertFails(db(OTHER).ref(acl('/members')).once('value'));
+  });
+
+  it('solo el dueño publica, y un fallo se propaga (no se silencia)', async () => {
+    await expect(aclFor(OTHER).publish(room, snap(9))).rejects.toThrow();
+    expect((await read()).version).toBe(1);
   });
 });
 
