@@ -117,7 +117,8 @@ function EditorMenu({ title, stageRef }: { title: string; stageRef: RefObject<HT
       title={title}
       viewportRef={stageRef}
       getViewport={rf.getViewport}
-      onContentChanged={() => void rf.fitView({ padding: 0.15, duration: 0 })}
+      // Tras un pintado más: React Flow mide los nodos nuevos de forma asíncrona y fitView necesita sus tamaños.
+      onContentChanged={() => setTimeout(() => void rf.fitView({ padding: 0.3, duration: 0 }), 80)}
     />
   );
 }
