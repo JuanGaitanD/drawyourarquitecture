@@ -55,7 +55,7 @@ tests/rules/  tests/e2e/
 
 ## Convenciones
 
-- **Persistencia como string versionado** (`projects/{id}/content/main = { data, schemaVersion: 1, revision, updatedAt }`); `encode`/`decode` de `domain/codec.ts`, tope de 900 000 bytes.
+- **Persistencia como string versionado** (`projects/{id}/content/main = { data, schemaVersion: 1, revision, updatedAt }`); `encode`/`decode` de `domain/codec.ts`, tope práctico de 8 MiB (`MAX_CONTENT_BYTES`). Hasta 900 000 bytes (`DOC_CONTENT_BYTES`) va en `data`; por encima la meta lleva `chunks: n` (sin `data`) y los trozos van en `content/main/chunks/{i}` (`application/contentChunks.ts`: `splitContent`/`joinContent`). Leer y escribir contenido, también desde el servidor MCP, pasa solo por `contentRepo` (`infrastructure/firebase/content.ts`): la escritura va en una transacción con la revisión esperada y la lectura de un contenido troceado también.
 - **Nodos y aristas del board se crean solo con `makeNode` y `makeEdge`**; `node.type === node.data.kind` y `edge.type === 'labeled'`. Todo contenido externo pasa por `validateBoardContent`.
 - **Coordenadas**: los hijos (`parentId`) guardan posición relativa al padre y van después de él en el array; las operaciones geométricas usan `toAbsolute`/`toRelative`.
 - **Guardado**: solo con `useAutosave` + `saveQueue`; el editor se monta con `key={id}` y no guarda hasta hidratar. Si el editor retiene cambios en un throttle, pasa un `drain` a `useAutosave` (`drainAndFlush`): se vacía antes de guardar en `pagehide`, al ocultar y al desmontar.
