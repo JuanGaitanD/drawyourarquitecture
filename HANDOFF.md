@@ -4,13 +4,13 @@
 
 La app se llama **DYA (Draw your Architecture)** en la interfaz, el título, Open Graph y el servidor MCP (`name: 'dya'`). El repositorio, el paquete y los proyectos de Firebase (`drawyourarchitecture`) y Vercel conservan su nombre.
 
-**Producción (2026-11-06 05:20 UTC):** https://drawyourarchitecture.vercel.app lleva `chore/deuda-tecnica` en `d28d9b8` (deuda técnica + carpetas). Reglas de Firestore (con `folders`, `folderId` y el límite de 40) y de Realtime Database desplegadas. Al desplegar las de Firestore salió unos 2 minutos un `firestore.rules` viejo renderizado para el emulador (dueño `owner-test`): antes de `firebase deploy`, comprobar que `grep -c "== 'owner-test'" firestore.rules` da 0 (y `pnpm rules:render`, sin `-s`: pnpm 12 no lo acepta). El renombre a DYA (`c35e5e8`) y los embeds con el dominio anterior (`8817daf`) aún no están desplegados.
+**Producción (2026-11-06):** https://dya.juandgaitan.com (y también https://drawyourarchitecture.vercel.app) lleva `chore/deuda-tecnica` en `220cb5a`: deuda técnica, carpetas y el renombre a DYA. Reglas de Firestore (con `folders`, `folderId` y el límite de 40) y de Realtime Database desplegadas. Al desplegar las de Firestore salió unos 2 minutos un `firestore.rules` viejo renderizado para el emulador (dueño `owner-test`): antes de `firebase deploy`, comprobar que `grep -c "== 'owner-test'" firestore.rules` da 0 (y `pnpm rules:render`, sin `-s`: pnpm 12 no lo acepta).
 
-**Dominio `dya.juandgaitan.com` (preparado, falta el DNS):**
-- Vercel: añadido al proyecto `drawyourarchitecture` (`juangaitands-projects`). Falta el registro en Namecheap (DNS de `juandgaitan.com`): **CNAME `dya` → `a1282deca4080446.vercel-dns-016.com.`** Después, `vercel domains verify dya.juandgaitan.com`; Vercel emite el certificado solo.
-- Firebase Auth: `dya.juandgaitan.com` ya está en los dominios autorizados (el inicio con Google funciona en él). `authDomain` sigue siendo `drawyourarchitecture.firebaseapp.com`: no hay que tocar OAuth.
+**Dominio `dya.juandgaitan.com`:**
+- DNS en Namecheap: CNAME `dya` → `a1282deca4080446.vercel-dns-016.com.`; Vercel lo da por verificado y sirve el certificado.
+- Firebase Auth: el dominio está en los autorizados. `authDomain` sigue siendo `drawyourarchitecture.firebaseapp.com`: no hubo que tocar OAuth.
 - `drawyourarchitecture.vercel.app` sigue sirviendo. Las notas guardan el enlace absoluto de los diagramas incrustados: `parseBoardLink` acepta los dos orígenes de producción (`SITE_ORIGINS` en `editors/note/embed.ts`). Enlaces públicos, invitaciones y embeds nuevos usan el origen de la pestaña.
-- Open Graph apunta a `https://dya.juandgaitan.com/og-image.png` y `docs/mcp.md` al endpoint nuevo: hasta que el DNS esté, la vista previa de enlaces no tendrá imagen y el MCP se conecta con la URL de `vercel.app`.
+- Open Graph y `docs/mcp.md` apuntan al dominio nuevo.
 
 **Carpetas** (en producción): carpetas anidadas para organizar los proyectos propios en el panel. Modelo y decisiones en `AGENTS.md` (Convenciones › Carpetas) y `docs/architecture.md` (Carpetas): chips con menú (Renombrar, Mover a…, Borrar si está vacía), `/folder/:id` con migas y botones compactos «Nota» y «Diagrama», arrastrar y soltar, «Volver al panel» a la carpeta de origen y nombre de 1 a 40 caracteres con elipsis.
 - **Límites conocidos**: borrar «solo si está vacía» y la ausencia de ciclos los cuida el cliente (las reglas no cuentan documentos de otra colección ni recorren el árbol): dos pestañas a la vez pueden dejar un proyecto o una carpeta apuntando a una carpeta borrada (cuelgan de Inicio) o formar un ciclo (la ruta lo tolera y la carpeta queda fuera del árbol). Las carpetas no se comparten: un proyecto compartido con otra persona va a su Inicio de sección «Compartidos conmigo».
@@ -27,7 +27,7 @@ Gates de la rama (`d28d9b8`): lint, typecheck, build, `pnpm test` con emulador 5
 
 **Qué hace la app hoy:** notas (Excalidraw) y diagramas (React Flow) con autosave, imágenes en Firestore sin Storage, enlaces públicos de solo lectura, invitaciones (editor/viewer) con sincronización en vivo y fusión por elemento, **presencia y cursores en Realtime Database**, contenido de hasta **8 MiB** (troceado a partir de 900 000 bytes), lista de permitidos por **correo verificado**, y un **servidor MCP** (`/api/mcp`, `docs/mcp.md`) que opera como la propia persona bajo las reglas de Firestore.
 
-Siguen: el CNAME de `dya` y un redeploy con el renombre; D30.
+Sigue: D30.
 
 ## Colaboración en tiempo real
 
