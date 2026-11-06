@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { MAX_FOLDER_NAME_LENGTH, normalizeFolderName } from '@/domain/folder';
 import { Button, Dialog, DialogContent } from '@/ui';
 import styles from './FolderView.module.css';
@@ -23,6 +23,7 @@ export function NameDialog({
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hintId = useId();
   const name = normalizeFolderName(value);
   // Cada vez que se abre (también desde el padre) el formulario vuelve a su valor inicial.
   const [wasOpen, setWasOpen] = useState(open);
@@ -64,10 +65,15 @@ export function NameDialog({
             value={value}
             maxLength={MAX_FOLDER_NAME_LENGTH}
             aria-label="Nombre de la carpeta"
+            aria-describedby={hintId}
             placeholder="Nombre de la carpeta"
             onChange={(e) => setValue(e.target.value)}
             onFocus={(e) => e.currentTarget.select()}
           />
+          <p id={hintId} className={`${styles.hint} ${value.length >= MAX_FOLDER_NAME_LENGTH ? styles.hintFull : ''}`}>
+            {value.length >= MAX_FOLDER_NAME_LENGTH ? `Máximo ${MAX_FOLDER_NAME_LENGTH} caracteres. ` : ''}
+            {value.length}/{MAX_FOLDER_NAME_LENGTH}
+          </p>
           {failed ? (
             <p role="alert" className={styles.formError}>
               No se pudo guardar. Comprueba tu conexión e inténtalo de nuevo.

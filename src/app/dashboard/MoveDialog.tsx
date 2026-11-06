@@ -119,7 +119,9 @@ function Option({
       <span aria-hidden="true" className={styles.optionIcon}>
         {icon}
       </span>
-      <span className={styles.optionName}>{children}</span>
+      <span className={styles.optionName} title={children}>
+        {children}
+      </span>
     </label>
   );
 }

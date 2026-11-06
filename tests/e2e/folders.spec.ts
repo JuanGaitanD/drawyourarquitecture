@@ -122,6 +122,44 @@ test.describe('carpetas', () => {
     await expect(page).toHaveURL(/\/$/);
   });
 
+  test('un nombre de 40 caracteres sin espacios no rompe el ancho: chip, migas y título', async ({ page }) => {
+    const name = `Wx${Date.now().toString(36)}`.padEnd(40, 'W');
+    const hija = `Hx${Date.now().toString(36)}`.padEnd(40, 'H');
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await signIn(page);
+
+    // El campo no pasa de 40 y lo avisa.
+    await page.getByRole('button', { name: 'Nueva carpeta' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Nueva carpeta' });
+    const field = dialog.getByRole('textbox', { name: 'Nombre de la carpeta' });
+    await field.pressSequentially('x'.repeat(45));
+    await expect(field).toHaveValue('x'.repeat(40));
+    await expect(dialog.getByText('Máximo 40 caracteres. 40/40')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancelar' }).click();
+
+    const noHScroll = () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+    await createFolder(page, name);
+    const li = chip(page, name).locator('xpath=..');
+    const box = await li.boundingBox();
+    expect(box!.width).toBeLessThanOrEqual(16 * 16 + 1); // 16rem
+    await expect(chip(page, name)).toHaveAttribute('title', name);
+    expect(await noHScroll()).toBe(true);
+
+    // Dentro: migas y título con nombre largo, y los botones de crear dentro de la pantalla.
+    await openFolder(page, name);
+    await createFolder(page, hija);
+    await openFolder(page, hija);
+    const crumbs = page.getByRole('navigation', { name: 'Ruta de la carpeta' });
+    for (const c of await crumbs.locator('a, [aria-current]').all()) {
+      expect((await c.boundingBox())!.width).toBeLessThanOrEqual(14 * 16 + 1); // 14rem
+    }
+    await expect(crumbs.getByRole('link', { name })).toHaveAttribute('title', name);
+    const nueva = await page.getByRole('button', { name: `Nueva nota en ${hija}` }).boundingBox();
+    expect(nueva!.x + nueva!.width).toBeLessThanOrEqual(1024);
+    expect(await noHScroll()).toBe(true);
+  });
+
   test('una carpeta con contenido no se borra y una vacía sí', async ({ page }) => {
     const padre = uniq('Trabajo');
     const hija = uniq('Cliente');

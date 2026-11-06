@@ -166,7 +166,7 @@ export function ProjectCard({
       {folderLabel ? (
         <span className={folderStyles.where} title={`Carpeta: ${folderLabel}`}>
           <FolderIcon size={12} aria-hidden="true" />
-          {folderLabel}
+          <span className={folderStyles.whereName}>{folderLabel}</span>
         </span>
       ) : null}
     </span>

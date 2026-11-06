@@ -17,11 +17,11 @@ export function Breadcrumbs({ trail }: { trail: readonly Folder[] }) {
           <li key={f.id} className={styles.crumbItem}>
             <ChevronRight size={14} aria-hidden="true" />
             {i === trail.length - 1 ? (
-              <span aria-current="page" className={styles.crumbCurrent}>
+              <span aria-current="page" className={styles.crumbCurrent} title={f.name}>
                 {f.name}
               </span>
             ) : (
-              <Link href={`/folder/${f.id}`} className={styles.crumbLink}>
+              <Link href={`/folder/${f.id}`} className={styles.crumbLink} title={f.name}>
                 {f.name}
               </Link>
             )}

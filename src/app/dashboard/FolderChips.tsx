@@ -99,7 +99,7 @@ function FolderChip({ folder, folders, count }: { folder: Folder; folders: reado
 
   return (
     <li className={styles.chip}>
-      <Link href={`/folder/${folder.id}`} className={styles.chipLink}>
+      <Link href={`/folder/${folder.id}`} className={styles.chipLink} title={folder.name}>
         <FolderIcon size={16} aria-hidden="true" />
         <span className={styles.chipName}>{folder.name}</span>
         <span className={styles.count} aria-hidden="true">
