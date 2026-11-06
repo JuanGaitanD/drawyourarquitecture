@@ -122,6 +122,49 @@ test.describe('carpetas', () => {
     await expect(page).toHaveURL(/\/$/);
   });
 
+  test('arrastrar: una nota a una carpeta, de vuelta a Inicio por las migas y una carpeta dentro de otra', async ({
+    page,
+  }) => {
+    const dir = uniq('Destino');
+    const otra = uniq('Otra');
+    const nota = uniq('Arrastrable');
+    await signIn(page);
+    await createFolder(page, dir);
+    await createFolder(page, otra);
+
+    // Una nota con título propio, creada en Inicio.
+    await newProject(page, 'Nota');
+    const title = page.getByRole('textbox', { name: 'Título de la nota' });
+    await title.fill(nota);
+    await title.press('Enter');
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await loaded(page);
+    const card = page.getByRole('link', { name: new RegExp(nota) });
+    await expect(card).toBeVisible();
+
+    // La tarjeta se suelta sobre el chip: desaparece de Inicio, avisa y aparece dentro.
+    await card.dragTo(chip(page, dir));
+    await expect(page.getByText(`Movido a ${dir}`)).toBeVisible();
+    await expect(card).toHaveCount(0);
+    await openFolder(page, dir);
+    await expect(page.getByRole('link', { name: new RegExp(nota) })).toBeVisible();
+
+    // Desde dentro, sobre la miga «Inicio» vuelve a la raíz.
+    await page
+      .getByRole('link', { name: new RegExp(nota) })
+      .dragTo(page.getByRole('navigation', { name: 'Ruta de la carpeta' }).getByRole('link', { name: 'Inicio' }));
+    await expect(page.getByRole('link', { name: new RegExp(nota) })).toHaveCount(0);
+    await page.getByRole('navigation', { name: 'Ruta de la carpeta' }).getByRole('link', { name: 'Inicio' }).click();
+    await loaded(page);
+    await expect(page.getByRole('link', { name: new RegExp(nota) })).toBeVisible();
+
+    // Una carpeta sobre otra la mete dentro; ya no está en Inicio.
+    await chip(page, otra).dragTo(chip(page, dir));
+    await expect(chip(page, otra)).toHaveCount(0);
+    await openFolder(page, dir);
+    await expect(chip(page, otra)).toBeVisible();
+  });
+
   test('un nombre de 40 caracteres sin espacios no rompe el ancho: chip, migas y título', async ({ page }) => {
     const name = `Wx${Date.now().toString(36)}`.padEnd(40, 'W');
     const hija = `Hx${Date.now().toString(36)}`.padEnd(40, 'H');

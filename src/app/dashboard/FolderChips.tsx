@@ -17,6 +17,7 @@ import { createFolder, deleteFolder, moveFolder, renameFolder } from '../service
 import styles from './FolderView.module.css';
 import { MoveDialog } from './MoveDialog';
 import { NameDialog } from './NameDialog';
+import { useDragSource, useDropTarget } from './useDragDrop';
 
 const plural = (n: number) => `${n} ${n === 1 ? 'elemento' : 'elementos'}`;
 
@@ -82,6 +83,8 @@ function FolderChip({ folder, folders, count }: { folder: Folder; folders: reado
   const triggerRef = useRef<HTMLButtonElement>(null);
   // Los diálogos se abren desde un menú: al cerrarlos el foco vuelve al botón de opciones, no al cuerpo.
   useReturnFocus(dialog !== null, triggerRef);
+  const drag = useDragSource({ kind: 'folder', id: folder.id, from: folder.parentId });
+  const drop = useDropTarget(folder.id, folder.name, folders);
 
   async function remove() {
     try {
@@ -98,8 +101,8 @@ function FolderChip({ folder, folders, count }: { folder: Folder; folders: reado
   }
 
   return (
-    <li className={styles.chip}>
-      <Link href={`/folder/${folder.id}`} className={styles.chipLink} title={folder.name}>
+    <li className={styles.chip} {...drop}>
+      <Link href={`/folder/${folder.id}`} className={styles.chipLink} title={folder.name} {...drag.props}>
         <FolderIcon size={16} aria-hidden="true" />
         <span className={styles.chipName}>{folder.name}</span>
         <span className={styles.count} aria-hidden="true">

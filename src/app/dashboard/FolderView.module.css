@@ -38,6 +38,19 @@
   border-color: var(--border-strong);
   background: var(--surface-hover);
 }
+/* Arrastrar y soltar: el destino que vale se resalta con los tokens de selección; el origen se atenúa. */
+.chip[data-drop='over'] {
+  border-color: var(--selection);
+  background: var(--selection-soft);
+  box-shadow: 0 0 0 2px var(--selection);
+}
+.chipLink[draggable='true'] {
+  cursor: grab;
+}
+.chipLink[data-dragging] {
+  opacity: 0.5;
+  cursor: grabbing;
+}
 .chip:has(.chipLink:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
@@ -121,6 +134,13 @@
   align-items: center;
   gap: var(--space-1);
   min-width: 0;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--duration-fast) var(--ease);
+}
+.crumbItem[data-drop='over'] {
+  background: var(--selection-soft);
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
 }
 .crumbLink,
 .crumbCurrent {

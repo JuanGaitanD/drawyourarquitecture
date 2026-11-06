@@ -32,6 +32,7 @@ import { MoveDialog } from './MoveDialog';
 import styles from './ProjectCard.module.css';
 import { formatAbsolute, formatRelative } from './relativeTime';
 import { TYPE_META } from './typeMeta';
+import { useDragSource } from './useDragDrop';
 
 const publicLink = (p: Project) => `${window.location.origin}/view/${p.type}/${p.id}`;
 
@@ -50,6 +51,7 @@ export function ProjectCard({
 }) {
   const { toast } = useToast();
   const [here] = useLocation();
+  const drag = useDragSource({ kind: 'project', id: project.id, from: project.folderId ?? null });
   const { label, Icon } = TYPE_META[project.type];
   const [renaming, setRenaming] = useState(false);
   const [busy, setBusy] = useState<'duplicate' | 'delete' | null>(null);
@@ -192,6 +194,7 @@ export function ProjectCard({
           href={`/${project.type}/${project.id}`}
           state={{ from: here }}
           className={styles.surface}
+          {...(folders ? drag.props : {})}
         >
           {preview}
           <span className={styles.body}>

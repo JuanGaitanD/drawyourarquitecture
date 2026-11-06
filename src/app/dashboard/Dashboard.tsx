@@ -76,7 +76,7 @@ export function Dashboard({ folderId = null }: { folderId?: string | null }) {
           </header>
         ) : trail && current ? (
           <header className={styles.hero}>
-            <Breadcrumbs trail={trail} />
+            <Breadcrumbs trail={trail} folders={folders} />
             <div className={folderStyles.folderHead}>
               <h1 className={`${styles.title} ${folderStyles.folderTitle}`} title={current.name}>
                 {current.name}

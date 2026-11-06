@@ -31,6 +31,13 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+.surface[draggable='true'] {
+  cursor: grab;
+}
+.surface[data-dragging] {
+  opacity: 0.5;
+  cursor: grabbing;
+}
 .surface:focus-visible {
   outline: none;
 }
