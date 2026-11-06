@@ -8,14 +8,17 @@ export const MAX_EMBED_DEPTH = 1;
 
 const BOARD_PATH = /^\/embed\/board\/([\w-]+)\/?$/;
 
+/** Orígenes de producción: una nota guarda el enlace absoluto, así que los de un dominio anterior siguen siendo nuestros. */
+const SITE_ORIGINS = ['https://dya.juandgaitan.com', 'https://drawyourarchitecture.vercel.app'];
+
 export const boardEmbedLink = (boardId: string, origin: string): string => `${origin}/embed/board/${boardId}`;
 
-/** Id del board si el enlace es del mismo origen y de la forma `/embed/board/<id>`; si no, `null`. */
+/** Id del board si el enlace es del mismo origen (o de producción) y de la forma `/embed/board/<id>`; si no, `null`. */
 export function parseBoardLink(link: string | null | undefined, origin: string): string | null {
   try {
     const u = new URL(link ?? '');
     const m = BOARD_PATH.exec(u.pathname);
-    return u.origin === origin && !u.search && !u.hash && m ? m[1] : null;
+    return (u.origin === origin || SITE_ORIGINS.includes(u.origin)) && !u.search && !u.hash && m ? m[1] : null;
   } catch {
     return null; // enlace vacío o relativo
   }
