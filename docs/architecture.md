@@ -7,7 +7,7 @@ flowchart LR
   subgraph Browser["Navegador · SPA Vite 8 + React 19"]
     direction TB
     subgraph app["app/ — rutas, shell, hooks, composición"]
-      Router["wouter: / · /note/:id · /board/:id · /view/:type/:id · /embed/board/:id"]
+      Router["wouter: / · /folder/:id · /note/:id · /board/:id · /view/:type/:id · /embed/board/:id"]
       Dash["dashboard/"]
       Viewer["viewer/"]
     end
@@ -17,10 +17,10 @@ flowchart LR
     end
     UI["ui/ — tokens, tema, primitivas Radix"]
     subgraph application["application/ — puertos y casos de uso"]
-      Ports["ProjectRepo · ContentRepo · FileStore · Identity · presencia"]
+      Ports["ProjectRepo · FolderRepo · ContentRepo · FileStore · Identity · presencia"]
       Save["saveQueue (debounce · revisión · borrador)"]
     end
-    Domain["domain/ — Project · codec"]
+    Domain["domain/ — Project · Folder · codec"]
     Infra["infrastructure/firebase/ — único que importa el SDK<br/>(Firestore · Auth · Realtime Database)"]
     app --> editors
     app --> application
@@ -34,7 +34,7 @@ flowchart LR
   end
   subgraph Firebase["Firebase (plan gratuito)"]
     FAuth["Auth · Google"]
-    FS[("Firestore<br/>projects/{id}<br/>content/main {data | chunks, schemaVersion, revision}<br/>content/main/chunks/{i} {data}<br/>files/{fileId} + chunks/{i} {data: Bytes}<br/>allowedEmails · mcpTokens · rateLimits · mcpAudit")]
+    FS[("Firestore<br/>projects/{id} (folderId?)<br/>folders/{id} {ownerId, name, parentId}<br/>content/main {data | chunks, schemaVersion, revision}<br/>content/main/chunks/{i} {data}<br/>files/{fileId} + chunks/{i} {data: Bytes}<br/>allowedEmails · mcpTokens · rateLimits · mcpAudit")]
     RTDB[("Realtime Database<br/>presence/{owner}/{pid}/{uid}/{sessionId}<br/>acl/{owner}/{pid} (members, invites, aclRev)")]
   end
   Vercel["Vercel Pro · estáticos + rewrites"] --> Browser
@@ -64,6 +64,9 @@ Viven en Realtime Database, no en Firestore (cada cursor sería una escritura de
 
 ## Servidor MCP
 `api/mcp` (empaquetado en `api/_mcp.mjs`) identifica la petición con Admin (token → uid, `createCustomToken`) y opera con el SDK web de Firebase autenticado como esa persona (`src/server/userDb.ts`): las reglas de Firestore aplican tal cual y no hay autorización duplicada. Límite de tasa (`rateLimits`) y auditoría (`mcpAudit`) los escribe la propia persona bajo reglas. Detalle en `docs/mcp.md`.
+
+## Carpetas
+Cada persona organiza **sus** proyectos en carpetas anidadas (`folders/{id} = { ownerId, name, parentId: string | null, createdAt, updatedAt }`; el nombre va recortado, 1–80 caracteres). El proyecto lleva `folderId?: string | null` (ausente o `null` = Inicio) y solo su dueño lo cambia; los compartidos conmigo siguen en su sección, sin carpetas. Las reglas dejan leer, crear (con `canCreate()`), renombrar, mover y borrar una carpeta solo a su `ownerId` (inmutable, campos en lista cerrada); la lista se pide con `where('ownerId', '==', uid)` y se ordena en cliente, así que no hay índice compuesto. Que una carpeta esté vacía antes de borrarla y que no haya ciclos al moverla lo cuida el cliente (`canMove` en `domain/folder.ts`; las reglas no cuentan documentos de otra colección). Una carpeta cuyo padre ya no existe, o un proyecto cuya carpeta ya no existe, cuelgan de Inicio: nunca quedan invisibles. La ruta `/folder/:id` reutiliza el panel (`Dashboard` con `folderId`): migas, chips de subcarpetas, sus proyectos y, en lugar de las tarjetas «Nuevo», dos botones compactos «Nota» y «Diagrama» que crean con su `folderId`. El servidor MCP no cambia: sus proyectos nuevos van a Inicio.
 
 ## Seguridad
 - Crean proyectos el `OWNER_UID` y las cuentas con correo verificado en `allowedEmails/{correo}` (`canCreate()`); escriben el dueño y los editores invitados (`members`). Lo público se lee con `get`, nunca con `list`. `ownerId` y `type` son inmutables, los campos van en lista cerrada y la `revision` es monótona.

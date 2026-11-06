@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { Router } from 'wouter';
 import { memoryLocation } from 'wouter/memory-location';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Folder } from '@/domain/folder';
 import type { Project } from '@/domain/project';
 import { ToastProvider, TooltipProvider } from '@/ui';
 import { ProjectCard } from './ProjectCard';
@@ -12,11 +13,12 @@ import { ProjectCard } from './ProjectCard';
 // memoria de los puertos. No se simula el SDK de Firebase.
 const svc = vi.hoisted(() => ({
   update: vi.fn<(id: string, patch: Record<string, unknown>) => Promise<void>>(),
+  setFolder: vi.fn<(id: string, folderId: string | null) => Promise<void>>(),
   duplicateProject: vi.fn<(id: string) => Promise<string>>(),
   deleteProject: vi.fn<(id: string) => Promise<void>>(),
 }));
 vi.mock('../services', () => ({
-  projectRepo: { update: svc.update },
+  projectRepo: { update: svc.update, setFolder: svc.setFolder },
   duplicateProject: svc.duplicateProject,
   deleteProject: svc.deleteProject,
 }));
@@ -32,14 +34,14 @@ const project = (over: Partial<Project> = {}): Project => ({
   ...over,
 });
 
-function setup(p: Project = project()) {
+function setup(p: Project = project(), folders?: Folder[]) {
   const user = userEvent.setup();
   render(
     <Router hook={memoryLocation({ path: '/' }).hook}>
       <TooltipProvider>
         <ToastProvider>
           <ul>
-            <ProjectCard project={p} now={2} />
+            <ProjectCard project={p} now={2} folders={folders} />
           </ul>
         </ToastProvider>
       </TooltipProvider>
@@ -51,6 +53,7 @@ function setup(p: Project = project()) {
 
 beforeEach(() => {
   svc.update.mockReset().mockResolvedValue();
+  svc.setFolder.mockReset().mockResolvedValue();
   svc.duplicateProject.mockReset().mockResolvedValue('copia');
   svc.deleteProject.mockReset().mockResolvedValue();
 });
@@ -155,5 +158,64 @@ describe('ProjectCard · menú de la tarjeta', () => {
     await openMenu();
     await user.click(await screen.findByRole('menuitem', { name: 'Borrar…' }));
     expect(await screen.findByText(/su enlace público dejará de funcionar/)).toBeTruthy();
+  });
+});
+
+describe('ProjectCard · mover a carpeta', () => {
+  const fo = (id: string, name: string, parentId: string | null = null): Folder => ({
+    id,
+    ownerId: 'u1',
+    name,
+    parentId,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+  const folders = [fo('uni', 'Universidad'), fo('s5', 'Semestre 5', 'uni')];
+
+  it('sin carpetas disponibles el menú no ofrece «Mover a carpeta…»', async () => {
+    const { openMenu } = setup();
+    await openMenu();
+    await screen.findByRole('menuitem', { name: 'Renombrar' });
+    expect(screen.queryByRole('menuitem', { name: 'Mover a carpeta…' })).toBeNull();
+  });
+
+  it('el diálogo muestra el árbol con «Sin carpeta (Inicio)» y Mover llama a setFolder', async () => {
+    const { user, openMenu } = setup(project(), folders);
+    await openMenu();
+    await user.click(await screen.findByRole('menuitem', { name: 'Mover a carpeta…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Mover «Mi diagrama»' });
+    expect((screen.getByRole('radio', { name: 'Sin carpeta (Inicio)' }) as HTMLInputElement).checked).toBe(true);
+    await user.click(screen.getByRole('radio', { name: 'Semestre 5' }));
+    await user.click(screen.getByRole('button', { name: 'Mover' }));
+
+    expect(svc.setFolder).toHaveBeenCalledExactlyOnceWith('p1', 's5');
+    expect(await screen.findByText('Proyecto movido')).toBeTruthy();
+    await waitFor(() => expect(dialog.isConnected).toBe(false));
+  });
+
+  it('desde una carpeta, «Sin carpeta (Inicio)» lo devuelve a la raíz con null', async () => {
+    const { user, openMenu } = setup(project({ folderId: 'uni' }), folders);
+    await openMenu();
+    await user.click(await screen.findByRole('menuitem', { name: 'Mover a carpeta…' }));
+    await screen.findByRole('dialog');
+    expect((screen.getByRole('radio', { name: 'Universidad' }) as HTMLInputElement).checked).toBe(true);
+    await user.click(screen.getByRole('radio', { name: 'Sin carpeta (Inicio)' }));
+    await user.click(screen.getByRole('button', { name: 'Mover' }));
+    expect(svc.setFolder).toHaveBeenCalledExactlyOnceWith('p1', null);
+  });
+
+  it('muestra su carpeta en pequeño cuando recibe la etiqueta', () => {
+    render(
+      <Router hook={memoryLocation({ path: '/' }).hook}>
+        <TooltipProvider>
+          <ToastProvider>
+            <ul>
+              <ProjectCard project={project()} now={2} folderLabel="Universidad / Semestre 5" />
+            </ul>
+          </ToastProvider>
+        </TooltipProvider>
+      </Router>,
+    );
+    expect(screen.getByText('Universidad / Semestre 5')).toBeTruthy();
   });
 });

@@ -6,6 +6,8 @@ export interface Project {
   type: ProjectType;
   title: string;
   isPublic: boolean;
+  /** Carpeta del dueño en la que está; ausente o `null` = Inicio. Solo el dueño la cambia. */
+  folderId?: string | null;
   /** Miembros además del dueño (rol por uid). Sin él, el proyecto es solo del dueño. */
   members?: Record<string, Role>;
   createdAt: number;

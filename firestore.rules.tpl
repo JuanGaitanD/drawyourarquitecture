@@ -54,6 +54,14 @@ service cloud.firestore {
       return t is string && t.size() > 0 && t.size() <= 120;
     }
 
+    // Carpeta del dueño en la que está un proyecto (o padre de una carpeta): null (Inicio) o un id.
+    function validFolderRef(f) {
+      return f == null || (f is string && f.size() > 0 && f.size() <= 64);
+    }
+    function validFolderName(n) {
+      return n is string && n.size() > 0 && n.size() <= 80;
+    }
+
     // Una invitación vale si es de este proyecto y no ha caducado (`expiresAt` en ms, comparado con la hora del
     // servidor).
     function validInvite(token, pid) {
@@ -87,21 +95,23 @@ service cloud.firestore {
       allow list: if isProjectOwner(resource.data) || memberRole(resource.data) in ['editor', 'viewer'];
 
       allow create: if canCreate()
-        && request.resource.data.keys().hasOnly(['ownerId', 'type', 'title', 'isPublic', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['ownerId', 'type', 'title', 'isPublic', 'folderId', 'createdAt', 'updatedAt'])
         && request.resource.data.keys().hasAll(['ownerId', 'type', 'title', 'isPublic', 'createdAt', 'updatedAt'])
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.type in ['note', 'board']
         && validTitle(request.resource.data.title)
+        && validFolderRef(request.resource.data.get('folderId', null))
         && request.resource.data.isPublic is bool
         && request.resource.data.createdAt is number
         && request.resource.data.updatedAt is number;
 
-      // Dueño: title, isPublic, members y updatedAt (ownerId y type son inmutables). Editor: solo updatedAt (lo sube
+      // Dueño: title, isPublic, folderId, members y updatedAt (ownerId y type son inmutables). Editor: solo updatedAt (lo sube
       // cada guardado de contenido). Invitado: solo añadirse a `members` con una invitación válida.
       allow update: if (isProjectOwner(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'isPublic', 'updatedAt', 'members', 'aclRev'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'isPublic', 'folderId', 'updatedAt', 'members', 'aclRev'])
           && aclRevOk(resource.data, request.resource.data)
           && validTitle(request.resource.data.title)
+          && validFolderRef(request.resource.data.get('folderId', null))
           && request.resource.data.isPublic is bool
           && request.resource.data.updatedAt is number
           && validMembers(request.resource.data.get('members', {})))
@@ -241,6 +251,27 @@ service cloud.firestore {
               && !exists(/databases/$(database)/documents/projects/$(id)/files/$(fileId)));
         }
       }
+    }
+
+    // Carpetas para organizar los proyectos propios: solo su dueño las lee, crea, renombra, mueve y borra. `ownerId` es
+    // inmutable. Que una carpeta esté vacía antes de borrarla, y que no haya ciclos, lo cuida el cliente: las reglas
+    // no pueden contar documentos de otra colección.
+    match /folders/{id} {
+      allow get, list: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow create: if canCreate()
+        && request.resource.data.keys().hasOnly(['ownerId', 'name', 'parentId', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['ownerId', 'name', 'parentId', 'createdAt', 'updatedAt'])
+        && request.resource.data.ownerId == request.auth.uid
+        && validFolderName(request.resource.data.name)
+        && validFolderRef(request.resource.data.parentId)
+        && request.resource.data.createdAt is number
+        && request.resource.data.updatedAt is number;
+      allow update: if request.auth != null && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'parentId', 'updatedAt'])
+        && validFolderName(request.resource.data.name)
+        && validFolderRef(request.resource.data.parentId)
+        && request.resource.data.updatedAt is number;
+      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
     }
 
     // Lista de permitidos por correo: solo el dueño la escribe y la lista; cada persona (con correo verificado)
