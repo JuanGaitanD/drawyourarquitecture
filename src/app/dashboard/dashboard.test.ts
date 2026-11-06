@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Project } from '@/domain/project';
-import { countByTab, filterProjects } from './filter';
+import type { Folder } from '@/domain/folder';
+import { countByTab, filterProjects, itemCounts, projectsIn } from './filter';
 import { formatRelative } from './relativeTime';
 
 const p = (id: string, type: Project['type'], title: string): Project => ({
@@ -34,6 +35,22 @@ describe('filterProjects', () => {
   });
   it('cuenta por tab', () => {
     expect(countByTab(list)).toEqual({ all: 3, note: 1, board: 2 });
+  });
+});
+
+describe('carpetas en el panel', () => {
+  const fo = (id: string, parentId: string | null): Folder => ({ id, ownerId: 'u', name: id, parentId, createdAt: 0, updatedAt: 0 });
+  const folders = [fo('uni', null), fo('s5', 'uni')];
+  const inFolder = (id: string, folderId: string | null | undefined): Project => ({ ...p(id, 'note', id), folderId });
+  const all = [inFolder('a', undefined), inFolder('b', null), inFolder('c', 'uni'), inFolder('d', 's5'), inFolder('e', 'borrada')];
+
+  it('Inicio solo trae los proyectos sin carpeta (o con una carpeta que ya no existe)', () => {
+    expect(projectsIn(all, null, folders).map((x) => x.id)).toEqual(['a', 'b', 'e']);
+    expect(projectsIn(all, 'uni', folders).map((x) => x.id)).toEqual(['c']);
+    expect(projectsIn(all, 's5', folders).map((x) => x.id)).toEqual(['d']);
+  });
+  it('cuenta proyectos y subcarpetas directos de cada carpeta', () => {
+    expect(itemCounts(all, folders)).toEqual(new Map([['uni', 2], ['s5', 1]]));
   });
 });
 

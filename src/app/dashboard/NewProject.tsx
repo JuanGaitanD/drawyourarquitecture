@@ -1,35 +1,14 @@
 import { LoaderCircle, Plus } from 'lucide-react';
-import { useState } from 'react';
-import { useLocation } from 'wouter';
 import type { ProjectType } from '@/domain/project';
-import { useToast } from '@/ui';
-import { createProject } from '../services';
 import styles from './NewProject.module.css';
 import { TYPE_META } from './typeMeta';
+import { useCreateProject } from './useCreateProject';
 
 const TYPES: ProjectType[] = ['note', 'board'];
 
 /** «Nuevo»: una tarjeta por tipo de proyecto. Crea, y entra al editor. */
 export function NewProject() {
-  const [, navigate] = useLocation();
-  const { toast } = useToast();
-  const [creating, setCreating] = useState<ProjectType | null>(null);
-
-  async function create(type: ProjectType) {
-    setCreating(type);
-    try {
-      const id = await createProject(type);
-      navigate(`/${type}/${id}`);
-    } catch {
-      toast({
-        kind: 'error',
-        title: 'No se pudo crear',
-        description: 'Comprueba tu conexión e inténtalo de nuevo.',
-        action: { label: 'Reintentar', onClick: () => void create(type) },
-      });
-      setCreating(null);
-    }
-  }
+  const { creating, create } = useCreateProject();
 
   return (
     <section aria-labelledby="nuevo-titulo">

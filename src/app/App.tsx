@@ -18,7 +18,7 @@ const BoardEditor = lazy(() =>
 );
 
 /**
- * Cinco rutas + 404. Los editores se montan con `key={id}` (invariante 2) y exigen sesión;
+ * Seis rutas + 404. Los editores se montan con `key={id}` (invariante 2) y exigen sesión;
  * `/view/…` y `/embed/…` son públicas (las reglas deciden si hay acceso).
  */
 export function App() {
@@ -30,6 +30,13 @@ export function App() {
             <AuthGate>
               <Dashboard />
             </AuthGate>
+          </Route>
+          <Route path="/folder/:id">
+            {({ id }) => (
+              <AuthGate>
+                <Dashboard folderId={id} />
+              </AuthGate>
+            )}
           </Route>
           <Route path="/settings">
             <AuthGate>

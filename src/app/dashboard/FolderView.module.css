@@ -1,0 +1,230 @@
+/* Carpetas del panel: chips, migas, botones «Nuevo» compactos y diálogos de nombre y de mover. */
+
+.heading {
+  margin-bottom: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.note {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Chips en fila que se ajustan en varias líneas. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease),
+    background-color var(--duration-fast) var(--ease);
+}
+.chip:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+.chip:has(.chipLink:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.chipLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: var(--control-h-md);
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-radius: var(--radius-full);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.chipLink:focus-visible {
+  outline: none;
+}
+.chipLink svg {
+  flex: none;
+  color: var(--accent);
+}
+.chipName {
+  overflow: hidden;
+  max-width: 16rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.count {
+  min-width: 1.25rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.25rem;
+  text-align: center;
+}
+.chip > button {
+  margin-inline-end: var(--space-1);
+}
+
+.newChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h-md);
+  padding: 0 var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: pointer;
+}
+.newChip:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Migas y cabecera de una carpeta. */
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+  list-style: none;
+}
+.crumbItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.crumbLink {
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.crumbLink:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.crumbCurrent {
+  color: var(--text);
+  font-weight: 600;
+}
+.folderHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+}
+.newButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.folders {
+  display: flex;
+  flex-direction: column;
+}
+.folders .heading {
+  margin-bottom: var(--space-3);
+}
+.where {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Diálogo de nombre. */
+.nameForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.nameInput {
+  width: 100%;
+  min-height: var(--control-h-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+}
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.formError {
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+
+/* Diálogo de mover: árbol indentado de radios nativos. */
+.tree {
+  display: flex;
+  flex-direction: column;
+  max-height: 18rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  padding-inline-end: var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.option:hover {
+  background: var(--surface-hover);
+}
+.option:has(.radio:checked) {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.option:has(.radio:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.radio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.optionIcon {
+  display: grid;
+  flex: none;
+  place-items: center;
+}
+.optionName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
