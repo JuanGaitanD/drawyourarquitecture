@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { signIn, uniq } from './helpers';
+import { newProject, signIn, uniq } from './helpers';
 
 // Carpetas del panel contra los emuladores (Auth 9099, Firestore 8080). Nombres únicos por ejecución: la cuenta de
 // prueba y su lista de proyectos se comparten entre escenarios.
@@ -49,12 +49,12 @@ test.describe('carpetas', () => {
     await expect(page.getByRole('button', { name: `Nuevo diagrama en ${sem}` })).toBeVisible();
     await page.getByRole('button', { name: `Nueva nota en ${sem}` }).click();
     await expect(page).toHaveURL(/\/note\/[^/]+$/);
+    // «Volver» devuelve a la carpeta desde la que se abrió, no a Inicio.
     await page.getByRole('button', { name: 'Volver al panel' }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/folder\/[^/]+$/);
+    await expect(page.getByRole('heading', { level: 1, name: sem })).toBeVisible();
 
-    // Vuelve a la carpeta por los chips y le pone nombre a la nota desde el menú de su tarjeta.
-    await openFolder(page, uni);
-    await openFolder(page, sem);
+    // Le pone nombre a la nota desde el menú de su tarjeta.
     await page.getByRole('button', { name: 'Opciones de «Sin título»' }).click();
     await page.getByRole('menuitem', { name: 'Renombrar' }).click();
     const rename = page.getByRole('textbox', { name: 'Nuevo nombre de «Sin título»' });
@@ -89,6 +89,123 @@ test.describe('carpetas', () => {
     const root = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: new RegExp(nota) }) });
     await expect(root).toBeVisible();
     await expect(root.getByText(sem)).toHaveCount(0);
+  });
+
+  test('«Volver al panel» vuelve al origen: carpeta, Inicio o la carpeta del proyecto en un enlace directo', async ({
+    page,
+  }) => {
+    const dir = uniq('Origen');
+    await signIn(page);
+    await createFolder(page, dir);
+    await openFolder(page, dir);
+    await page.getByRole('button', { name: `Nuevo diagrama en ${dir}` }).click();
+    await expect(page).toHaveURL(/\/board\/[^/]+$/);
+    const boardUrl = page.url();
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: dir })).toBeVisible();
+
+    // Abrir la tarjeta del diagrama desde la carpeta y volver: otra vez la carpeta.
+    await page.getByRole('link', { name: /Sin título/ }).click();
+    await expect(page).toHaveURL(boardUrl);
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: dir })).toBeVisible();
+
+    // Enlace directo (sin estado): vuelve a la carpeta del proyecto.
+    await page.goto(boardUrl);
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: dir })).toBeVisible();
+
+    // Una nota creada desde Inicio vuelve a Inicio.
+    await page.getByRole('navigation', { name: 'Ruta de la carpeta' }).getByRole('link', { name: 'Inicio' }).click();
+    await newProject(page, 'Nota');
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await expect(page).toHaveURL(/\/$/);
+  });
+
+  test('arrastrar: una nota a una carpeta, de vuelta a Inicio por las migas y una carpeta dentro de otra', async ({
+    page,
+  }) => {
+    const dir = uniq('Destino');
+    const otra = uniq('Otra');
+    const nota = uniq('Arrastrable');
+    // La cuenta de prueba acumula chips y tarjetas: pantalla alta para que no haya scroll y todo quede a la vista.
+    await page.setViewportSize({ width: 1280, height: 2400 });
+    await signIn(page);
+    await createFolder(page, dir);
+    await createFolder(page, otra);
+
+    // Una nota con título propio, creada en Inicio.
+    await newProject(page, 'Nota');
+    const title = page.getByRole('textbox', { name: 'Título de la nota' });
+    await title.fill(nota);
+    await title.press('Enter');
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await loaded(page);
+    // Esperar a las carpetas: si llegan después, empujan la tarjeta y el arrastre agarraría otra cosa.
+    await expect(chip(page, dir)).toBeVisible();
+    await expect(chip(page, otra)).toBeVisible();
+    const card = page.getByRole('link', { name: new RegExp(nota) });
+    await expect(card).toBeVisible();
+
+    // La tarjeta se suelta sobre el chip: desaparece de Inicio, avisa y aparece dentro.
+    await card.dragTo(chip(page, dir));
+    await expect(page.getByText(`Movido a ${dir}`)).toBeVisible();
+    await expect(card).toHaveCount(0);
+    await openFolder(page, dir);
+    await expect(page.getByRole('link', { name: new RegExp(nota) })).toBeVisible();
+
+    // Desde dentro, sobre la miga «Inicio» vuelve a la raíz.
+    await page
+      .getByRole('link', { name: new RegExp(nota) })
+      .dragTo(page.getByRole('navigation', { name: 'Ruta de la carpeta' }).getByRole('link', { name: 'Inicio' }));
+    await expect(page.getByRole('link', { name: new RegExp(nota) })).toHaveCount(0);
+    await page.getByRole('navigation', { name: 'Ruta de la carpeta' }).getByRole('link', { name: 'Inicio' }).click();
+    await loaded(page);
+    await expect(page.getByRole('link', { name: new RegExp(nota) })).toBeVisible();
+
+    // Una carpeta sobre otra la mete dentro; ya no está en Inicio.
+    await chip(page, otra).dragTo(chip(page, dir));
+    await expect(chip(page, otra)).toHaveCount(0);
+    await openFolder(page, dir);
+    await expect(chip(page, otra)).toBeVisible();
+  });
+
+  test('un nombre de 40 caracteres sin espacios no rompe el ancho: chip, migas y título', async ({ page }) => {
+    const name = `Wx${Date.now().toString(36)}`.padEnd(40, 'W');
+    const hija = `Hx${Date.now().toString(36)}`.padEnd(40, 'H');
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await signIn(page);
+
+    // El campo no pasa de 40 y lo avisa.
+    await page.getByRole('button', { name: 'Nueva carpeta' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Nueva carpeta' });
+    const field = dialog.getByRole('textbox', { name: 'Nombre de la carpeta' });
+    await field.pressSequentially('x'.repeat(45));
+    await expect(field).toHaveValue('x'.repeat(40));
+    await expect(dialog.getByText('Máximo 40 caracteres. 40/40')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancelar' }).click();
+
+    const noHScroll = () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+    await createFolder(page, name);
+    const li = chip(page, name).locator('xpath=..');
+    const box = await li.boundingBox();
+    expect(box!.width).toBeLessThanOrEqual(16 * 16 + 1); // 16rem
+    await expect(chip(page, name)).toHaveAttribute('title', name);
+    expect(await noHScroll()).toBe(true);
+
+    // Dentro: migas y título con nombre largo, y los botones de crear dentro de la pantalla.
+    await openFolder(page, name);
+    await createFolder(page, hija);
+    await openFolder(page, hija);
+    const crumbs = page.getByRole('navigation', { name: 'Ruta de la carpeta' });
+    for (const c of await crumbs.locator('a, [aria-current]').all()) {
+      expect((await c.boundingBox())!.width).toBeLessThanOrEqual(14 * 16 + 1); // 14rem
+    }
+    await expect(crumbs.getByRole('link', { name })).toHaveAttribute('title', name);
+    const nueva = await page.getByRole('button', { name: `Nueva nota en ${hija}` }).boundingBox();
+    expect(nueva!.x + nueva!.width).toBeLessThanOrEqual(1024);
+    expect(await noHScroll()).toBe(true);
   });
 
   test('una carpeta con contenido no se borra y una vacía sí', async ({ page }) => {

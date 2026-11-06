@@ -7,6 +7,7 @@ import { fileStore, identity, projectRepo } from '@/app/services';
 import { indexedDbPendingStore } from '@/application/pendingFiles';
 import type { StoredDraft } from '@/application/saveQueue';
 import { MAX_CONTENT_LABEL, decode } from '@/domain/codec';
+import { backPath } from '@/domain/folder';
 import { roleOf } from '@/domain/project';
 import { Button, useToast } from '@/ui';
 import { BoardViewer } from './BoardViewer';
@@ -40,6 +41,8 @@ import { Shortcuts } from './ui/useShortcuts';
 
 export interface BoardEditorProps {
   id: string;
+  /** Lugar del panel desde el que se abrió (`/` o `/folder/:id`); sin él, la carpeta del proyecto. */
+  origin?: unknown;
 }
 
 /** Parsea y valida lo guardado (invariante 8). Si no vale, el editor no se monta y nunca guarda. */
@@ -52,9 +55,12 @@ function parse(data: string): { ok: true; value: BoardContent } | { ok: false; e
 }
 
 /** Editor del diagrama: carga → validación → hidratación → autosave. La ruta lo monta con `key={id}`. */
-export function BoardEditor({ id }: BoardEditorProps) {
+export function BoardEditor({ id, origin }: BoardEditorProps) {
   const p = useProject(id);
   const [, navigate] = useLocation();
+  const role = p.project ? roleOf(p.project, identity.current()?.uid) : null;
+  // La carpeta del proyecto solo es del panel de quien lo es dueño; un invitado vuelve a Inicio.
+  const backTo = backPath(origin, role === 'owner' ? p.project?.folderId : null);
   const parsed = useMemo(() => (p.content ? parse(p.content.data) : null), [p.content]);
 
   if (p.status === 'loading') return <Full title="Cargando diagrama…" busy />;
@@ -63,7 +69,7 @@ export function BoardEditor({ id }: BoardEditorProps) {
       <Full
         title="No existe o es privado"
         text="Comprueba el enlace o vuelve al panel."
-        actions={<Button onClick={() => navigate('/')}>Volver al panel</Button>}
+        actions={<Button onClick={() => navigate(backTo)}>Volver al panel</Button>}
       />
     );
   if (p.status === 'error' || !p.project || !p.content || !parsed)
@@ -76,7 +82,7 @@ export function BoardEditor({ id }: BoardEditorProps) {
             <Button variant="primary" onClick={p.reload}>
               Reintentar
             </Button>
-            <Button onClick={() => navigate('/')}>Volver al panel</Button>
+            <Button onClick={() => navigate(backTo)}>Volver al panel</Button>
           </>
         }
       />
@@ -86,17 +92,17 @@ export function BoardEditor({ id }: BoardEditorProps) {
       <Full
         title="El diagrama no se puede abrir"
         text={`Su contenido no es válido (${parsed.error}). No se modificará.`}
-        actions={<Button onClick={() => navigate('/')}>Volver al panel</Button>}
+        actions={<Button onClick={() => navigate(backTo)}>Volver al panel</Button>}
       />
     );
 
-  const role = roleOf(p.project, identity.current()?.uid);
-  if (role === 'viewer') return <ReadOnly id={id} title={p.project.title} initial={parsed.value} />;
+  if (role === 'viewer') return <ReadOnly id={id} title={p.project.title} initial={parsed.value} backTo={backTo} />;
 
   return (
     <Loaded
       id={id}
       isOwner={role === 'owner'}
+      backTo={backTo}
       title={p.project.title}
       isPublic={p.project.isPublic}
       revision={p.content.revision}
@@ -143,7 +149,17 @@ function EditorMenu({ title, stageRef }: { title: string; stageRef: RefObject<HT
 }
 
 /** Rol viewer: el diagrama en solo lectura, que se actualiza cuando otra persona guarda. */
-function ReadOnly({ id, title, initial }: { id: string; title: string; initial: BoardContent }) {
+function ReadOnly({
+  id,
+  title,
+  initial,
+  backTo,
+}: {
+  id: string;
+  title: string;
+  initial: BoardContent;
+  backTo: string;
+}) {
   const [content, setContent] = useState(initial);
   useRemoteContent(id, (r) => {
     const next = parse(r.data);
@@ -153,7 +169,7 @@ function ReadOnly({ id, title, initial }: { id: string; title: string; initial: 
   return (
     <div className={styles.root}>
       <header className={styles.header}>
-        <BackButton />
+        <BackButton to={backTo} />
         <TitleField value={title} onCommit={() => undefined} readOnly />
         <span className={styles.status}>Solo lectura</span>
         <div className={styles.spacer} />
@@ -177,11 +193,13 @@ interface LoadedProps {
   initial: BoardContent;
   draft: StoredDraft | null;
   discardDraft: () => void;
+  backTo: string;
 }
 
 function Loaded({
   id,
   isOwner,
+  backTo,
   title: initialTitle,
   isPublic: initialPublic,
   revision,
@@ -322,7 +340,7 @@ function Loaded({
           <div className={styles.root} ref={rootRef} tabIndex={-1}>
             <Shortcuts container={rootRef} />
             <header className={styles.header}>
-              <BackButton />
+              <BackButton to={backTo} />
               <TitleField value={title} onCommit={rename} readOnly={!isOwner} />
               <div className={styles.spacer} />
               <PresenceAvatars projectId={id} />

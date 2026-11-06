@@ -59,7 +59,7 @@ service cloud.firestore {
       return f == null || (f is string && f.size() > 0 && f.size() <= 64);
     }
     function validFolderName(n) {
-      return n is string && n.size() > 0 && n.size() <= 80;
+      return n is string && n.size() > 0 && n.size() <= 40;
     }
 
     // Una invitación vale si es de este proyecto y no ha caducado (`expiresAt` en ms, comparado con la hora del
@@ -268,7 +268,8 @@ service cloud.firestore {
         && request.resource.data.updatedAt is number;
       allow update: if request.auth != null && resource.data.ownerId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'parentId', 'updatedAt'])
-        && validFolderName(request.resource.data.name)
+        // Un nombre anterior al límite de 40 se conserva al mover; si cambia, tiene que valer.
+        && (request.resource.data.name == resource.data.name || validFolderName(request.resource.data.name))
         && validFolderRef(request.resource.data.parentId)
         && request.resource.data.updatedAt is number;
       allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;

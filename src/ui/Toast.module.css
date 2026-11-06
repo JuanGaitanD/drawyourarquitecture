@@ -54,6 +54,7 @@
 .title {
   font-size: var(--text-sm);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .description {
   margin-top: 2px;

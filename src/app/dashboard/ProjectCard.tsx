@@ -10,7 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type Ref } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import type { Folder } from '@/domain/folder';
 import { MAX_TITLE_LENGTH, normalizeTitle, type Project } from '@/domain/project';
 import {
@@ -32,6 +32,7 @@ import { MoveDialog } from './MoveDialog';
 import styles from './ProjectCard.module.css';
 import { formatAbsolute, formatRelative } from './relativeTime';
 import { TYPE_META } from './typeMeta';
+import { useDragSource } from './useDragDrop';
 
 const publicLink = (p: Project) => `${window.location.origin}/view/${p.type}/${p.id}`;
 
@@ -49,6 +50,8 @@ export function ProjectCard({
   folderLabel?: string;
 }) {
   const { toast } = useToast();
+  const [here] = useLocation();
+  const drag = useDragSource({ kind: 'project', id: project.id, from: project.folderId ?? null });
   const { label, Icon } = TYPE_META[project.type];
   const [renaming, setRenaming] = useState(false);
   const [busy, setBusy] = useState<'duplicate' | 'delete' | null>(null);
@@ -165,7 +168,7 @@ export function ProjectCard({
       {folderLabel ? (
         <span className={folderStyles.where} title={`Carpeta: ${folderLabel}`}>
           <FolderIcon size={12} aria-hidden="true" />
-          {folderLabel}
+          <span className={folderStyles.whereName}>{folderLabel}</span>
         </span>
       ) : null}
     </span>
@@ -186,7 +189,13 @@ export function ProjectCard({
           </span>
         </div>
       ) : (
-        <Link ref={linkRef} href={`/${project.type}/${project.id}`} className={styles.surface}>
+        <Link
+          ref={linkRef}
+          href={`/${project.type}/${project.id}`}
+          state={{ from: here }}
+          className={styles.surface}
+          {...(folders ? drag.props : {})}
+        >
           {preview}
           <span className={styles.body}>
             <span className={styles.title}>{project.title}</span>

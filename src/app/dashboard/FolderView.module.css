@@ -25,7 +25,7 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  max-width: 100%;
+  max-width: min(100%, 16rem);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
   background: var(--surface);
@@ -37,6 +37,19 @@
 .chip:hover {
   border-color: var(--border-strong);
   background: var(--surface-hover);
+}
+/* Arrastrar y soltar: el destino que vale se resalta con los tokens de selección; el origen se atenúa. */
+.chip[data-drop='over'] {
+  border-color: var(--selection);
+  background: var(--selection-soft);
+  box-shadow: 0 0 0 2px var(--selection);
+}
+.chipLink[draggable='true'] {
+  cursor: grab;
+}
+.chipLink[data-dragging] {
+  opacity: 0.5;
+  cursor: grabbing;
 }
 .chip:has(.chipLink:focus-visible) {
   outline: 2px solid var(--focus-ring);
@@ -57,13 +70,16 @@
 .chipLink:focus-visible {
   outline: none;
 }
-.chipLink svg {
+.chipLink svg,
+.chip > button {
   flex: none;
+}
+.chipLink svg {
   color: var(--accent);
 }
 .chipName {
   overflow: hidden;
-  max-width: 16rem;
+  min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -117,6 +133,21 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  min-width: 0;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--duration-fast) var(--ease);
+}
+.crumbItem[data-drop='over'] {
+  background: var(--selection-soft);
+  outline: 2px solid var(--selection);
+  outline-offset: 2px;
+}
+.crumbLink,
+.crumbCurrent {
+  overflow: hidden;
+  max-width: 14rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .crumbLink {
   border-radius: var(--radius-sm);
@@ -138,7 +169,18 @@
   justify-content: space-between;
   gap: var(--space-3) var(--space-4);
 }
+.folderTitle {
+  display: -webkit-box;
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
 .newButtons {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
@@ -155,6 +197,16 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+}
+.where svg {
+  flex: none;
+}
+.whereName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Diálogo de nombre. */
@@ -176,6 +228,15 @@
   display: flex;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+.hint {
+  margin-top: calc(-1 * var(--space-2));
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: end;
+}
+.hintFull {
+  color: var(--warning);
 }
 .formError {
   color: var(--danger);
@@ -225,6 +286,7 @@
 }
 .optionName {
   overflow: hidden;
+  min-width: 0;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

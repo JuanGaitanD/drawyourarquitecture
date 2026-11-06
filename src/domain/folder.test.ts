@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canMove,
+  backPath,
   childrenOf,
   descendants,
   flatTree,
@@ -22,8 +23,9 @@ const f = (id: string, parentId: string | null, name = id): Folder => ({
 const folders = [f('uni', null, 'Universidad'), f('s5', 'uni', 'Semestre 5'), f('redes', 's5', 'Redes'), f('s6', 'uni', 'Semestre 6'), f('job', null, 'Trabajo')];
 
 describe('normalizeFolderName', () => {
-  it('recorta, limita a 80 y devuelve vacío si no queda nada', () => {
+  it('recorta, limita a 40 y devuelve vacío si no queda nada', () => {
     expect(normalizeFolderName('  Universidad ')).toBe('Universidad');
+    expect(MAX_FOLDER_NAME_LENGTH).toBe(40);
     expect(normalizeFolderName('x'.repeat(200))).toHaveLength(MAX_FOLDER_NAME_LENGTH);
     expect(normalizeFolderName('   ')).toBe('');
     expect(normalizeFolderName(undefined)).toBe('');
@@ -80,5 +82,22 @@ describe('flatTree', () => {
       '1:s6',
     ]);
     expect(flatTree(folders, new Set(['s5', 'redes'])).map((x) => x.folder.id)).toEqual(['job', 'uni', 's6']);
+  });
+});
+
+describe('backPath', () => {
+  it('vuelve al origen del panel (Inicio o carpeta) si viene en el estado', () => {
+    expect(backPath('/folder/uni', null)).toBe('/folder/uni');
+    expect(backPath('/', 'uni')).toBe('/');
+  });
+  it('sin origen vuelve a la carpeta del proyecto y, sin carpeta, a Inicio', () => {
+    expect(backPath(undefined, 's5')).toBe('/folder/s5');
+    expect(backPath(null, null)).toBe('/');
+    expect(backPath(undefined)).toBe('/');
+  });
+  it('ignora un origen que no sea del panel (history.state es input externo)', () => {
+    expect(backPath('//evil.com', null)).toBe('/');
+    expect(backPath('/settings', 's5')).toBe('/folder/s5');
+    expect(backPath({ from: '/' }, null)).toBe('/');
   });
 });

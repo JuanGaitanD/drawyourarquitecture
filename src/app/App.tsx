@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Route, Switch } from 'wouter';
+import { useHistoryState } from 'wouter/use-browser-location';
 import { isProjectType } from '@/domain/project';
 import { AuthGate } from './AuthGate';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -22,6 +23,8 @@ const BoardEditor = lazy(() =>
  * `/view/…` y `/embed/…` son públicas (las reglas deciden si hay acceso).
  */
 export function App() {
+  // El panel abre los proyectos con `{ from }` en history.state: de ahí vuelve «Volver al panel».
+  const origin = useHistoryState<{ from?: unknown } | null>()?.from;
   return (
     <ErrorBoundary>
       <Suspense fallback={<PageFallback />}>
@@ -46,14 +49,14 @@ export function App() {
           <Route path="/note/:id">
             {({ id }) => (
               <AuthGate>
-                <NoteEditor key={id} id={id} />
+                <NoteEditor key={id} id={id} origin={origin} />
               </AuthGate>
             )}
           </Route>
           <Route path="/board/:id">
             {({ id }) => (
               <AuthGate>
-                <BoardEditor key={id} id={id} />
+                <BoardEditor key={id} id={id} origin={origin} />
               </AuthGate>
             )}
           </Route>
