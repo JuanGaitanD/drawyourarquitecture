@@ -4,8 +4,8 @@
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 // src/server/admin.ts
+import { createSign } from "node:crypto";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 var EMULATOR_PROJECT = "demo-dya";
 var EMULATOR_AUTH = "127.0.0.1:9099";
@@ -22,9 +22,27 @@ function getApp() {
   return app;
 }
 var getAdminDb = () => getFirestore(getApp());
-var getAdminAuth = () => getAuth(
-  usingEmulator() ? getApps().find((a) => a.name === "dya-auth") ?? initializeApp({ projectId: EMULATOR_PROJECT }, "dya-auth") : getApp()
-);
+async function getAdminAuth() {
+  const { getAuth: getAuth2 } = await import("firebase-admin/auth");
+  return getAuth2(
+    getApps().find((a) => a.name === "dya-auth") ?? initializeApp({ projectId: EMULATOR_PROJECT }, "dya-auth")
+  );
+}
+var b64url = (v) => Buffer.from(v).toString("base64url");
+var CUSTOM_TOKEN_AUD = "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit";
+async function createCustomToken(uid, now2 = Math.floor(Date.now() / 1e3)) {
+  if (usingEmulator()) return (await getAdminAuth()).createCustomToken(uid);
+  const sa = parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
+  return signCustomToken(uid, sa, now2);
+}
+function signCustomToken(uid, sa, now2) {
+  const head = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const body = b64url(
+    JSON.stringify({ iss: sa.client_email, sub: sa.client_email, aud: CUSTOM_TOKEN_AUD, iat: now2, exp: now2 + 3600, uid })
+  );
+  const sig = createSign("RSA-SHA256").update(`${head}.${body}`).sign(sa.private_key);
+  return `${head}.${body}.${b64url(sig)}`;
+}
 function parseServiceAccount(raw) {
   if (!raw) throw new Error("Falta la variable de entorno FIREBASE_SERVICE_ACCOUNT.");
   try {
@@ -1439,7 +1457,7 @@ function createMcpServer(mcp) {
 
 // src/server/userDb.ts
 import { deleteApp, initializeApp as initializeApp2 } from "firebase/app";
-import { connectAuthEmulator, getAuth as getAuth2, signInWithCustomToken } from "firebase/auth";
+import { connectAuthEmulator, getAuth, signInWithCustomToken } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore as getFirestore2 } from "firebase/firestore";
 var MAX_APPS = 20;
 var TTL_MS = 50 * 6e4;
@@ -1474,13 +1492,13 @@ function drop(uid) {
 function open(uid) {
   const app2 = initializeApp2(webConfig(), `dya-${uid}-${Date.now()}`);
   const db = (async () => {
-    const auth = getAuth2(app2);
+    const auth = getAuth(app2);
     if (usingEmulator()) {
       connectAuthEmulator(auth, `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST ?? EMULATOR_AUTH}`, {
         disableWarnings: true
       });
     }
-    await signInWithCustomToken(auth, await getAdminAuth().createCustomToken(uid));
+    await signInWithCustomToken(auth, await createCustomToken(uid));
     const fs = getFirestore2(app2);
     if (usingEmulator()) {
       const [host, port] = process.env.FIRESTORE_EMULATOR_HOST.split(":");

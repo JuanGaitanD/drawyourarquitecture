@@ -44,7 +44,7 @@ export async function seedAllowedUser(db: Firestore): Promise<string> {
   const uid = uniq('invitada');
   const email = `${uid}@example.com`;
   await db.collection('allowedEmails').doc(email).set({ email, addedAt: 1 });
-  await getAdminAuth().createUser({ uid, email, emailVerified: true });
+  await (await getAdminAuth()).createUser({ uid, email, emailVerified: true });
   return uid;
 }
 

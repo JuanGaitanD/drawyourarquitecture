@@ -1,7 +1,7 @@
 import { deleteApp, initializeApp, type FirebaseApp } from 'firebase/app';
 import { connectAuthEmulator, getAuth, signInWithCustomToken } from 'firebase/auth';
 import { connectFirestoreEmulator, getFirestore, type Firestore } from 'firebase/firestore';
-import { EMULATOR_AUTH, EMULATOR_PROJECT, getAdminAuth, usingEmulator } from './admin';
+import { EMULATOR_AUTH, EMULATOR_PROJECT, createCustomToken, usingEmulator } from './admin';
 
 // Firestore del SDK web autenticado como la persona del token: Admin emite `createCustomToken(uid)` y
 // `signInWithCustomToken` da la sesión. Todo acceso a datos pasa por las reglas de `firestore.rules`, tal cual.
@@ -58,7 +58,7 @@ function open(uid: string): Entry {
         disableWarnings: true,
       });
     }
-    await signInWithCustomToken(auth, await getAdminAuth().createCustomToken(uid));
+    await signInWithCustomToken(auth, await createCustomToken(uid));
     const fs = getFirestore(app);
     if (usingEmulator()) {
       const [host, port] = (process.env.FIRESTORE_EMULATOR_HOST as string).split(':');

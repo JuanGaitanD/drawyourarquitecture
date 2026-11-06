@@ -199,7 +199,7 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
     it('create_* con una cuenta permitida por correo verificado: sí; sin verificar o fuera de la lista: 403', async () => {
       const mail = `${uniq('amiga')}@example.com`;
       await db.collection('allowedEmails').doc(mail).set({ email: mail, addedAt: 1 });
-      const auth = getAdminAuth();
+      const auth = await getAdminAuth();
       const verified = uniq('verif');
       const unverified = uniq('sinverif');
       await auth.createUser({ uid: verified, email: mail, emailVerified: true });
