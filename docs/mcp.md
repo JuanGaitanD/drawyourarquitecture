@@ -1,8 +1,8 @@
 # Servidor MCP
 
-drawyourarquitecture expone un servidor [MCP](https://modelcontextprotocol.io) para que un agente (Claude Code, Cursor, etc.) trabaje con tus notas y diagramas: lista proyectos, lee notas y boards, crea notas y boards nuevos y amplía un board desde Mermaid.
+DYA (Draw your Architecture) expone un servidor [MCP](https://modelcontextprotocol.io) para que un agente (Claude Code, Cursor, etc.) trabaje con tus notas y diagramas: lista proyectos, lee notas y boards, crea notas y boards nuevos y amplía un board desde Mermaid.
 
-- Endpoint: `https://drawyourarchitecture.vercel.app/api/mcp` (función de Vercel, Node).
+- Endpoint: `https://dya.juandgaitan.com/api/mcp` (función de Vercel, Node).
 - Transporte: Streamable HTTP **sin estado** del SDK oficial (`@modelcontextprotocol/sdk`), solo `POST` y respuestas JSON (sin sesiones ni SSE).
 - Autenticación: token personal en `Authorization: Bearer dya_…`.
 - Límite: 60 peticiones por minuto y token (ventana fija); la 61 recibe `429` con `Retry-After`. Cada llamada a una herramienta queda auditada (§ 4).
@@ -22,7 +22,7 @@ Claude Code (el token va en una variable de entorno, no escrito en el comando):
 
 ```
 export DYA_TOKEN=...   # pégalo en tu perfil de la shell o léelo de un gestor de secretos
-claude mcp add --transport http dya https://drawyourarchitecture.vercel.app/api/mcp --header "Authorization: Bearer $DYA_TOKEN"
+claude mcp add --transport http dya https://dya.juandgaitan.com/api/mcp --header "Authorization: Bearer $DYA_TOKEN"
 ```
 
 **No pegues el token literal en la línea de comandos**: quedaría en el historial de la shell (`~/.bash_history`, PSReadLine…). Con `$DYA_TOKEN` la shell lo expande y el historial guarda solo el nombre de la variable. Ojo: Claude Code guarda la cabecera ya expandida en su propia configuración (`~/.claude.json`); trátalo como un secreto del equipo y revoca el token si lo expones.
@@ -34,7 +34,7 @@ Otros clientes con configuración JSON:
   "mcpServers": {
     "dya": {
       "type": "http",
-      "url": "https://drawyourarchitecture.vercel.app/api/mcp",
+      "url": "https://dya.juandgaitan.com/api/mcp",
       "headers": { "Authorization": "Bearer <token>" }
     }
   }

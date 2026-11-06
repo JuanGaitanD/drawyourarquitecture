@@ -1,4 +1,4 @@
-# AGENTS.md — drawyourarquitecture
+# AGENTS.md — DYA (Draw your Architecture)
 
 ## Propósito
 
