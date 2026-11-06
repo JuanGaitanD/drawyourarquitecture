@@ -1,5 +1,5 @@
 import { Users } from 'lucide-react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { roleOf, type Project } from '@/domain/project';
 import dash from './Dashboard.module.css';
 import styles from './ProjectCard.module.css';
@@ -8,6 +8,7 @@ import { TYPE_META } from './typeMeta';
 
 /** «Compartidos conmigo»: proyectos de otras personas en los que soy editor o viewer. */
 export function SharedProjects({ projects, uid, now }: { projects: Project[]; uid: string; now: number }) {
+  const [here] = useLocation();
   return (
     <section aria-labelledby="compartidos-titulo" className={dash.projects}>
       <div className={dash.toolbar}>
@@ -21,7 +22,7 @@ export function SharedProjects({ projects, uid, now }: { projects: Project[]; ui
           const role = roleOf(p, uid) === 'viewer' ? 'Solo lectura' : 'Editor';
           return (
             <li key={p.id} className={`${styles.card} ${styles[p.type]}`}>
-              <Link href={`/${p.type}/${p.id}`} className={styles.surface}>
+              <Link href={`/${p.type}/${p.id}`} state={{ from: here }} className={styles.surface}>
                 <span className={styles.preview} aria-hidden="true">
                   <span className={styles.tile}>
                     <Icon size={26} aria-hidden />

@@ -82,3 +82,18 @@ export function flatTree(
   walk(null, 0);
   return out;
 }
+
+/** Ruta del panel de una carpeta (`null`/ausente = Inicio). */
+export const panelPath = (folderId?: string | null): string => (folderId ? `/folder/${folderId}` : '/');
+
+/** Solo valen como origen las rutas del propio panel (`/` o `/folder/:id`): `history.state` es input externo. */
+const PANEL_ORIGIN = /^\/(folder\/[\w-]+)?$/;
+
+/**
+ * A dónde vuelve «Volver al panel»: al lugar del panel desde el que se abrió el proyecto (`origin`, de
+ * `history.state`) o, sin él (enlace directo, otra pestaña), a la carpeta del proyecto (`folderId`: quien llama
+ * solo la pasa si el proyecto es suyo) o a Inicio.
+ */
+export function backPath(origin: unknown, folderId?: string | null): string {
+  return typeof origin === 'string' && PANEL_ORIGIN.test(origin) ? origin : panelPath(folderId);
+}

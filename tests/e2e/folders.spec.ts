@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { signIn, uniq } from './helpers';
+import { newProject, signIn, uniq } from './helpers';
 
 // Carpetas del panel contra los emuladores (Auth 9099, Firestore 8080). Nombres únicos por ejecución: la cuenta de
 // prueba y su lista de proyectos se comparten entre escenarios.
@@ -49,12 +49,12 @@ test.describe('carpetas', () => {
     await expect(page.getByRole('button', { name: `Nuevo diagrama en ${sem}` })).toBeVisible();
     await page.getByRole('button', { name: `Nueva nota en ${sem}` }).click();
     await expect(page).toHaveURL(/\/note\/[^/]+$/);
+    // «Volver» devuelve a la carpeta desde la que se abrió, no a Inicio.
     await page.getByRole('button', { name: 'Volver al panel' }).click();
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/folder\/[^/]+$/);
+    await expect(page.getByRole('heading', { level: 1, name: sem })).toBeVisible();
 
-    // Vuelve a la carpeta por los chips y le pone nombre a la nota desde el menú de su tarjeta.
-    await openFolder(page, uni);
-    await openFolder(page, sem);
+    // Le pone nombre a la nota desde el menú de su tarjeta.
     await page.getByRole('button', { name: 'Opciones de «Sin título»' }).click();
     await page.getByRole('menuitem', { name: 'Renombrar' }).click();
     const rename = page.getByRole('textbox', { name: 'Nuevo nombre de «Sin título»' });
@@ -89,6 +89,37 @@ test.describe('carpetas', () => {
     const root = page.getByRole('listitem').filter({ has: page.getByRole('link', { name: new RegExp(nota) }) });
     await expect(root).toBeVisible();
     await expect(root.getByText(sem)).toHaveCount(0);
+  });
+
+  test('«Volver al panel» vuelve al origen: carpeta, Inicio o la carpeta del proyecto en un enlace directo', async ({
+    page,
+  }) => {
+    const dir = uniq('Origen');
+    await signIn(page);
+    await createFolder(page, dir);
+    await openFolder(page, dir);
+    await page.getByRole('button', { name: `Nuevo diagrama en ${dir}` }).click();
+    await expect(page).toHaveURL(/\/board\/[^/]+$/);
+    const boardUrl = page.url();
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: dir })).toBeVisible();
+
+    // Abrir la tarjeta del diagrama desde la carpeta y volver: otra vez la carpeta.
+    await page.getByRole('link', { name: /Sin título/ }).click();
+    await expect(page).toHaveURL(boardUrl);
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: dir })).toBeVisible();
+
+    // Enlace directo (sin estado): vuelve a la carpeta del proyecto.
+    await page.goto(boardUrl);
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await expect(page.getByRole('heading', { level: 1, name: dir })).toBeVisible();
+
+    // Una nota creada desde Inicio vuelve a Inicio.
+    await page.getByRole('navigation', { name: 'Ruta de la carpeta' }).getByRole('link', { name: 'Inicio' }).click();
+    await newProject(page, 'Nota');
+    await page.getByRole('button', { name: 'Volver al panel' }).click();
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test('una carpeta con contenido no se borra y una vacía sí', async ({ page }) => {

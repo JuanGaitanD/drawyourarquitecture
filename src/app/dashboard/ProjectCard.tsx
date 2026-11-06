@@ -10,7 +10,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type Ref } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import type { Folder } from '@/domain/folder';
 import { MAX_TITLE_LENGTH, normalizeTitle, type Project } from '@/domain/project';
 import {
@@ -49,6 +49,7 @@ export function ProjectCard({
   folderLabel?: string;
 }) {
   const { toast } = useToast();
+  const [here] = useLocation();
   const { label, Icon } = TYPE_META[project.type];
   const [renaming, setRenaming] = useState(false);
   const [busy, setBusy] = useState<'duplicate' | 'delete' | null>(null);
@@ -186,7 +187,12 @@ export function ProjectCard({
           </span>
         </div>
       ) : (
-        <Link ref={linkRef} href={`/${project.type}/${project.id}`} className={styles.surface}>
+        <Link
+          ref={linkRef}
+          href={`/${project.type}/${project.id}`}
+          state={{ from: here }}
+          className={styles.surface}
+        >
           {preview}
           <span className={styles.body}>
             <span className={styles.title}>{project.title}</span>

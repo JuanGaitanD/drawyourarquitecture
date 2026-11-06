@@ -156,9 +156,9 @@ export function ShareButton({ id, isPublic, onChange }: ShareProps) {
   );
 }
 
-export function BackButton() {
+export function BackButton({ to }: { to: string }) {
   const [, navigate] = useLocation();
-  return <IconButton label="Volver al panel" icon={<ArrowLeft size={18} />} onClick={() => navigate('/')} />;
+  return <IconButton label="Volver al panel" icon={<ArrowLeft size={18} />} onClick={() => navigate(to)} />;
 }
 
 export { PresenceAvatars, ThemeToggle, UserMenu };

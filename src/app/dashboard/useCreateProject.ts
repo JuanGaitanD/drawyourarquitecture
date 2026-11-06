@@ -4,9 +4,9 @@ import type { ProjectType } from '@/domain/project';
 import { useToast } from '@/ui';
 import { createProject } from '../services';
 
-/** Crea un proyecto del tipo dado (en `folderId`, o en Inicio) y entra al editor. `creating` es el tipo en curso. */
+/** Crea un proyecto del tipo dado (en `folderId`, o en Inicio) y entra al editor (`history.state.from` es el lugar del panel al que vuelve «Volver»). `creating` es el tipo en curso. */
 export function useCreateProject(folderId?: string | null) {
-  const [, navigate] = useLocation();
+  const [here, navigate] = useLocation();
   const { toast } = useToast();
   const [creating, setCreating] = useState<ProjectType | null>(null);
 
@@ -14,7 +14,7 @@ export function useCreateProject(folderId?: string | null) {
     setCreating(type);
     try {
       const id = await createProject(type, undefined, folderId);
-      navigate(`/${type}/${id}`);
+      navigate(`/${type}/${id}`, { state: { from: here } });
     } catch {
       toast({
         kind: 'error',

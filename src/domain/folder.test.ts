@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canMove,
+  backPath,
   childrenOf,
   descendants,
   flatTree,
@@ -80,5 +81,22 @@ describe('flatTree', () => {
       '1:s6',
     ]);
     expect(flatTree(folders, new Set(['s5', 'redes'])).map((x) => x.folder.id)).toEqual(['job', 'uni', 's6']);
+  });
+});
+
+describe('backPath', () => {
+  it('vuelve al origen del panel (Inicio o carpeta) si viene en el estado', () => {
+    expect(backPath('/folder/uni', null)).toBe('/folder/uni');
+    expect(backPath('/', 'uni')).toBe('/');
+  });
+  it('sin origen vuelve a la carpeta del proyecto y, sin carpeta, a Inicio', () => {
+    expect(backPath(undefined, 's5')).toBe('/folder/s5');
+    expect(backPath(null, null)).toBe('/');
+    expect(backPath(undefined)).toBe('/');
+  });
+  it('ignora un origen que no sea del panel (history.state es input externo)', () => {
+    expect(backPath('//evil.com', null)).toBe('/');
+    expect(backPath('/settings', 's5')).toBe('/folder/s5');
+    expect(backPath({ from: '/' }, null)).toBe('/');
   });
 });
