@@ -14,12 +14,6 @@
       "collectionGroup": "content",
       "fieldPath": "data",
       "indexes": []
-    },
-    {
-      "collectionGroup": "mcpAudit",
-      "fieldPath": "expireAt",
-      "ttl": true,
-      "indexes": []
     }
   ]
 }
