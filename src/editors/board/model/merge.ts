@@ -17,17 +17,48 @@ export function canon(x: unknown): string {
   );
 }
 
+/**
+ * Igualdad profunda sin orden de claves y sin serializar: lo que comparte referencia es igual de inmediato (los
+ * elementos que no cambian comparten `data`, `style` y `position`), así que cuesta lo que cambió, no el tamaño del
+ * board. Una clave con valor `undefined` cuenta como ausente (igual que en JSON).
+ */
+export function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const A = a as Record<string, unknown>;
+  const B = b as Record<string, unknown>;
+  const ka = Object.keys(A).filter((k) => A[k] !== undefined);
+  if (ka.length !== Object.keys(B).filter((k) => B[k] !== undefined).length) return false;
+  return ka.every((k) => deepEqual(A[k], B[k]));
+}
+
+/** Ids que difieren entre dos listas (altas, bajas y ediciones), por id y con `deepEqual`. */
+export function diffById<T extends { id: string }>(a: readonly T[], b: readonly T[]): Set<string> {
+  const A = new Map(a.map((e) => [e.id, e]));
+  const out = new Set<string>();
+  for (const e of b) {
+    const x = A.get(e.id);
+    if (!x || !deepEqual(x, e)) out.add(e.id);
+    A.delete(e.id);
+  }
+  for (const id of A.keys()) out.add(id);
+  return out;
+}
+
+/** Misma entrada (por id) en las dos o ausente en las dos. */
+const sameEntry = (x: unknown, y: unknown) => (x === undefined || y === undefined ? x === y : deepEqual(x, y));
+
 function mergeList<T extends El>(local: readonly T[], remote: readonly T[], base: readonly T[]): T[] {
   const L = new Map(local.map((e) => [e.id, e]));
   const R = new Map(remote.map((e) => [e.id, e]));
-  const B = new Map(base.map((e) => [e.id, canon(e)]));
+  const B = new Map(base.map((e) => [e.id, e]));
   const out: T[] = [];
   for (const id of new Set([...L.keys(), ...R.keys()])) {
     const l = L.get(id);
     const r = R.get(id);
     const b = B.get(id);
-    const remoteChanged = (r ? canon(r) : undefined) !== b;
-    const picked = !remoteChanged ? l : (l ? canon(l) : undefined) === b ? r : l;
+    const picked = sameEntry(r, b) ? l : sameEntry(l, b) ? r : l;
     if (picked) out.push(picked);
   }
   return out;

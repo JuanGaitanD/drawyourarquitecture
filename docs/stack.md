@@ -5,7 +5,7 @@ App web personal, open source, para dos tipos de proyecto (como TinkerCAD):
 - **Nota** (`note`): pizarra libre tipo Excalidraw. Puede incrustar boards propios.
 - **Diagrama** (`board`): lienzo estructurado tipo Miro (formas, conectores, frames, stickies, iconos, autolayout).
 
-Objetivo de pantalla: laptop en adelante (≥ 1024 px). Fase 1: un solo dueño y enlace público de solo lectura. Fase 2 (fuera de este plan): colaboración en tiempo real.
+Objetivo de pantalla: laptop en adelante (≥ 1024 px). Fase 1: un solo dueño y enlace público de solo lectura. Fases 2 y 3 (hechas, ver `plan-fases-2-3.md`): colaboración en tiempo real y servidor MCP.
 
 Fuentes: [`architecture.md`](architecture.md), [`plan.md`](plan.md) (rev. 2, manda en alcance y contratos), [`research/`](research/) y la revisión independiente de GPT-6.1 Sol del 2026-11-05: [`review/stack-gpt.md`](review/stack-gpt.md). Las versiones se fijan exactas en T0 (`npm view`, sin `^`) tras comprobar que los dos motores corren juntos.
 
@@ -24,13 +24,15 @@ Fuentes: [`architecture.md`](architecture.md), [`plan.md`](plan.md) (rev. 2, man
 | Historial | **zundo solo en el board** | `partialize` (solo nodes y edges), límite 100, un gesto = un paso. Excalidraw conserva su historial nativo | Segundo historial sobre Excalidraw |
 | Estilos | **CSS Modules + custom properties** (tokens) | Sin runtime. Los CSS de Excalidraw y React Flow se importan y se sobrescriben dentro de un wrapper | Tailwind: otra dependencia de build |
 | Accesibilidad | **`<dialog>` nativo** + teclado propio; **lucide-react** para iconos | Cubre menús y diálogos sin dependencia. Si aparece un popover o menú complejo, valorar Radix | Radix/React Aria desde el día uno (recomendado por la revisión; se pospone por plazo) |
-| Auth | **Firebase Auth** (Google) **restringida al dueño** | Poder autenticarse no autoriza a escribir: solo el UID/correo del dueño crea y edita | — |
-| Datos | **Cloud Firestore** | Contenido como string JSON (sin arrays anidados) en `projects/{id}/content/main`, con codec único y tope de 900 000 bytes UTF-8 | RTDB; Supabase/Postgres (más operación sin resolver lo difícil) |
+| Auth | **Firebase Auth** (Google) | Poder autenticarse no autoriza a escribir: crean el `OWNER_UID` y las cuentas con correo verificado en `allowedEmails`; editan el dueño y los invitados como editor | — |
+| Datos | **Cloud Firestore** | Contenido como string JSON (sin arrays anidados) en `projects/{id}/content/main`, con codec único. Hasta 900 000 bytes UTF-8 en un documento; por encima, troceado en `content/main/chunks/{i}` con tope de 8 MiB, en una sola transacción | Supabase/Postgres (más operación sin resolver lo difícil) |
+| Presencia | **Firebase Realtime Database** (plan Spark) | Presencia y cursores efímeros con `onDisconnect` y escrituras frecuentes que en Firestore gastarían cuota. Reglas propias (`database.rules.json`) con un espejo de acceso por dueño. Se carga con `import()`; sin `VITE_FIREBASE_DATABASE_URL` se apaga | Firestore (cuota de escrituras), WebSocket propio |
+| Servidor MCP | **Función de Vercel** (`api/mcp`, Node) con `@modelcontextprotocol/sdk` | Admin solo emite identidad; los datos pasan por el SDK web autenticado como la persona, así que las reglas aplican tal cual. Empaquetado con esbuild en `api/_mcp.mjs` | Admin SDK para los datos (ignora las reglas y duplica la autorización) |
 | Archivos | **Firestore troceado** (≤ 900 000 bytes por trozo, `Bytes`) con optimización previa a WebP | Sin Storage ni plan Blaze. Una imagen optimizada rara vez pasa de 1 MiB; el tope son 4 MiB | Firebase Storage (exige Blaze), base64 en el documento |
 | Hosting | **Vercel Pro** (estático + rewrites SPA) | Ya lo tienes; previews por PR. El catch-all no intercepta assets ni `/api` | Firebase Hosting (equivalente) |
-| Tests | **Vitest** (dominio, codecs, autosave) y **@firebase/rules-unit-testing** con Emulator Suite (reglas). Prueba de humo e2e **manual** en T5 | Una prueba por cosa que puede romperse. Nada de mocks de Firebase para reglas | Playwright en v1 (recortado por tiempo; reevaluar tras v1) |
+| Tests | **Vitest** (dominio, codecs, autosave, servidor MCP contra emuladores) y **@firebase/rules-unit-testing** con Emulator Suite (reglas de Firestore y RTDB, `pnpm test:rules`); **Playwright** para tres pruebas de humo (`pnpm test:e2e`) | Una prueba por cosa que puede romperse. Nada de mocks de Firebase para reglas | Playwright en v1 (recortado por tiempo; reevaluar tras v1) |
 | Calidad | ESLint flat + Prettier, `tsc --noEmit`, build de producción. Restricciones de imports entre capas en lint | Estándar; la regla de dependencia se hace cumplir en lint | — |
-| Gestor | **npm** (`package-lock.json`, versiones exactas) | pnpm no está instalado en esta máquina; un solo paquete, sin workspaces | Monorepo: solo con segundo consumidor o ciclo de release propio |
+| Gestor | **pnpm 12** (corepack, `pnpm-lock.yaml`, versiones exactas) | Un solo paquete, sin workspaces | Monorepo: solo con segundo consumidor o ciclo de release propio |
 
 ## Estructura y regla de dependencia
 

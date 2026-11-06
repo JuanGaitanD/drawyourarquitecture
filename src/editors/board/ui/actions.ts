@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import { useReactFlow, type ReactFlowInstance } from '@xyflow/react';
+import { useToast } from '@/ui';
 import type { ShapeKind } from '../model/board';
-import { toAbsolute } from '../model/geometry';
+import { placeBelow } from '../extras/content';
+import { autoLayout } from '../model/layout';
+import { parseFlowchart } from '../model/mermaid';
 import {
   align,
   bringToFront,
@@ -14,33 +17,65 @@ import {
   wrapInFrame,
   type AlignMode,
 } from '../model/ops';
+import { useBoardFiles } from '../nodes';
 import { useBoardStore } from '../store/BoardStoreProvider';
 import type { BoardState, BoardStore, Tool } from '../store/boardStore';
+import {
+  clipFromSelection,
+  copyImages,
+  readSystemClipboard,
+  writeSystemClipboard,
+  type ClipContent,
+  type ClipPayload,
+  type ImageCopier,
+} from './clipboard';
 import type { ShortcutAction } from './shortcuts';
 
 // Acciones del editor compartidas por la barra de acciones, la barra de herramientas y los atajos.
 // Cada una es UNA escritura en el store (setNodes, replaceAll…), así que cada una es un paso del historial.
 
 interface Clipboard {
-  nodes: BoardState['nodes'];
-  edges: BoardState['edges'];
-  ids: string[];
+  clip: ClipPayload;
   pastes: number;
+  /** Qué quedó en el portapapeles del sistema (ver `writeSystemClipboard`); `null` mientras se escribe. */
+  system: 'full' | 'text' | 'none' | null;
 }
-// Portapapeles en memoria por instancia de store (no entre pestañas ni editores).
-// ponytail: no usa el portapapeles del sistema; añadir si hace falta pegar entre pestañas.
+// Copia en memoria por instancia de store: sirve de respaldo cuando el navegador no deja usar el portapapeles
+// del sistema (sin API o sin permiso de lectura) y para pegar exactamente lo copiado en la misma pestaña.
 const clipboards = new WeakMap<BoardStore, Clipboard>();
 
 const reducedMotion = () =>
   typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 export const motionDuration = (ms = 250) => (reducedMotion() ? 0 : ms);
 
-export function createBoardActions(store: BoardStore, flow: () => ReactFlowInstance | null) {
+/** Proyecto del editor: marca lo copiado con su origen y, al pegar lo de otro proyecto, copia sus imágenes (D28). */
+export interface ProjectContext extends ImageCopier {
+  /** Cuántas imágenes no se pudieron copiar al pegar. */
+  onImagesFailed?(count: number): void;
+}
+
+export function createBoardActions(
+  store: BoardStore,
+  flow: () => ReactFlowInstance | null,
+  project?: ProjectContext,
+) {
   const get = () => store.getState();
   const selectedIds = () =>
     get()
       .nodes.filter((n) => n.selected)
       .map((n) => n.id);
+
+  /** Inserta lo copiado con ids nuevos, desplazado un poco más en cada pegado y seleccionado: un paso de historial. */
+  const pasteClip = async (clip: ClipContent, rec: Clipboard | undefined) => {
+    // Las imágenes de otro proyecto se copian antes de insertar; el contador de pegados no se toca hasta entonces.
+    const copied = project ? await copyImages(clip, project) : { nodes: clip.nodes, failed: 0 };
+    if (copied.failed) project?.onImagesFailed?.(copied.failed);
+    const s = get();
+    const step = 16 * (rec ? ++rec.pastes : 1);
+    const roots = copied.nodes.filter((n) => !n.parentId).map((n) => n.id);
+    const dup = duplicate(copied.nodes, clip.edges, roots, { x: step, y: step });
+    s.replaceAll([...selectOnly(s.nodes, []), ...dup.nodes], [...s.edges, ...dup.edges]);
+  };
 
   const api = {
     selectedIds,
@@ -72,7 +107,9 @@ export function createBoardActions(store: BoardStore, flow: () => ReactFlowInsta
         s.setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)));
     },
     escape() {
-      if (get().tool !== 'select') get().setTool('select');
+      // Conector por clic: el primer Esc cancela el origen elegido, el siguiente sale de la herramienta.
+      if (get().connectFrom) get().setConnectFrom(null);
+      else if (get().tool !== 'select') get().setTool('select');
       else api.clearSelection();
     },
 
@@ -120,31 +157,38 @@ export function createBoardActions(store: BoardStore, flow: () => ReactFlowInsta
       const dup = duplicate(s.nodes, s.edges, ids);
       s.replaceAll([...selectOnly(s.nodes, []), ...dup.nodes], [...s.edges, ...dup.edges]);
     },
+    /** Copia la selección a memoria y al portapapeles del sistema (formato propio + Mermaid). */
     copy() {
       const ids = selectedIds();
       if (!ids.length) return false;
       const s = get();
-      clipboards.set(store, { nodes: s.nodes, edges: s.edges, ids, pastes: 0 });
+      const rec: Clipboard = { clip: clipFromSelection(s.nodes, s.edges, ids, project?.projectId), pastes: 0, system: null };
+      clipboards.set(store, rec);
+      void writeSystemClipboard(rec.clip).then((r) => (rec.system = r));
       return true;
     },
     cut() {
       if (api.copy()) get().removeSelected();
     },
-    paste() {
-      const clip = clipboards.get(store);
-      if (!clip) return;
-      const s = get();
-      const step = 16 * ++clip.pastes;
-      const dup = duplicate(clip.nodes, clip.edges, clip.ids, { x: step, y: step });
-      // Si el padre de origen ya no existe (cortado), el nodo pasa a nivel superior sin saltar de sitio.
-      const alive = new Set(s.nodes.map((n) => n.id));
-      const known = [...clip.nodes, ...dup.nodes];
-      const nodes = dup.nodes.map((n) =>
-        n.parentId && !alive.has(n.parentId) && !dup.nodes.some((d) => d.id === n.parentId)
-          ? { ...n, parentId: undefined, position: toAbsolute(n, known) }
-          : n,
-      );
-      s.replaceAll([...selectOnly(s.nodes, []), ...nodes], [...s.edges, ...dup.edges]);
+    /**
+     * Pega, en este orden: el formato propio del portapapeles del sistema (también el de otra pestaña); la copia en
+     * memoria si el sistema no tiene el formato propio porque esta pestaña no pudo escribirlo (o no se puede leer);
+     * texto Mermaid. Es asíncrono: leer el portapapeles pide permiso la primera vez.
+     */
+    async paste() {
+      const rec = clipboards.get(store);
+      const sys = await readSystemClipboard();
+      if (sys.kind === 'dya') return await pasteClip(sys.clip, rec);
+      if (rec && (sys.kind === 'unavailable' || rec.system !== 'full')) return await pasteClip(rec.clip, rec);
+      if (sys.kind === 'text') {
+        const r = parseFlowchart(sys.text);
+        if (!r.ok) return;
+        const laid = await autoLayout(r.value, r.direction);
+        const s = get();
+        const moved = placeBelow(laid, s.nodes);
+        const mark = <T extends { selected?: boolean }>(xs: T[]) => xs.map((x) => ({ ...x, selected: true }));
+        s.replaceAll([...selectOnly(s.nodes, []), ...mark(moved.nodes)], [...s.edges, ...moved.edges]);
+      }
     },
 
     /** Mueve la selección; el llamante agrupa las repeticiones con beginGesture/endGesture. */
@@ -174,7 +218,25 @@ export type BoardActions = ReturnType<typeof createBoardActions>;
 export function useBoardActions(): BoardActions {
   const store = useBoardStore();
   const flow = useReactFlow();
-  return useMemo(() => createBoardActions(store, () => flow), [store, flow]);
+  const files = useBoardFiles();
+  const { toast } = useToast();
+  return useMemo(() => {
+    const project: ProjectContext | undefined =
+      files?.projectId && files.loadFrom && files.upload
+        ? {
+            projectId: files.projectId,
+            loadFrom: files.loadFrom,
+            upload: files.upload,
+            onImagesFailed: (n) =>
+              toast({
+                title: n === 1 ? 'No se pudo copiar una imagen' : `No se pudieron copiar ${n} imágenes`,
+                description: 'Quedan como «Imagen no disponible»: el archivo de origen no se pudo leer.',
+                kind: 'error',
+              }),
+          }
+        : undefined;
+    return createBoardActions(store, () => flow, project);
+  }, [store, flow, files, toast]);
 }
 
 /** Despacha la acción de un atajo. `search` la atiende el hook (abre SearchBox). */
@@ -194,7 +256,8 @@ export function runShortcut(a: BoardActions, action: ShortcutAction): void {
     case 'cut':
       return a.cut();
     case 'paste':
-      return a.paste();
+      void a.paste();
+      return;
     case 'duplicate':
       return a.duplicate();
     case 'selectAll':

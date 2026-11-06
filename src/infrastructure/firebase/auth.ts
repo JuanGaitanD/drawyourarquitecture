@@ -7,7 +7,7 @@ import {
   type User,
 } from 'firebase/auth';
 import type { AuthUser, Identity } from '@/application/ports';
-import { EMULATOR_HOST, EMULATOR_PORTS, EMULATOR_PROJECT, USE_EMULATORS, auth } from './firebase';
+import { EMULATOR_AUTH_PROJECT, EMULATOR_HOST, EMULATOR_PORTS, USE_EMULATORS, auth } from './firebase';
 
 /** Uid fijo del dueño en los emuladores: coincide con `OWNER_UID` de las reglas renderizadas con --emulator. */
 export const EMULATOR_OWNER_UID = 'owner-test';
@@ -27,7 +27,7 @@ async function signInEmulator(): Promise<void> {
   const uid = testUser();
   const email = uid === EMULATOR_OWNER_UID ? 'owner@test.dev' : `${uid}@test.dev`;
   await fetch(
-    `http://${EMULATOR_HOST}:${EMULATOR_PORTS.auth}/identitytoolkit.googleapis.com/v1/projects/${EMULATOR_PROJECT}/accounts`,
+    `http://${EMULATOR_HOST}:${EMULATOR_PORTS.auth}/identitytoolkit.googleapis.com/v1/projects/${EMULATOR_AUTH_PROJECT}/accounts`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer owner' },

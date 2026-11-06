@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { useLocation } from 'wouter';
 import { useAutosave, useProject, useRemoteContent } from '@/app/hooks';
 import { fileStore, identity, projectRepo } from '@/app/services';
+import { indexedDbPendingStore } from '@/application/pendingFiles';
 import type { StoredDraft } from '@/application/saveQueue';
-import { decode } from '@/domain/codec';
+import { MAX_CONTENT_LABEL, decode } from '@/domain/codec';
 import { roleOf } from '@/domain/project';
 import { Button, useToast } from '@/ui';
 import { BoardViewer } from './BoardViewer';
+import { BoardCursors } from './presenceCursors';
 import { BoardCanvas } from './canvas/BoardCanvas';
 import {
   BackButton,
@@ -24,6 +26,8 @@ import styles from './canvas/editor.module.css';
 import { BoardMenu } from './extras/BoardMenu';
 import type { BoardContent } from './model/board';
 import { validateBoardContent } from './model/validate';
+import { createImageUploads } from './canvas/imageUploads';
+import { imageFileIds } from './extras/dyaFile';
 import { BoardFilesContext, type BoardFiles } from './nodes';
 import { BoardStoreProvider } from './store/BoardStoreProvider';
 import { createBoardStore } from './store/boardStore';
@@ -158,7 +162,7 @@ function ReadOnly({ id, title, initial }: { id: string; title: string; initial: 
         <UserMenu />
       </header>
       <div className={styles.stage}>
-        <BoardViewer content={content} files={files} />
+        <BoardViewer content={content} files={files} projectId={id} />
       </div>
     </div>
   );
@@ -194,8 +198,58 @@ function Loaded({
   });
   const viewport = useRef<Viewport>(initial.viewport);
   const [sync] = useState(() => createBoardSync(store, initial, revision));
-  const { encoded, tooLarge, invalid, drain } = useEncodedContent(store, viewport);
-  const syncOpts = useMemo(() => ({ merge: sync.merge, same: boardSame, fastFirstMs: 150, onSaved: sync.onSaved }), [sync]);
+  const { encoded, tooLarge, invalid, drain, touchViewport } = useEncodedContent(store, viewport);
+  // Imágenes nuevas (D23): el binario espera en IndexedDB hasta que el contenido con su nodo se guarda. `toast` es
+  // estable: el aviso se fija al crear la cola, uno solo aunque fallen varias imágenes.
+  const [uploads] = useState(() => {
+    let shown = false;
+    const u = createImageUploads({
+      store,
+      files: fileStore,
+      projectId: id,
+      persist: indexedDbPendingStore(),
+      published: (fileId) => imageFileIds(initial).includes(fileId),
+      onFail: () => {
+        if (shown) return;
+        shown = true;
+        toast({
+          kind: 'error',
+          title: 'No se pudo subir una imagen',
+          description: 'Se reintentará al recuperar la conexión o al volver a abrir el diagrama.',
+          duration: 0,
+          action: {
+            label: 'Reintentar',
+            onClick: () => {
+              shown = false;
+              u.retryFailed();
+            },
+          },
+        });
+      },
+    });
+    return u;
+  });
+  useEffect(() => {
+    void uploads.resume();
+    const retry = () => uploads.retryFailed();
+    window.addEventListener('online', retry);
+    return () => {
+      window.removeEventListener('online', retry);
+      uploads.queue.dispose();
+    };
+  }, [uploads]);
+  const syncOpts = useMemo(
+    () => ({
+      merge: sync.merge,
+      same: boardSame,
+      fastFirstMs: 150,
+      onSaved: (r: { data: string; revision: number; merged?: string }) => {
+        sync.onSaved(r);
+        uploads.saved(r.data);
+      },
+    }),
+    [sync, uploads],
+  );
   const { status, flush, resolveConflict, acceptRemote } = useAutosave(
     id,
     encoded,
@@ -206,7 +260,8 @@ function Loaded({
     syncOpts,
   );
   useRemoteContent(id, (r) => {
-    if (sync.onRemote(r)) acceptRemote(r.data);
+    const accepted = sync.onRemote(r);
+    if (accepted !== null) acceptRemote(accepted);
   });
   const [title, setTitle] = useState(initialTitle);
   const [isPublic, setPublic] = useState(initialPublic);
@@ -224,10 +279,14 @@ function Loaded({
 
   const files = useMemo<BoardFiles>(
     () => ({
+      projectId: id,
       load: (fileId) => fileStore.load(id, fileId),
+      loadFrom: (from, fileId) => fileStore.load(from, fileId),
       upload: (fileId, blob) => fileStore.upload(id, fileId, blob),
+      addImage: (fileId, blob, meta) => uploads.add(fileId, blob, meta),
+      remove: (fileId) => fileStore.remove(id, fileId),
     }),
-    [id],
+    [id, uploads],
   );
 
   const rename = useCallback(
@@ -288,7 +347,7 @@ function Loaded({
             {tooLarge ? (
               <div className={styles.banner} data-kind="danger" role="alert">
                 <span>
-                  El diagrama supera el tamaño máximo (900 KB) y no se guarda. Quita imágenes o simplifícalo.
+                  El diagrama supera el tamaño máximo ({MAX_CONTENT_LABEL}) y no se guarda. Simplifícalo o divídelo en varios diagramas.
                 </span>
               </div>
             ) : null}
@@ -321,12 +380,14 @@ function Loaded({
                 onViewportChange={(v) => {
                   viewport.current = v;
                   sync.setViewport(v);
+                  touchViewport();
                 }}
               />
               <Toolbar />
               <StylePanel />
               <SearchBox />
               <ActionBar />
+              <BoardCursors projectId={id} />
             </div>
           </div>
         </ReactFlowProvider>

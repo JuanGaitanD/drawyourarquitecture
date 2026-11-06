@@ -60,8 +60,9 @@ export function NodeLabel({
         value={label}
         style={text}
         onDone={(v) => {
-          store.getState().setEditingId(null);
+          // Primero el texto y después salir de la edición: así crear + etiquetar es un solo paso de historial.
           if (v !== null && v !== label) onCommit(v);
+          store.getState().setEditingId(null);
         }}
       />
     </div>

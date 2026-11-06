@@ -1,4 +1,4 @@
-import type { AllowedUser, McpTokenRecord } from '@/application/tokens';
+import type { AllowedEmail, McpTokenRecord } from '@/application/tokens';
 import { generateToken, sha256Hex } from '@/application/tokens';
 import { loadFirestore } from './firestore';
 
@@ -43,22 +43,23 @@ export async function revokeToken(hash: string): Promise<void> {
 }
 
 /** Solo el dueño puede listar; para el resto lanza `permission-denied`. */
-export async function listAllowedUsers(): Promise<AllowedUser[]> {
+export async function listAllowedEmails(): Promise<AllowedEmail[]> {
   const { fs, db } = await loadFirestore();
-  const snap = await fs.getDocs(fs.collection(db, 'allowedUsers'));
+  const snap = await fs.getDocs(fs.collection(db, 'allowedEmails'));
   return snap.docs
-    .map((d) => ({ uid: d.id, email: String(d.data().email ?? ''), addedAt: Number(d.data().addedAt) || 0 }))
+    .map((d) => ({ email: d.id, addedAt: Number(d.data().addedAt) || 0 }))
     .sort((a, b) => a.addedAt - b.addedAt);
 }
 
-export async function addAllowedUser(uid: string, email: string): Promise<AllowedUser> {
+/** `email` ya normalizado (`normalizeEmail`): minúsculas, es el id del documento. */
+export async function addAllowedEmail(email: string): Promise<AllowedEmail> {
   const { fs, db } = await loadFirestore();
-  const user = { uid, email, addedAt: Date.now() };
-  await fs.setDoc(fs.doc(db, 'allowedUsers', uid), { email, addedAt: user.addedAt });
-  return user;
+  const entry = { email, addedAt: Date.now() };
+  await fs.setDoc(fs.doc(db, 'allowedEmails', email), entry);
+  return entry;
 }
 
-export async function removeAllowedUser(uid: string): Promise<void> {
+export async function removeAllowedEmail(email: string): Promise<void> {
   const { fs, db } = await loadFirestore();
-  await fs.deleteDoc(fs.doc(db, 'allowedUsers', uid));
+  await fs.deleteDoc(fs.doc(db, 'allowedEmails', email));
 }

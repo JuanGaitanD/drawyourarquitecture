@@ -6,7 +6,7 @@ import { useAutosave, useProject, useRemoteContent, type ProjectState } from '@/
 import { identity, projectRepo } from '@/app/services';
 import type { StoredDraft } from '@/application/saveQueue';
 import type { ContentRecord } from '@/application/ports';
-import { ContentTooLargeError } from '@/domain/codec';
+import { ContentTooLargeError, MAX_CONTENT_LABEL } from '@/domain/codec';
 import { normalizeTitle, roleOf, type Project } from '@/domain/project';
 import { Button, useToast } from '@/ui';
 import { decodeNote, encodeNote, noteSame, type NoteContent } from './codec';
@@ -280,7 +280,7 @@ function Session({
         {tooLarge ? (
           <Banner
             tone="danger"
-            text="La nota supera el tope de 900 kB y no se puede guardar. Quita elementos para poder guardar de nuevo."
+            text={`La nota supera el tope de ${MAX_CONTENT_LABEL} y no se puede guardar. Quita elementos para poder guardar de nuevo.`}
           />
         ) : null}
         {draft ? (

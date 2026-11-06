@@ -1,9 +1,9 @@
-import type * as FirestoreSdk from 'firebase/firestore';
+import type { FirestoreModule } from './firestoreModule';
 import { EMULATOR_HOST, EMULATOR_PORTS, USE_EMULATORS, app } from './firebase';
 
 // El SDK de Firestore se carga con import() la primera vez que se usa (tras el login o al abrir un enlace
 // público): así queda fuera del bundle inicial, que solo lleva la pantalla de acceso.
-export type FirestoreModule = { fs: typeof FirestoreSdk; db: FirestoreSdk.Firestore };
+export type { FirestoreModule };
 
 let sdk: Promise<FirestoreModule> | null = null;
 

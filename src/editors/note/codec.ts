@@ -22,11 +22,14 @@ export interface SceneElementLike {
 }
 
 /**
- * Un elemento borrado se conserva una hora (Excalidraw usa `isDeleted` como tombstone): así el borrado llega a quien
- * edita a la vez o vuelve de estar sin conexión. ponytail: pasada una hora, un borrado puede resucitar en un cliente
- * que llevaba más tiempo desconectado; la nota no tiene `base` con la que deducirlo.
+ * Un elemento borrado se conserva 30 días (Excalidraw usa `isDeleted` como tombstone): así el borrado llega a quien
+ * edita a la vez o vuelve de estar sin conexión. Decisión (D18): purgar por `revision` solo sería correcto si la
+ * revisión del borrado fuera ≤ la base confirmada de **todos** los clientes posibles, y eso no se puede demostrar sin
+ * registrar la base de cada cliente (miembros que pueden estar desconectados indefinidamente, sin sesión que lo
+ * anuncie). Sin ese estado, el tiempo es la cota segura. ponytail: pasados 30 días un cliente que nunca volvió puede
+ * resucitar un borrado; si se llevara la base confirmada por miembro, purgar por `revision` en vez de por tiempo.
  */
-export const TOMBSTONE_TTL_MS = 60 * 60_000;
+export const TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60_000;
 
 /** Ids de archivo que usan las imágenes vivas de la escena. */
 export function referencedFileIds(elements: readonly unknown[]): string[] {
@@ -39,15 +42,20 @@ export function referencedFileIds(elements: readonly unknown[]): string[] {
 
 /**
  * Escena → contenido persistible. Sin borrados ni estado de interfaz (selección, scroll…): solo el
- * color de fondo. `files` conserva únicamente lo que una imagen viva referencia.
+ * color de fondo. `files` conserva únicamente lo que una imagen viva referencia. Las imágenes cuyo `fileId` está en
+ * `unconfirmed` (subida sin confirmar, D8) no se publican —ni el elemento ni su entrada en `files`—: quien las recibiera
+ * vería una imagen rota; se publican cuando la subida confirma.
  */
 export function buildNoteContent(
   elements: readonly unknown[],
   appState: { viewBackgroundColor?: string },
   known: NoteFiles,
   now = Date.now(),
+  unconfirmed: ReadonlySet<string> = new Set(),
 ): NoteContent {
-  const all = elements as readonly SceneElementLike[];
+  const all = (elements as readonly SceneElementLike[]).filter(
+    (e) => !(e.type === 'image' && e.fileId && unconfirmed.has(e.fileId)),
+  );
   const live = all.filter((e) => !e.isDeleted);
   const kept = all.filter((e) => !e.isDeleted || (typeof e.updated === 'number' && now - e.updated <= TOMBSTONE_TTL_MS));
   const files: NoteFiles = {};

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { makeNode } from '../model/board';
 import { fixtureBoard } from '../model/fixtures';
 import { toAbsolute } from '../model/geometry';
+import { mergeBoards } from '../model/merge';
 import { validateBoardContent } from '../model/validate';
 import { createBoardStore } from './boardStore';
 import { reparentNodes } from './reparent';
@@ -252,6 +253,103 @@ describe('historial local y cambios remotos', () => {
     s.temporal.getState().redo();
     expect(ids(s)).not.toContain('note');
     expect(label(s, 'api')).toBe('remoto');
+    expect(validateBoardContent(s.getState().toContent({ x: 0, y: 0, zoom: 1 })).ok).toBe(true);
+  });
+});
+
+describe('crear una forma con etiqueta (D12)', () => {
+  const fresh = () => ({ ...makeNode('shape', { x: 500, y: 500 }), id: 'nuevo' });
+  const writeLabel = (s: ReturnType<typeof createBoardStore>, label: string) => {
+    // Lo mismo que hace NodeLabel al confirmar: primero el texto, después salir de la edición.
+    s.getState().updateNodeData(['nuevo'], { label });
+    s.getState().setEditingId(null);
+  };
+
+  it('crear y escribir la etiqueta es un solo paso: deshacer quita el nodo entero', () => {
+    const s = loaded();
+    s.getState().insertNode(fresh(), true);
+    expect(s.getState().editingId).toBe('nuevo');
+    expect(past(s)).toBe(0); // el paso se cierra al terminar de escribir
+    writeLabel(s, 'API');
+    expect(past(s)).toBe(1);
+    expect(s.getState().nodes.find((n) => n.id === 'nuevo')!.data.label).toBe('API');
+    s.temporal.getState().undo();
+    expect(s.getState().nodes.some((n) => n.id === 'nuevo')).toBe(false);
+    s.temporal.getState().redo();
+    expect(s.getState().nodes.find((n) => n.id === 'nuevo')!.data.label).toBe('API');
+  });
+
+  it('cancelar la edición (Esc) deja la forma sin etiqueta en un solo paso', () => {
+    const s = loaded();
+    s.getState().insertNode(fresh(), true);
+    s.getState().setEditingId(null);
+    expect(past(s)).toBe(1);
+    expect(s.getState().nodes.some((n) => n.id === 'nuevo')).toBe(true);
+  });
+
+  it('sin edición (iconos, imágenes) también es un paso, y el historial sigue activo después', () => {
+    const s = loaded();
+    s.getState().insertNode(fresh(), false);
+    expect(past(s)).toBe(1);
+    move(s, 'user', 3);
+    expect(past(s)).toBe(2);
+  });
+
+  it('si el remoto borra el nodo mientras se escribe, el historial se reanuda', () => {
+    const s = loaded();
+    s.getState().insertNode(fresh(), true);
+    s.getState().applyRemote(s.getState().nodes.filter((n) => n.id !== 'nuevo'), s.getState().edges);
+    expect(s.getState().editingId).toBeNull();
+    move(s, 'user', 3);
+    expect(past(s)).toBe(1);
+  });
+});
+
+describe('historial por referencia (D13)', () => {
+  it('escribir lo mismo que ya había no entra al historial', () => {
+    const s = loaded();
+    const label = s.getState().nodes.find((n) => n.id === 'api')!.data.label;
+    s.getState().updateNodeData(['api'], { label });
+    s.getState().updateNodeData(['api'], { style: { stroke: '#1f2937' } as never });
+    expect(past(s)).toBe(0);
+  });
+
+  it('mover un nodo y volver al mismo sitio dentro de un gesto no deja paso', () => {
+    const s = loaded();
+    s.getState().beginGesture();
+    move(s, 'user', 25);
+    move(s, 'user', -25);
+    s.getState().endGesture();
+    expect(past(s)).toBe(0);
+  });
+
+  it('el remoto borra un frame: cada paso del historial pasa sus hijos a la raíz con su posición absoluta', () => {
+    const s = loaded();
+    const absApi = toAbsolute(s.getState().nodes.find((n) => n.id === 'api')!, s.getState().nodes);
+    move(s, 'user', 10); // un paso de historial que aún contiene el frame
+    // Lo que recibe el store es la fusión (como en `sync.onRemote`): sin el frame y con sus hijos ya en la raíz.
+    const view = { x: 0, y: 0, zoom: 1 };
+    const base = fixtureBoard();
+    const remote = { ...base, nodes: base.nodes.filter((n) => n.id !== 'frame') };
+    const merged = mergeBoards(s.getState().toContent(view), remote, base);
+    s.getState().applyRemote(merged.nodes, merged.edges);
+    s.temporal.getState().undo();
+    const api = s.getState().nodes.find((n) => n.id === 'api');
+    expect(s.getState().nodes.some((n) => n.id === 'frame')).toBe(false);
+    expect(api?.parentId).toBeUndefined();
+    expect(api?.position).toEqual(absApi);
+    expect(validateBoardContent(s.getState().toContent({ x: 0, y: 0, zoom: 1 })).ok).toBe(true);
+  });
+
+  it('el remoto crea un hijo de un nodo nuevo: el paso lo recibe con su padre antes', () => {
+    const s = loaded();
+    move(s, 'user', 10);
+    const parent = { ...makeNode('frame', { x: 900, y: 900 }), id: 'rp' };
+    const kid = { ...makeNode('shape', { x: 5, y: 5 }), id: 'rk', parentId: 'rp' };
+    s.getState().applyRemote([...s.getState().nodes, kid, parent], s.getState().edges); // hijo antes que padre a propósito
+    s.temporal.getState().undo();
+    const ids = s.getState().nodes.map((n) => n.id);
+    expect(ids.indexOf('rp')).toBeLessThan(ids.indexOf('rk'));
     expect(validateBoardContent(s.getState().toContent({ x: 0, y: 0, zoom: 1 })).ok).toBe(true);
   });
 });

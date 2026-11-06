@@ -1,0 +1,39 @@
+/* Capa de cursores ajenos: encima del lienzo, nunca recibe el ratón. Los colores son identidad de persona. */
+.layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+.cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: transform 90ms linear;
+  will-change: transform;
+}
+.arrow {
+  display: block;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%));
+}
+.label {
+  position: absolute;
+  top: 14px;
+  left: 10px;
+  max-width: 12rem;
+  padding: 1px 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  color: #fff;
+  font-family: var(--font-sans);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cursor {
+    transition: none;
+  }
+}

@@ -9,10 +9,13 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == '__OWNER_UID__';
     }
 
-    // Quién puede crear proyectos: el dueño o quien él haya añadido en allowedUsers (fase 3).
+    // Quién puede crear proyectos: el dueño o quien él haya añadido por correo en allowedEmails/{email}
+    // (id = correo en minúsculas). Solo cuenta un correo verificado por el proveedor de acceso.
     function canCreate() {
       return isOwner()
-        || (request.auth != null && exists(/databases/$(database)/documents/allowedUsers/$(request.auth.uid)));
+        || (request.auth != null
+          && request.auth.token.email_verified == true
+          && exists(/databases/$(database)/documents/allowedEmails/$(request.auth.token.email.lower())));
     }
 
     function projectDoc(id) {
@@ -32,11 +35,19 @@ service cloud.firestore {
     function canWrite(p) {
       return isProjectOwner(p) || memberRole(p) == 'editor';
     }
-    function isMemberOrOwner(p) {
-      return isProjectOwner(p) || memberRole(p) in ['editor', 'viewer'];
-    }
     function validMembers(m) {
       return m is map && m.size() <= 20 && m.values().hasOnly(['editor', 'viewer']);
+    }
+
+    // `aclRev` versiona el espejo de acceso de Realtime Database (D33): solo el dueño lo toca. Sube exactamente 1
+    // con cada cambio de `members` y puede subir 1 con un cambio de invitaciones (mismo batch); nunca retrocede ni
+    // salta. Así una publicación atrasada se reconoce y se rechaza. No se usa `updatedAt`: cualquier editor lo
+    // escribe con su reloj.
+    function aclRevOk(before, after) {
+      return after.get('aclRev', 0) is int
+        && (after.get('aclRev', 0) == before.get('aclRev', 0) + 1
+          || (after.get('aclRev', 0) == before.get('aclRev', 0)
+            && after.get('members', {}) == before.get('members', {})));
     }
 
     function validTitle(t) {
@@ -63,6 +74,12 @@ service cloud.firestore {
         && validMembers(request.resource.data.members);
     }
 
+    // `content/main` del proyecto sube exactamente una revisión en este mismo commit (batch o transacción).
+    function revisionAdvances(id) {
+      return getAfter(/databases/$(database)/documents/projects/$(id)/content/main).data.revision
+        == get(/databases/$(database)/documents/projects/$(id)/content/main).data.revision + 1;
+    }
+
     match /projects/{id} {
       // Un proyecto público se lee con get; nunca se lista: list es del dueño (`ownerId == uid`) y de quien es
       // miembro (`members.<uid> in [...]`, sin orderBy: no hay índice compuesto posible por uid).
@@ -82,7 +99,8 @@ service cloud.firestore {
       // Dueño: title, isPublic, members y updatedAt (ownerId y type son inmutables). Editor: solo updatedAt (lo sube
       // cada guardado de contenido). Invitado: solo añadirse a `members` con una invitación válida.
       allow update: if (isProjectOwner(resource.data)
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'isPublic', 'updatedAt', 'members'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'isPublic', 'updatedAt', 'members', 'aclRev'])
+          && aclRevOk(resource.data, request.resource.data)
           && validTitle(request.resource.data.title)
           && request.resource.data.isPublic is bool
           && request.resource.data.updatedAt is number
@@ -94,7 +112,10 @@ service cloud.firestore {
 
       allow delete: if isProjectOwner(resource.data);
 
-      // Rastro de quién entró y con qué invitación.
+      // Rastro de quién entró y con qué invitación. Solo vale en el commit de la aceptación: el rol de `members.<uid>`
+      // cambia ahí mismo (getAfter) y es el del token que se escribe. Así `joins` siempre nombra el enlace que dio el
+      // rol efectivo y no se puede reescribir solo, con otro token, para esquivar «Revocar y quitar» (D44). Borrarlo
+      // es del dueño: un miembro no puede esconder su rastro.
       match /joins/{uid} {
         allow get, list: if isProjectOwner(projectDoc(id));
         allow create, update: if request.auth != null && request.auth.uid == uid
@@ -102,29 +123,20 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll(['token', 'name'])
           && request.resource.data.token is string
           && request.resource.data.name is string && request.resource.data.name.size() <= 80
-          && validInvite(request.resource.data.token, id);
+          && validInvite(request.resource.data.token, id)
+          && getAfter(/databases/$(database)/documents/projects/$(id)).data.get('members', {}).get(uid, '')
+            == get(/databases/$(database)/documents/invites/$(request.resource.data.token)).data.role
+          && getAfter(/databases/$(database)/documents/projects/$(id)).data.get('members', {}).get(uid, '')
+            != projectDoc(id).get('members', {}).get(uid, '');
         allow delete: if isProjectOwner(projectDoc(id));
-      }
-
-      // Presencia (latido cada 60 s, caduca a los 2 min): solo dueño y miembros; cada uno escribe su propio documento.
-      // Los cursores no se persisten: cada escritura cuesta cuota.
-      match /presence/{uid} {
-        allow get, list: if isMemberOrOwner(projectDoc(id));
-        allow create, update: if request.auth != null && request.auth.uid == uid
-          && isMemberOrOwner(projectDoc(id))
-          && request.resource.data.keys().hasOnly(['name', 'color', 'at'])
-          && request.resource.data.keys().hasAll(['name', 'color', 'at'])
-          && request.resource.data.name is string && request.resource.data.name.size() <= 80
-          && request.resource.data.color is string && request.resource.data.color.size() <= 20
-          && request.resource.data.at is number;
-        allow delete: if request.auth != null && request.auth.uid == uid;
       }
 
       match /content/main {
         // Hereda la lectura del padre.
         allow get: if canRead(projectDoc(id));
 
-        // Se crea en el mismo batch que el proyecto: getAfter ve el proyecto ya escrito.
+        // Se crea en el mismo batch que el proyecto: getAfter ve el proyecto ya escrito. Siempre con `data` (el
+        // contenido inicial es pequeño); el troceado solo aparece al guardar.
         allow create: if canCreate()
           && getAfter(/databases/$(database)/documents/projects/$(id)).data.ownerId == request.auth.uid
           && request.resource.data.keys().hasOnly(['data', 'schemaVersion', 'revision', 'updatedAt'])
@@ -135,27 +147,63 @@ service cloud.firestore {
           && request.resource.data.revision == 0
           && request.resource.data.updatedAt is number;
 
-        // Escriben el dueño y los editores. La revisión es monótona: cada guardado sube exactamente una.
+        // Escriben el dueño y los editores. La revisión es monótona: cada guardado sube exactamente una. El
+        // contenido cabe en `data` (≤ 900 000) o va troceado: sin `data` y con `chunks` entero de 2 a 12
+        // (8 MiB / 900 000 B); los trozos se escriben en la misma transacción.
         allow update: if canWrite(projectDoc(id))
-          && request.resource.data.keys().hasOnly(['data', 'schemaVersion', 'revision', 'updatedAt'])
-          && request.resource.data.data is string
-          && request.resource.data.data.size() <= 900000
           && request.resource.data.schemaVersion == 1
           && request.resource.data.revision == resource.data.revision + 1
-          && request.resource.data.updatedAt is number;
+          && request.resource.data.updatedAt is number
+          && ((request.resource.data.keys().hasOnly(['data', 'schemaVersion', 'revision', 'updatedAt'])
+              && request.resource.data.data is string
+              && request.resource.data.data.size() <= 900000)
+            || (request.resource.data.keys().hasOnly(['schemaVersion', 'revision', 'updatedAt', 'chunks'])
+              && request.resource.data.chunks is int
+              && request.resource.data.chunks >= 2
+              && request.resource.data.chunks <= 12));
 
         allow delete: if isProjectOwner(projectDoc(id));
+
+        // Trozos del contenido: la lectura es la del contenido; el dueño los lista (para borrar el proyecto).
+        // Ninguna mutación de un trozo vale sola: `content/main` avanza su revisión en el mismo commit (getAfter),
+        // así los suscriptores del padre ven todo cambio y una carga nunca mezcla trozos de dos revisiones. Crear o
+        // actualizar exige además que el índice quepa en el `chunks` final; el que guarda un contenido más corto
+        // borra los sobrantes (índice ≥ `chunks` final, o todos si el contenido vuelve a `data`). Borrar el
+        // proyecto es la única salida sin revisión: el dueño borra los trozos en el batch que borra el proyecto.
+        match /chunks/{i} {
+          allow get: if canRead(projectDoc(id));
+          allow list: if isProjectOwner(projectDoc(id));
+          allow create, update: if canWrite(projectDoc(id))
+            && revisionAdvances(id)
+            && i.matches('[0-9]|1[01]')
+            && int(i) < getAfter(/databases/$(database)/documents/projects/$(id)/content/main).data.get('chunks', 0)
+            && request.resource.data.keys().hasOnly(['data'])
+            && request.resource.data.data is string
+            && request.resource.data.data.size() <= 900000;
+          allow delete: if (canWrite(projectDoc(id))
+              && revisionAdvances(id)
+              && i.matches('[0-9]|1[01]')
+              && int(i) >= getAfter(/databases/$(database)/documents/projects/$(id)/content/main).data.get('chunks', 0))
+            || (isProjectOwner(projectDoc(id))
+              && !existsAfter(/databases/$(database)/documents/projects/$(id)));
+        }
       }
 
       // Imágenes en trozos (plan · invariante 3). La lectura hereda la del proyecto; escriben dueño y editores.
-      // La meta se escribe la última; los trozos no se listan salvo el dueño (el visor lee por id).
+      // La meta se escribe la última y guarda quién la subió (`createdBy`, D46): ese uid (y el dueño) puede borrar la
+      // meta y sus trozos, p. ej. para deshacer una importación fallida. Los trozos no se listan salvo el dueño (el
+      // visor lee por id; borrar se hace por índice, leyendo `chunks` de la meta). Las metas anteriores a D46 no
+      // tienen `createdBy`: solo el dueño las borra.
+      function fileCreator(id, fileId) {
+        return get(/databases/$(database)/documents/projects/$(id)/files/$(fileId)).data.get('createdBy', '');
+      }
       match /files/{fileId} {
         allow get: if canRead(projectDoc(id));
         allow list: if isProjectOwner(projectDoc(id));
 
         allow create, update: if canWrite(projectDoc(id))
-          && request.resource.data.keys().hasOnly(['mimeType', 'size', 'chunks', 'createdAt'])
-          && request.resource.data.keys().hasAll(['mimeType', 'size', 'chunks', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['mimeType', 'size', 'chunks', 'createdAt', 'createdBy'])
+          && request.resource.data.keys().hasAll(['mimeType', 'size', 'chunks', 'createdAt', 'createdBy'])
           && request.resource.data.mimeType is string
           && request.resource.data.mimeType in ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
           && request.resource.data.size is int
@@ -164,9 +212,15 @@ service cloud.firestore {
           && request.resource.data.chunks is int
           && request.resource.data.chunks >= 1
           && request.resource.data.chunks <= 5
-          && request.resource.data.createdAt is number;
+          && request.resource.data.createdAt is number
+          // Al crear, quien sube; al reescribir, el autor no cambia (una meta anterior a D46 cuenta como del dueño).
+          && request.resource.data.createdBy == (resource == null
+            ? request.auth.uid
+            : resource.data.get('createdBy', projectDoc(id).ownerId));
 
-        allow delete: if isProjectOwner(projectDoc(id));
+        // El autor solo mientras siga pudiendo editar: expulsado o degradado a visor ya no borra (GPT deuda-3 #1).
+        allow delete: if isProjectOwner(projectDoc(id))
+          || (canWrite(projectDoc(id)) && resource.data.get('createdBy', '') == request.auth.uid);
 
         match /chunks/{i} {
           allow get: if canRead(projectDoc(id));
@@ -178,27 +232,37 @@ service cloud.firestore {
             && request.resource.data.data is bytes
             && request.resource.data.data.size() <= 900000;
 
-          allow delete: if isProjectOwner(projectDoc(id));
+          // Dueño; quien subió el archivo; y, sin meta (subida que murió antes de escribirla), cualquier editor:
+          // ya puede sobrescribir esos trozos, y así una importación fallida no deja huérfanos.
+          allow delete: if isProjectOwner(projectDoc(id))
+            || (canWrite(projectDoc(id)) && exists(/databases/$(database)/documents/projects/$(id)/files/$(fileId))
+              && fileCreator(id, fileId) == request.auth.uid)
+            || (canWrite(projectDoc(id))
+              && !exists(/databases/$(database)/documents/projects/$(id)/files/$(fileId)));
         }
       }
     }
 
-    // Lista de permitidos (fase 3): solo el dueño la escribe; cada persona lee su propia entrada.
-    match /allowedUsers/{uid} {
-      allow get: if request.auth != null && (request.auth.uid == uid || isOwner());
+    // Lista de permitidos por correo: solo el dueño la escribe y la lista; cada persona (con correo verificado)
+    // puede leer su propia entrada. El id es el correo en minúsculas.
+    match /allowedEmails/{email} {
+      allow get: if request.auth != null
+        && (isOwner()
+          || (request.auth.token.email_verified == true && request.auth.token.email.lower() == email));
       allow list: if isOwner();
       allow create, update: if isOwner()
+        && email == email.lower()
+        && email.size() <= 254
+        && email.matches('^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$')
         && request.resource.data.keys().hasOnly(['email', 'addedAt'])
         && request.resource.data.keys().hasAll(['email', 'addedAt'])
-        && request.resource.data.email is string
-        && request.resource.data.email.size() > 0
-        && request.resource.data.email.size() <= 254
+        && request.resource.data.email == email
         && request.resource.data.addedAt is number;
       allow delete: if isOwner();
     }
 
     // Tokens del servidor MCP (fase 3): el id es el sha256 (hex) del token; el valor nunca se guarda.
-    // El cliente crea y revoca los suyos; `lastUsedAt` y la lectura por hash los hace el servidor (Admin).
+    // El cliente crea y revoca los suyos; `lastUsedAt` y la búsqueda por hash los hace el servidor (Admin).
     match /mcpTokens/{hash} {
       allow get, list: if request.auth != null && resource.data.uid == request.auth.uid;
       allow create: if request.auth != null
@@ -218,6 +282,49 @@ service cloud.firestore {
         && resource.data.revoked == false
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['revoked'])
         && request.resource.data.revoked == true;
+    }
+
+    // Límite de tasa del servidor MCP: ventana fija de 1 min por token (id = sha256 del token). Lo escribe el
+    // propio usuario autenticado (el servidor opera como él): `window` = minuto desde el epoch. Solo se puede
+    // empezar con count 1, sumar de uno en uno dentro de la ventana (máx. 60) o abrir una ventana posterior.
+    function ownsToken(hash) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/mcpTokens/$(hash)).data.uid == request.auth.uid;
+    }
+    match /rateLimits/{hash} {
+      allow get: if ownsToken(hash);
+      allow create: if ownsToken(hash)
+        && request.resource.data.keys().hasOnly(['uid', 'window', 'count'])
+        && request.resource.data.keys().hasAll(['uid', 'window', 'count'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.window is int
+        && request.resource.data.count == 1;
+      allow update: if ownsToken(hash)
+        && request.resource.data.keys().hasOnly(['uid', 'window', 'count'])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.window is int
+        && ((request.resource.data.window == resource.data.window
+              && request.resource.data.count == resource.data.count + 1
+              && request.resource.data.count <= 60)
+          || (request.resource.data.window > resource.data.window
+              && request.resource.data.count == 1));
+    }
+
+    // Auditoría del servidor MCP: una entrada por llamada a una herramienta, escrita por el usuario autenticado
+    // (el servidor opera como él). Solo se crea (no se edita ni se borra) y cada quien lee solo las suyas.
+    // `expireAt` es un Timestamp: activa la política TTL de Firestore sobre ese campo (docs/mcp.md).
+    match /mcpAudit/{id} {
+      allow get, list: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow create: if ownsToken(request.resource.data.get('tokenHash', ''))
+        && request.resource.data.keys().hasOnly(['uid', 'tokenHash', 'tool', 'projectId', 'ok', 'at', 'expireAt'])
+        && request.resource.data.keys().hasAll(['uid', 'tokenHash', 'tool', 'ok', 'at', 'expireAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.tokenHash is string
+        && request.resource.data.tool in ['list_projects', 'read_note', 'read_board', 'create_note', 'create_board', 'update_board']
+        && (!('projectId' in request.resource.data) || (request.resource.data.projectId is string && request.resource.data.projectId.size() <= 128))
+        && request.resource.data.ok is bool
+        && request.resource.data.at is number
+        && request.resource.data.expireAt is timestamp;
     }
 
     // Invitaciones: el token (id) es el secreto. Se lee con get; solo se listan las propias. Las crea y borra el

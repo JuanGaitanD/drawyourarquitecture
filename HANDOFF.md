@@ -2,206 +2,230 @@
 
 ## Dónde estamos
 
-**Fases 1, 2 y 3 desplegadas (2026-11-05 14:16):** https://drawyourarchitecture.vercel.app. Fase 2: invitaciones por enlace (editor/viewer, revocables), sincronización en vivo con fusión por elemento, presencia con avatares (sin cursores). Fase 3: tokens en `/settings` y servidor MCP en `/api/mcp` (ver `docs/mcp.md`); Vercel tiene `FIREBASE_SERVICE_ACCOUNT` (secreto) y `OWNER_UID`. Reglas de producción desplegadas desde `.wigi/deploy/`. Pendiente: revisión final GPT-6.1-sol de todo lo posterior a la primera revisión (correcciones, imágenes en Firestore, fases 2 y 3).
+**Rama `chore/deuda-tecnica` (sin push, sin desplegar):** tres iteraciones de deuda técnica más una vuelta final integradas (`docs/deuda.md`). Cerradas D1–D29 y D31–D54. **Abierta solo D30**: verificar en Firebase y Vercel reales al mezclar a producción. Gates finales: lint, typecheck, build, `pnpm test` con emulador 547/547, `pnpm test:rules` 133/133, `pnpm test:e2e` 12/12 (dos corridas seguidas).
 
-**Desplegado en producción (2026-11-05 13:09):** https://drawyourarchitecture.vercel.app (Vercel, equipo personal `juangaitands-projects`). Firebase `drawyourarchitecture` en plan gratuito: Firestore `(default)` con reglas e índices desplegados (`OWNER_UID` del dueño), Auth Google con el dominio de Vercel autorizado, Analytics `G-TPM775TWZ2`. Las reglas de producción se generan en `.wigi/deploy/` (no versionado) para no pisar las del emulador. Pendiente: revisión GPT-6.1-sol de lo cambiado tras la revisión final (correcciones, imágenes en Firestore, despliegue) cuando haya cuota.
+Vuelta final (D51–D54): reabrir una invitación ya aceptada entra sin reescribir (`accept` lee antes el proyecto); la cola de subidas respeta el bloqueo perdido en `add` y no adquiere bloqueos tras `dispose`. Ese cierre es por generación (commit c2ea144): lo que empezó antes de `dispose` se aborta, lo nuevo funciona, porque StrictMode desmonta y vuelve a montar el efecto sobre la misma cola (sin eso, en desarrollo ninguna imagen se subía). Pruebas más estrictas en `SharePanel.test.tsx` y en el e2e de imagen en subida (compuerta sobre `Write/channel` con `/files/`; con otra versión del SDK hay que revisar ese patrón; vigilar un fallo aislado visto una vez: la invitada recibió la referencia con la subida retenida).
 
-**T5 · Integración terminada** en la rama `feat/base` (sin push): los carriles C1, C2, D, A y B están fusionados (`chore(merge): integrar carril <X>`, sin conflictos) y los pendientes cruzados resueltos. Gates `lint`, `typecheck`, `test` (309), `test:rules` (25) y `build` en verde. Bundle inicial **152,7 kB gzip** (objetivo < 250). Probado a mano en Chrome contra los emuladores (nota con imagen y board embebido, board con plantilla, Mermaid, ordenar, PNG, JSON, atajos, bloqueo, enlace público sin sesión, despublicar, conflicto entre pestañas, claro y oscuro a 1280 y 1024 px).
+Lo más relevante de la iteración 3: el guardado reintenta la transacción cuando su commit pierde la carrera contra otro cliente (Firestore evalúa las reglas antes que la precondición y devuelve `permission-denied`; D49, se perdían trazos al editar a la vez); la nota entrega su handle solo tras pintar `initialData` (D48); `joins` ligado a `members` en el mismo commit (D44); el autor de un archivo lo borra mientras pueda editar (D46, D50); la carga troceada reintenta si otro cliente la reduce a mitad (D45); el dueño republica el espejo RTDB al cambiar `members`/`aclRev` (D47); cola de subidas en `application/` con bloqueo Web Locks por `fileId` (D37, D38); pruebas de componentes y e2e de imágenes (D39, D42); emulador propio por ejecución para `src/server` (D41).
 
-**Imágenes en Firestore, sin Storage** (decisión de Juan, 2026-11-05): `FileStore` guarda cada imagen troceada en `projects/{id}/files/{fileId}` + `chunks/{i}` y toda subida (nota y board) se optimiza antes (`application/imageOptimize.ts`). Ya no hay Storage, `cors.json` ni plan Blaze en el proyecto. Detalle en «Imágenes en Firestore».
+**Despliegue**: la meta de archivos exige ahora `createdBy`; un cliente con la versión anterior en caché no sube imágenes hasta recargar.
 
-**T7 · Revisión final corregida** (6 hallazgos de `.wigi/review/final-gpt.md`, un commit por cada uno, ver «Correcciones de la revisión final»). Gates `lint`, `typecheck`, `test` y `build` en verde (`test:rules` no se tocó: no cambian las reglas).
+**Producción (2026-11-06 01:50 UTC):** https://drawyourarchitecture.vercel.app lleva `chore/deuda-tecnica` (`a30d9c2`). Hecho: Realtime Database creada (`https://drawyourarchitecture-default-rtdb.firebaseio.com`, us-central1, creada por la API de Firebase), reglas de Firestore y de RTDB desplegadas, `VITE_FIREBASE_DATABASE_URL` en Vercel (Production y Preview). Al desplegar, el MCP caía al arrancar: `firebase-admin/auth` carga `jwks-rsa`, que hace `require()` de `jose` (solo ESM) y el cargador de funciones de Vercel no lo admite; ahora el custom token se firma con `node:crypto` y `firebase-admin/auth` solo se importa con el emulador. **Sin TTL en `mcpAudit`**: la política TTL de Firestore exige facturación (plan Blaze); la auditoría no caduca sola. **D30 parcial**: con un token real del dueño, `list_projects`, `create_board` y `read_board` funcionan en producción (board de prueba `JhLiSa2xin6rA3mFXtpc`, «Prueba D30 (MCP en producción)», se puede borrar). Falta: una cuenta permitida por correo (no el dueño) creando por MCP (`email_verified` en el custom token) y un contenido de más de 900 000 bytes en Firestore real.
 
-Siguen T6 (e2e) y T8 (despliegue, pendiente de Juan).
+**Qué hace la app hoy:** notas (Excalidraw) y diagramas (React Flow) con autosave, imágenes en Firestore sin Storage, enlaces públicos de solo lectura, invitaciones (editor/viewer) con sincronización en vivo y fusión por elemento, **presencia y cursores en Realtime Database**, contenido de hasta **8 MiB** (troceado a partir de 900 000 bytes), lista de permitidos por **correo verificado**, y un **servidor MCP** (`/api/mcp`, `docs/mcp.md`) que opera como la propia persona bajo las reglas de Firestore.
 
-## Carril P2 · Colaboración en tiempo real (rama `lane/p2-realtime`, sin push)
+Siguen: D30 al mezclar a producción, y el despliegue (pendiente de Juan: «Para producción»).
 
-**Hecho**: Biblioteca propia en la barra de la nota; reglas de `members`, `invites`, `joins` y `presence` (50 casos de reglas); invitaciones con enlace, panel «Compartidos conmigo» y ruta `/invite/:token`; sincronización en vivo con fusión (nota y board); presencia con latido y avatares. Gates: `lint`, `typecheck`, `test` (345), `build`, reglas (50) y `test:e2e` (3) en verde.
+## Para producción (lo hace Juan, con la cuenta correcta)
 
-### Decisiones (incluye las correcciones de la revisión PonyTail)
+Antes de cada paso, verificar la cuenta activa (`firebase login:list`, `vercel whoami`). El proyecto es personal (Firebase `drawyourarchitecture`, Vercel `juangaitands-projects`): nada de esto va con la cuenta de Wigilabs.
 
-1. **Biblioteca**: `NoteCanvas.topRight` admite una función `(ui: CanvasUi) => ReactNode`; el botón propio vive en `TopBar` (`api.toggleSidebar({ name: 'default' })`, `aria-pressed` con el estado) y el disparador de Excalidraw se oculta por CSS (`.default-sidebar-trigger`). Con la barra lateral abierta la tapa a ella, igual que antes: se cierra con su «X».
-2. **Reglas** (`firestore.rules.tpl`): `members: map<uid, 'editor'|'viewer'>` en el proyecto; lectura dueño/miembro/público; contenido y archivos los escriben dueño y editor; metadatos, `members` y borrados solo el dueño (el editor solo sube `updatedAt`); `canCreate()` = `isOwner()` (P3 la amplía; los bloques `mcpTokens` y `allowedUsers` no se tocaron). **Unirse con invitación**: un batch escribe `projects/{id}/joins/{uid} = { token, name }` y `members.<uid>`; la regla de `update` lee el token con `getAfter(joins/uid)`, valida con `get(invites/token)` (mismo proyecto, `expiresAt` > `request.time`), exige que el rol sea el del invite y que solo cambie `members.<uid>`. Invites: `get` sin `list` salvo los propios, los crean y borran solo el dueño, token de 32 caracteres (24 bytes), caducidad ≤ 7 días. **`list` de compartidos**: `where('members.<uid>', 'in', ['editor','viewer'])` **sin `orderBy`** (se ordena en cliente): un índice compuesto por uid es imposible, así que `firestore.indexes.json` no cambia.
-3. **Revocación** en «Compartir» (solo el dueño): crear enlace (editor/solo lectura), copiar, **revocar** invitación y **quitar** miembros (los nombres salen de `joins`).
-4. **Sincronización**: `ContentRepo.subscribe` (`onSnapshot`) y `save(id, data, rev, merge?)`: con `merge`, un desfase de revisión no da conflicto: la transacción fusiona contra el remoto y escribe `revision+1`. La fusión se **inyecta por editor** (`useAutosave` 7.º parámetro `{ merge, same, fastFirstMs, onSaved }`); `application/` no importa motores. **Board**: fusión **a tres bandas** contra la base (último contenido del servidor conocido): sin contador `v`, sin tombstones y sin cambios en `BoardContent`/`validate`/visor/MCP; si cambia en los dos lados gana el local; se limpian aristas colgantes y se reparentan hijos de un frame borrado (`model/merge.ts`, `sync.ts`). La fusión del guardado usa el **estado vivo del store**, no el texto encolado (que puede ser anterior a lo último recibido). **Nota**: `reconcileElements` (`merge.ts`) con `updateScene({ captureUpdate: NEVER })`; la fusión **une `content.files`** (`unionFiles`). Como la nota no tiene `base`, `buildNoteContent` ahora **conserva como tombstone los elementos `isDeleted` modificados hace menos de 1 h** (`TOMBSTONE_TTL_MS`); **P3: el servidor MCP debe ignorar `isDeleted` al leer notas**. Techo: un cliente desconectado más de 1 h puede resucitar un borrado.
-5. **Anti-eco**: al aplicar un remoto se llama `acceptRemote(data)` (la cola toma ese contenido como lo último del servidor) y se ignora la instantánea con revisión ya vista (propia o antigua); `same` compara contenidos de forma semántica (board: por id sin orden ni viewport; nota: id+versión+archivos), así lo que el editor re-emite igual no se reescribe. **No se sube la revisión esperada** al aplicar un remoto (la revisión es la de la última escritura propia): un guardado pendiente anterior a la fusión pasa por la fusión de la transacción en vez de pisar lo ajeno. Test: dos colas simuladas convergen y no escriben más al asentarse (`saveQueue.test.ts`).
-6. **Latencia**: `fastFirstMs: 150` (el primer cambio tras un descanso ≥ 800 ms sale a los 150 ms; una ráfaga sigue agrupándose a 800 ms) y el board codifica a los 120 ms (antes 250).
-7. **Presencia**: **sin cursores** (cada escritura gasta cuota). `projects/{id}/presence/{uid} = { name, color, at }`: latido al abrir y cada 60 s, caduca a los 2 min, borrado al salir (mejor esfuerzo); lo escribe solo el propio usuario y lo leen miembros y dueño. Avatares de los conectados en la barra de la nota y la cabecera del board. Los cursores (nota con `collaborators`, capa propia en el board) **quedan fuera de v2**: harían falta Realtime Database u otro canal efímero.
-8. **Viewer**: la nota abre en `viewModeEnabled` y el board en `BoardViewer` («Solo lectura», título bloqueado); ambos se actualizan en vivo. El editor y el viewer no ven «Compartir».
-9. **Emulador de pruebas con dos cuentas**: con `VITE_USE_EMULATORS=1`, `localStorage['dya:testUser'] = 'guest-a'` entra como otra cuenta de prueba (el dueño sigue siendo `owner-test`).
+1. ~~**Realtime Database**~~ (hecho el 2026-11-06). URL: `https://drawyourarchitecture-default-rtdb.firebaseio.com` (EE. UU.) o `https://drawyourarchitecture-default-rtdb.<región>.firebasedatabase.app`.
+2. **Reglas**: `firebase deploy --only database` (usa `database.rules.json`) y volver a desplegar las de Firestore (`pnpm rules:render`, salida en `.wigi/deploy/`): traen `mcpTokens` acotado, `allowedEmails`, `rateLimits`, `mcpAudit`, `canCreate()`, el contenido troceado y ya no tienen `presence`.
+3. **Política TTL** de Firestore sobre `mcpAudit.expireAt` (consola o `gcloud firestore fields ttls update expireAt --collection-group=mcpAudit --enable-ttl`). Sin ella la auditoría no caduca.
+4. **Variables de Vercel** (Production y Preview): `VITE_FIREBASE_DATABASE_URL` (paso 1) y las `VITE_FIREBASE_*` visibles para la función del MCP, del **mismo proyecto** que `FIREBASE_SERVICE_ACCOUNT` (que sigue siendo un secreto y solo da identidad). `OWNER_UID` ya no se lee en el servidor (solo al renderizar las reglas). Redeploy.
+5. **No verificado contra Firebase real** (sí contra emuladores): que el ID token de `signInWithCustomToken` lleve `email` y `email_verified` del registro del usuario; si no, solo el dueño crearía proyectos por MCP (arreglo: pasarlos en `createCustomToken(uid, claims)`). Tampoco se probó el despliegue en Vercel ni la caché de sesiones con la función congelada, ni el troceado de contenido contra Firestore real (sí contra el emulador).
+
+## Colaboración en tiempo real
+
+### Reglas y compartir
+
+- `members: map<uid, 'editor'|'viewer'>` en el proyecto; lectura dueño/miembro/público; contenido y archivos los escriben dueño y editor; metadatos, `members` y borrados solo el dueño. `canCreate()` = dueño o correo verificado en `allowedEmails`.
+- **Unirse con invitación**: un batch escribe `projects/{id}/joins/{uid} = { token, name }` y `members.<uid>`; la regla lee el token con `getAfter(joins/uid)`, valida la invitación (`expiresAt` > `request.time`, mismo proyecto, rol exacto) y exige que solo cambie `members.<uid>`. `joins/{uid}` solo se crea o cambia en ese mismo commit (`getAfter`: `members[uid]` pasa al rol del token escrito) y solo el dueño lo borra (D44): no se puede reescribir solo con otro token para esquivar «Revocar y quitar». Invitaciones: token de 32 caracteres, caducidad ≤ 7 días, las crea y borra solo el dueño. **`list` de compartidos**: `where('members.<uid>', 'in', ['editor','viewer'])` sin `orderBy` (se ordena en cliente; no hay índice compuesto por uid).
+- **Revocar** (solo dueño): crear enlace, copiar, revocar y quitar miembros. Una invitación ya aceptada no expulsa por sí sola: «Compartir» lo explica, muestra por enlace cuántas personas entraron con él y ofrece **«Revocar y quitar…»** (un batch borra la invitación y quita de `members` a quienes entraron con ese token, según `joins.token`; `InviteRepo.revokeAndRemove`).
+
+### Sincronización
+
+- `ContentRepo.subscribe` (`onSnapshot`) y `save(id, data, rev, merge?)`: con `merge`, un desfase de revisión no da conflicto; la transacción fusiona contra el remoto y escribe `revision + 1`. La fusión se **inyecta por editor** (`useAutosave`, 7.º parámetro `{ merge, same, fastFirstMs, onSaved }`); `application/` no importa motores.
+- **Board**: fusión a tres bandas contra la base (último contenido del servidor conocido), sin contadores ni tombstones; si cambia en los dos lados gana el local; limpia aristas colgantes y reparenta hijos de un frame borrado (`model/merge.ts`, `sync.ts`). Rompe ciclos de `parentId` de forma determinista. El historial rebasa los cambios remotos: deshacer no borra ni resucita lo ajeno (`applyRemote`).
+- **Nota**: `reconcileElements` con `updateScene({ captureUpdate: NEVER })`; une `content.files`. Los borrados son tombstones (`isDeleted`) que duran **30 días** (`TOMBSTONE_TTL_MS`, D18): un cliente desconectado más de 30 días puede resucitar un borrado (purgar por `revision` no es demostrable sin registrar la base de cada miembro). **`read_note` ignora `isDeleted`.**
+- **Anti-eco**: al aplicar un remoto se llama `acceptRemote(data)` y se ignora la instantánea con revisión ya vista; `same` compara semánticamente. No se sube la revisión esperada tras una fusión (un pendiente anterior pasa por la fusión de la transacción en vez de pisar lo ajeno). `sync.onRemote` devuelve `string | null` (el contenido remoto **con el viewport propio**; `null` si no cambió ningún elemento), y `BoardEditor` solo llama a `acceptRemote` con un valor no nulo.
+- **Latencia**: `fastFirstMs: 150`; el board codifica a los 120 ms.
+- **Viewer**: la nota abre en `viewModeEnabled` y el board en `BoardViewer` («Solo lectura»). **El visor ya no se reencuadra con cada cambio remoto** (D6): encuadra al cargar (y al llegar los primeros nodos de un tablero vacío) y a petición con «Encuadrar el diagrama».
+- **Emulador con dos cuentas**: con `VITE_USE_EMULATORS=1`, `localStorage['dya:testUser'] = 'guest-a'` entra como otra cuenta de prueba (el dueño sigue siendo `owner-test`).
+
+### Presencia y cursores (Realtime Database, D5)
+
+- **Modelo**: `presence/{ownerId}/{projectId}/{uid}/{sessionId} = { name, color, x?, y?, at }` (una sesión por pestaña; `groupSessions` en `application/presence.ts` las agrupa por uid y excluye las propias: un avatar, un cursor por persona). Cada sesión existe mientras haya conexión (`onDisconnect().remove()` reabierto en cada reconexión con `.info/connected`): sin latidos ni caducidad. El cursor se publica con `set` completo y throttle de 80 ms (`application/presence.ts`, `throttleCursor`). **Firestore ya no recibe latidos** (se quitó el bloque `presence` de las reglas).
+- **Sala compartida**: `app/hooks/usePresence.ts` mantiene una sala por proyecto con contador de referencias (`usePresence(projectId) → { others, move }`); avatares y cursores comparten conexión. Sin `VITE_FIREBASE_DATABASE_URL` (ni emuladores) `loadDatabase()` devuelve `null` y la presencia se apaga sin romper nada.
+- **Cursores**: nota → `updateScene({ collaborators })` con `onPointerUpdate` (`editors/note/presenceCursors.ts`); board → capa `BoardCursors` (`editors/board/presenceCursors.tsx`) con coordenadas de flujo proyectadas con la transformación de React Flow, también en el visor del rol viewer. Embeds y enlaces públicos no publican ni muestran cursores.
+- **Control de acceso**: RTDB no lee Firestore. Se descartó el custom claim (exige Admin y renovar tokens) y un espejo plano `projectMembers/{pid}/{uid}` (quien llegue primero «reclama» el proyecto de otro). Se eligió un **espejo colgado del uid del dueño**: `acl/{ownerId}/{projectId}/{owner-only write}` con `members/{uid} = { role, token? }` e `invites/{token} = { role, expiresAt }`. Solo el dueño real escribe bajo su rama; un invitado se registra a sí mismo (`joinWithInvite`) con el token de una invitación vigente y el rol exacto de esa invitación. El dueño sincroniza `members` con los de Firestore al abrir el proyecto y en cada cambio de `members` o `aclRev` mientras lo tiene abierto (`keepAclSynced`), y republica las invitaciones vigentes al abrir «Compartir». Todo el espejo es de mejor esfuerzo: si falla, se comparte igual y solo falta la presencia. Reglas en `database.rules.json`, 9 casos en `tests/rules/database.test.ts`.
+- **Límites conocidos**: (1) ~~dos pestañas comparten nodo~~ (resuelto, D25); (2) quitar a un miembro de Firestore sin pasar por «Compartir» deja su entrada en el espejo hasta que el dueño la quite; (3) en la nota cada cursor remoto hace que Excalidraw dispare `onChange` (150 ms de throttle; `useAutosave` no escribe porque el contenido no cambia); (4) Excalidraw 0.18.1 **ignora** `Collaborator.color` y pinta `hsl(hue, 100%, 83%)` con `hue = (|hash(id)| % 37) · 10`: el `id` del colaborador se elige (`editors/note/cursorColor.ts`) para igualar el matiz del avatar, la saturación y la luminosidad no se pueden cambiar (D26); (5) con el Spark, 100 conexiones simultáneas de RTDB.
 
 ### Coste (cuota Spark: 20 000 escrituras y 50 000 lecturas al día)
 
-- Guardado: con `DEBOUNCE_MS = 800`, un editor escribiendo sin parar genera **≈ 4 500 escrituras/h** (el techo; en uso real mucho menos), más **una lectura por oyente y por escritura**. Si se acerca a la cuota, subir el debounce.
-- Presencia: 1 escritura/min por persona conectada.
+- Guardado: con `DEBOUNCE_MS = 800`, un editor escribiendo sin parar genera ≈ 4 500 escrituras/h (techo) y una lectura por oyente y escritura. En el board, **pan y zoom** también guardan el viewport (D11): una escritura por gesto tras 1,5 s + 0,8 s de quietud.
+- Contenido troceado: cada guardado reescribe todos los trozos y cada cliente suscrito relee n trozos por cambio; vigilarlo si un board real llega a varios MB.
+- Presencia: en RTDB, sin gasto de cuota de Firestore.
 
-### Aceptación (Chrome, dos contextos de Playwright: `owner-test` e invitado `guest-a`; script en `.wigi/p2/accept.mjs`, no versionado)
+## Servidor MCP
 
-- Board: edición simultánea de los dos → los dos ven ambos cambios en 0,5 s; cambios de etiqueta distintos a la vez y un borrado se propagan; sin avisos de conflicto. Cambio aislado: 0,4–1,0 s de un cliente al otro.
-- Nota: un rectángulo y una elipse dibujados a la vez por cada uno acaban en el servidor en ≈ 1 s, sin avisos de conflicto.
-- Viewer (`viewer-b`): ve «Solo lectura», sin herramientas de edición, título bloqueado, y ve en vivo los cambios del dueño. Reglas: un viewer no escribe contenido.
-- Dueño: lista de miembros con nombres, quitar un miembro y revocar invitaciones funcionan; tras quitarlo, sus escrituras reciben 403.
-- Avatares: cada uno ve al otro conectado.
-- **Reglas en el navegador**: los tests de reglas cargan `firestore.rules` en el emulador compartido; otro carril puede sobrescribirlas, y entonces «Crear enlace» falla («No se pudo crear la invitación»). Se volvió a lanzar la suite de reglas antes de cada pasada.
+Detalle de uso, herramientas, seguridad y despliegue en `docs/mcp.md`.
 
-### Pendiente / límites
+- **Identidad vs. datos (D1)**: Admin solo resuelve token → uid, escribe `lastUsedAt` (como mucho una vez por hora) y emite `createCustomToken(uid)` (`src/server/admin.ts`). Los datos van por el **SDK web autenticado** como la persona (`src/server/userDb.ts`: una app por uid, 50 min, máximo 20), así que las reglas de Firestore aplican tal cual; `permission-denied` → 403. Se borraron `canRead/canWrite/canCreate`. Un id de proyecto inexistente da 403 (las reglas no lo distinguen de uno ajeno); 404 solo es «sin contenido».
+- **Contenido**: lee y escribe con `createContentRepo` (la misma implementación que la app, troceado incluido); `update_board` lee, amplía y guarda con `save` y la revisión leída, y reintenta ante conflicto (hasta 5, después 409). `create_*` de más de 900 000 bytes crean el proyecto vacío y lo amplían con `save` (las reglas exigen `data` al crear `content/main`). Prueba: crear, leer y ampliar un board de ≈ 1,2 MB contra el emulador (`tools.test.ts`).
+- **Límite y auditoría (D2)**: `rateLimits/{hash}` (60/min, 429 + `Retry-After`) y `mcpAudit/{id}` con `expireAt` (TTL de 30 días), escritos por la propia persona bajo reglas (`src/server/limits.ts`).
+- **`read_note` (D3)**: devuelve también `images` (`fileId`, `mimeType`) y `embeds` (`boardId`, con título y Mermaid si se pueden leer).
+- **Lista de permitidos (D4)**: `allowedEmails/{correo en minúsculas}`; `canCreate()` = dueño o `email_verified` + entrada. Ajustes pide solo el correo. `allowedUsers` desapareció (nunca se desplegó: sin migración).
+- **Empaquetado**: `api/mcp.ts` reexporta `api/_mcp.mjs`, generado con `node scripts/bundle-mcp.mjs` (esbuild, paquetes externos); un test falla si no está al día. `contentRepo.ts`, `firestoreModule.ts` y `errors.ts` están separados de `firebase.ts` (`import.meta.env`) para poder empaquetarlos en Node.
+- **Dependencias** (exactas): `@modelcontextprotocol/sdk` 1.32.2, `firebase-admin` 14.5.0, `zod` 4.6.7, `esbuild` 0.28.2 (dev).
+- **Pruebas**: `src/server` contra Auth 9099 + Firestore 8080 (`tools`, `limits`, `note`, `e2e` con el bundle en un proceso Node y el cliente MCP del SDK). Los tests cargan las reglas de este repo en el emulador compartido (`loadRules()`); si otro carril carga las suyas entre medias, repetir. Sin `FIRESTORE_EMULATOR_HOST` se omiten.
 
-- Cursores en tiempo real (ver 7). Viewer del board: el visor se reconstruye (reencuadra) con cada cambio remoto.
-- La fusión del board recorre todo el board por cada cambio remoto (O(n)).
-- Una invitación aceptada y luego revocada no expulsa: hay que quitar al miembro (se hace desde la misma ventana).
-- P3: ignorar `isDeleted` en notas; el servidor MCP ya puede escribir contenido de un board sin tocar nada de sincronización (no hay campos extra).
+## Contenido troceado (D17)
 
-### Revisión final 2 corregida (`.wigi/review/final-gpt-2.md`, un commit por hallazgo)
+Formato de `projects/{id}/content/main`:
 
-1. **Cola vs. fusión** (`saveQueue.ts`): tras un guardado que el servidor fusionó (`merged`) **no se sube la revisión esperada**; el pendiente anterior a la fusión vuelve a pasar por la fusión de la transacción en vez de pisar lo ajeno. Coste: mientras cada guardado devuelva `merged` se repite la fusión (no se escribe más). Prueba: guardado diferido + segundo `push` + remoto antes del ACK.
-2. **Deshacer/rehacer del board** (`boardStore.applyRemote`): cada paso del historial (y el gesto en curso) recibe las altas y ediciones remotas y pierde los borrados remotos (`rebaseOnRemote`); lo colgado pasa a la raíz con su posición absoluta o se descarta. Pruebas: alta, edición y borrado ajenos entre deshacer y rehacer.
-3. **Ciclos de frames** (`model/merge.ts`): `mergeBoards` rompe el ciclo de forma determinista (el id menor pasa a la raíz; cada miembro conserva la posición absoluta que quiso su autor, usando la de su padre en `base`) y `onRemote` no aplica ni avanza la base con una fusión inválida (`sync.ts`). Pruebas: las dos orientaciones y el store.
-4. **Remoto antes del handle** (`remoteInbox.ts`): se retiene el más reciente y se aplica al registrar el handle de Excalidraw.
-5. **Fondo remoto** (`pickBackground`): `applyRemote` y la fusión del guardado toman el fondo remoto salvo que esta pestaña lo cambiara y no esté guardado (se compara con el último fondo conocido del servidor; el ACK propio lo actualiza vía `NoteHandle.saved`).
-6. **Imagen aún subiéndose** (`retryMissing`): el remoto reintenta con 1, 2 y 4 s antes de mostrar el aviso de «No se pudo cargar». **Límite**: si la subida tarda más de ~7 s sigue el aviso con «Reintentar»; el autor no notifica el fin de la subida (publicar la referencia tras confirmar la subida sería la solución completa).
+| Contenido codificado | `content/main` | `content/main/chunks/{i}` |
+| --- | --- | --- |
+| ≤ 900 000 bytes UTF-8 | `{ data, schemaVersion: 1, revision, updatedAt }` | — |
+| > 900 000 y ≤ 8 MiB | `{ schemaVersion: 1, revision, updatedAt, chunks: n }` (sin `data`, 2 ≤ n ≤ 12) | `{ data: string }` por trozo, ≤ 900 000 bytes, `i` de 0 a n−1 |
 
-**Sin probar en navegador** (solo Vitest): 4, 5 y 6 dependen de Excalidraw; las pruebas cubren la lógica pura extraída (`remoteInbox`, `pickBackground`, `retryMissing`), no el cableado del lienzo. Ciclos de un solo nodo (`parentId` a sí mismo) no se tratan en la fusión: los rechaza `validateBoardContent`.
+- `createContentRepo` (`infrastructure/firebase/contentRepo.ts`) con la parte pura en `application/contentChunks.ts` (`splitContent`, `joinContent`, `chunkCount`; parte en frontera UTF-8). `save` abre una transacción, lee la meta (y los trozos solo si debe fusionar), escribe meta + trozos y borra los sobrantes de un guardado anterior más largo. `load` de un contenido troceado también va en transacción (consistencia entre trozos): necesita conexión; sin ella el editor cae al borrador local.
+- Reglas (`firestore.rules.tpl`, bloque `content`): `update` de `main` con `data` ≤ 900 000 **o** `chunks` entero 2–12 sin `data`; trozos: `get` = lectura del contenido, `create/update` de dueño y editor (`data is string`, ≤ 900 000, `i` 0–11, claves cerradas), `delete` de dueño y editor, `list` del dueño. `create` de `main` sigue exigiendo `data`. Borrar un proyecto borra también los trozos.
+- `domain/codec.ts`: `DOC_CONTENT_BYTES` = 900 000, `MAX_CONTENT_BYTES` = 8 MiB, `MAX_CONTENT_LABEL` («8 MiB») para los avisos de tamaño del board y de la nota.
+- `vitest.rules.config.ts` (alias `@` y `VITE_USE_EMULATORS=1`) y `tsconfig.node.json` (`paths` de `@/*` y tipos `vite/client`) cambiaron porque `tests/` ahora importa código de `src/`.
+
+## Board (D10–D16)
+
+Medido con un board de 2 000 nodos y 2 500 aristas (≈ 1,1 MB; ya se puede guardar gracias a D17) en `src/editors/board/perf.test.ts`:
+
+| Operación | Antes (JSON por cambio) | Después |
+| --- | --- | --- |
+| Historial · mover un nodo | 6,9 ms | 0,13 ms |
+| Historial · gesto de 20 movimientos | 18,2 ms | 2,0 ms |
+| Fusión · `onRemote` (parse incluido) | 102 ms | 23 ms |
+| Fusión · `onRemote` con 100 pasos de historial | ≈ 7 900 ms | 70 ms |
+| Fusión · `mergeBoards` | 45 ms | 2,0 ms |
+
+El benchmark mide **en relación con una pasada de `JSON.stringify` del board entero** (misma máquina, mismo momento), con el mejor de varios intentos y hasta dos reintentos del bloque: no depende de la carga de la máquina, y una regresión al recorrido con JSON sigue fallando. También comprueba que el board de 2 000 nodos se codifica con el `encode` real y se trocea y recompone igual. Los tiempos van a la salida: `pnpm exec vitest run src/editors/board/perf.test.ts --reporter=verbose`. Mide el modelo en Node, no el render de React Flow.
+
+- **D13**: `cleanNodes`/`cleanEdges` recuerdan el resultado por objeto (`WeakMap`); la igualdad del historial compara por referencia y a fondo solo lo que difiere; el rebase del historial ante un remoto calcula el diff por id una vez; `model/merge.ts` tiene `deepEqual` y `diffById`; `onRemote` no fusiona nada si el remoto no cambió ningún elemento respecto de `base`.
+- **D12**: crear una forma es un solo paso de historial (`insertNode(node, edit)` abre un gesto que cierra `setEditingId`; Esc deja la forma sin etiqueta en el mismo paso).
+- **D10**: herramienta Conector (`L`): clic en el origen y clic en el destino crean la arista (un paso, con los lados que se miran, `canvas/connect.ts`); Esc cancela primero el origen y luego sale de la herramienta; los bloqueados no se conectan. No evita aristas duplicadas entre los mismos nodos (igual que arrastrar).
+- **D11**: pan y zoom recodifican el contenido con 1,5 s de retraso (`useEncodedContent.touchViewport`) y se guardan sin entrar al historial; `boardSame` compara el viewport.
+- **D16**: el título de «Web de 3 capas» (y los de «C4 · Contexto» y «Event-driven») ya caben; test que estima el ancho del texto de cada plantilla.
+- **D15**: copiar escribe `web application/x-dya+json` y texto Mermaid en el portapapeles del sistema (sin formato propio: Firefox y Safari, solo Mermaid y copia en memoria en la misma pestaña); pegar valida con `validateBoardContent` (nunca se confía en el portapapeles), cae a la copia en memoria y por último a Mermaid. Lo copiado es autocontenido. Probado en Chrome entre dos pestañas; Chrome pide permiso de lectura la primera vez. Pegar imágenes entre **proyectos distintos** deja la imagen sin archivo.
+- **D14**: `.dya.json` = `{ format: 'dya-board', version: 1, content, files: { [fileId]: { mimeType, base64 } } }`; importar valida todo (≤ 4 MiB por imagen, archivo ≤ 40 MB), sube las imágenes con reintentos (1-2-4 s) **antes** de aplicar el contenido y les da `fileId` nuevos; si una subida falla no se importa nada. El `.json` antiguo sin imágenes se sigue importando. Exportar omite (con aviso) las imágenes que no se pueden leer; una subida fallida a mitad deja archivos huérfanos en `files/`.
+- Límites: leer del portapapeles pide permiso en Chrome; `onRemote` con altas o borrados en un historial profundo recorre cada paso (lineal por paso).
+
+## Nota (D8, D9, D18)
+
+- **D8**: cada imagen nueva se copia a IndexedDB (`dya-pending-files`, `application/pendingFiles.ts`) con sus elementos y **no se publica** (ni el elemento ni `content.files`) hasta que la subida confirma (`buildNoteContent(…, unconfirmed)`); la copia se borra cuando el guardado con la imagen se confirma (`NoteHandle.saved` → `release`), y al volver a abrir la nota o recuperar la conexión la cola repone la imagen y la sube. Si la persona borra la imagen antes de que se guarde, `NoteCanvasInner` la descarta de la cola y de IndexedDB (`UploadQueue.discard`, incluida la carrera con la escritura o subida en curso; D24). En el board la referencia ya se publicaba tras confirmar (`placeImage`); su binario agotado (tras los reintentos) sigue **solo en memoria**: cerrarlo exige guardarlo en `PendingStore` con la posición del nodo y reponerlo al montar `BoardEditor` (la pieza reutilizable es `indexedDbPendingStore()`).
+- **D9**: los botones del embed (`Abrir`, `Recargar`, `Reintentar`) se usan con un clic y con teclado sin activar el embed.
+- **D18**: tombstones de 30 días (ver «Sincronización»).
+- `merge.ts` tiene test (`merge.test.ts`, D31) con Excalidraw real en `jsdom`: Vitest transforma `@excalidraw/excalidraw` y `open-color` (`server.deps.inline` en `vite.config.ts`) y el test parchea `getContext` del lienzo antes de importarlo.
+- Sin probar en navegador (solo Vitest): `remoteInbox`, `pickBackground` y `retryMissing` cubren la lógica pura, no el cableado del lienzo.
+
+## Infraestructura (D19–D21)
+
+- **D19**: `scripts/test-rules.mjs` renderiza las reglas del emulador y, por cada emulador (Firestore 8080, Realtime Database 9000), reutiliza el vivo o lo arranca con `firebase emulators:exec --only <los que faltan>`. `pnpm emulators` levanta los tres (auth, firestore, database) por `firebase.json`.
+- **D20**: `scripts/brand/og-image.svg` → `pnpm og:render` (Chromium de Playwright) → `public/og-image.png` (1200×630, 36 KB); `index.html` lleva `og:image` (URL absoluta de producción), sus metas y `twitter:card=summary_large_image`. La fuente del SVG es la del sistema: regenerar en otra máquina puede variar el texto.
+- **D21**: fuentes Xiaolai (CJK, 209 woff2) copiadas a `public/excalidraw-assets/fonts/Xiaolai`: `public/excalidraw-assets` pasó de 0,5 MB a 14 MB (el paquete de git ≈ 13,4 MiB). Se descargan solo si se usan (comprobado: 0 peticiones al abrir una nota y 5 de 209 tras escribir chino); no entran en el bundle.
 
 ## Lo que hay
 
-| Pieza            | Dónde                                                                  | Estado                                                                                                 |
-| ---------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Dominio          | `src/domain/{project,codec}.ts`                                        | Hecho y probado                                                                                        |
-| Aplicación       | `src/application/{ports,projects,saveQueue}.ts`                        | Hecho y probado (gate de hidratación, cola serial, conflicto, borrador)                                |
-| Infraestructura  | `src/infrastructure/firebase/*`                                        | Hecho; Firestore se carga con `import()`                                                                 |
-| Modelo del board | `src/editors/board/model/{board,geometry,validate,fixtures}.ts`        | Hecho y probado                                                                                        |
-| UI               | `src/ui/*`                                                             | Tokens, tema (claro/oscuro/sistema), Dialog, DropdownMenu, Popover, Tooltip, Button, IconButton, Toast |
-| App              | `src/app/*`                                                            | Router (5 rutas + 404), AuthGate, login, shell, hooks, `services.ts`, páginas lazy                     |
-| Reglas           | `firestore.rules.tpl`, `scripts/render-rules.mjs`                      | 27 casos en `tests/rules`                                                                              |
-| Despliegue       | `firebase.json`, `firestore.indexes.json`, `vercel.json`               | Escritos, sin desplegar                                                                                |
+| Pieza | Dónde | Estado |
+| --- | --- | --- |
+| Dominio | `src/domain/{project,codec}.ts` | Hecho y probado |
+| Aplicación | `src/application/{ports,projects,saveQueue,contentChunks,presence,pendingFiles,tokens}.ts` | Hecho y probado |
+| Infraestructura | `src/infrastructure/firebase/*` | Firestore y Realtime Database se cargan con `import()` |
+| Modelo del board | `src/editors/board/model/*` | Hecho y probado |
+| UI | `src/ui/*` | Tokens, tema, primitivas Radix, Button, IconButton, Toast |
+| App | `src/app/*` | Router, AuthGate, shell, hooks, `services.ts`, páginas lazy, Ajustes, invitaciones |
+| Servidor MCP | `src/server/*`, `api/mcp.ts`, `api/_mcp.mjs` | Hecho; sin desplegar |
+| Reglas | `firestore.rules.tpl`, `database.rules.json`, `scripts/{render-rules,test-rules}.mjs` | Casos en `tests/rules` (Firestore y RTDB) |
+| Despliegue | `firebase.json`, `firestore.indexes.json`, `vercel.json` | Escritos |
 
-### Carriles integrados
+### Carriles de la base
 
-| Carril                | Qué trae                                                                                                                                                      | Dónde                                                                            |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| C1 · Núcleo del board | Store por instancia (zustand + zundo), 6 nodos, `LabeledEdge`, `BoardCanvas`, `BoardViewer`, `BoardEditor` (carga → validación → hidratación → `useAutosave`) | `editors/board/{store,canvas,nodes,edges}`, `BoardEditor.tsx`, `BoardViewer.tsx` |
-| C2 · UI del board     | `Toolbar`, `StylePanel`, `ActionBar`, `SearchBox`, atajos, `model/ops.ts`                                                                                     | `editors/board/ui`, `model/ops.ts`                                               |
-| D · Extras            | `BoardMenu` (plantillas, Mermaid, ordenar, PNG, JSON), `parseFlowchart`/`toFlowchart`, `autoLayout` (dagre por niveles)                                       | `editors/board/extras`, `model/{mermaid,layout}.ts`, `model/templates`           |
-| A · Panel y visor     | Panel, `/view/:type/:id`, `/embed/board/:id`                                                                                                                  | `app/dashboard`, `app/viewer`                                                    |
-| B · Nota              | Excalidraw con autosave, imágenes (cola de subida), embed de board, «Insertar diagrama», librería                                                             | `editors/note`                                                                   |
+| Carril | Qué trae | Dónde |
+| --- | --- | --- |
+| C1 · Núcleo del board | Store por instancia (zustand + zundo), 6 nodos, `LabeledEdge`, `BoardCanvas`, `BoardViewer`, `BoardEditor` | `editors/board/{store,canvas,nodes,edges}` |
+| C2 · UI del board | `Toolbar`, `StylePanel`, `ActionBar`, `SearchBox`, atajos, `model/ops.ts` | `editors/board/ui`, `model/ops.ts` |
+| D · Extras | `BoardMenu` (plantillas, Mermaid, ordenar, PNG, JSON), `parseFlowchart`/`toFlowchart`, `autoLayout` | `editors/board/extras`, `model/{mermaid,layout,templates}` |
+| A · Panel y visor | Panel, `/view/:type/:id`, `/embed/board/:id` | `app/dashboard`, `app/viewer` |
+| B · Nota | Excalidraw con autosave, imágenes, embed de board, «Insertar diagrama», biblioteca propia | `editors/note` |
 
-### Puntos de contacto que conviene conocer
+### Puntos de contacto
 
-- `app/services.ts` exporta `createProject`, `duplicateProject`, `deleteProject`, `saveAsCopy` (ya ligados a Firebase), y `projectRepo`, `contentRepo`, `fileStore`, `identity`. Los editores los importan de ahí (permitido por el lint; `infrastructure/` y el SDK no).
-- `useAutosave(id, encoded, hydrated, revision, baseline?)`: el 5.º argumento es opcional (añadido al contrato). Sin él, la base de comparación es el primer `encoded` tras hidratar. Devuelve además de `{status, error, flush, resolveConflict}` lo que dice el plan.
-- `useProject(id)` devuelve `{status: 'loading'|'ready'|'missing'|'error', project, content, error, draft, discardDraft, reload}`. `ready` es la señal de hidratación; `draft` es el borrador local más reciente que difiere de lo guardado.
-- `createSaveQueue(repo, id, initialRevision | null, opts?)`: con `null` no escribe hasta `hydrate(revision, lastSaved)`. Extras sobre el contrato: `hydrate`, `hasPending`, `dispose`, `state`.
-- `recoverableDrafts`, `readDraft`, `clearDraft` y `draftKey(id, sessionId)` están exportados de `application/saveQueue.ts` para «Recuperar cambios no guardados».
-- Revisión inicial del contenido: **0** al crear; cada guardado sube una (las reglas lo exigen: `revision == resource.revision + 1`).
-- `ProjectRepo.remove` borra `content/main` y el proyecto en un batch; los archivos los borra antes `deleteProject`.
-- `window.EXCALIDRAW_ASSET_PATH = '/excalidraw-assets/'` se fija en `main.tsx`. El carril B debe importar `@excalidraw/excalidraw/index.css` en `NoteCanvas`.
-- Tema para los motores: `useTheme().resolved` (`'light' | 'dark'`) va a `theme` de Excalidraw y `colorMode` de React Flow.
+- `app/services.ts` exporta `createProject`, `duplicateProject`, `deleteProject`, `saveAsCopy` y `projectRepo`, `contentRepo`, `fileStore`, `identity`, `presenceAcl`. Los editores los importan de ahí.
+- `useAutosave(id, encoded, hydrated, revision, baseline?, drain?, { merge, same, fastFirstMs, onSaved })`; devuelve `{status, error, flush, resolveConflict, acceptRemote}`.
+- `useProject(id)` devuelve `{status: 'loading'|'ready'|'missing'|'error', project, content, error, draft, discardDraft, reload}`.
+- `createSaveQueue(repo, id, initialRevision | null, opts?)`: con `null` no escribe hasta `hydrate(revision, lastSaved)`.
+- Revisión inicial del contenido: **0** al crear; cada guardado sube una (`revision == resource.revision + 1` en las reglas).
+- `ProjectRepo.remove` borra `content/main`, sus trozos y el proyecto; los archivos los borra antes `deleteProject`.
+- `window.EXCALIDRAW_ASSET_PATH = '/excalidraw-assets/'` se fija en `main.tsx`. Tema para los motores: `useTheme().resolved`.
 
 ## Cómo probar en local
 
 ```
 export JAVA_HOME="C:/Program Files/Eclipse Adoptium/jre-21.0.13.9-hotspot"; export PATH="$JAVA_HOME/bin:$PATH"
-pnpm emulators                        # terminal 1: auth 9099, firestore 8080 (proyecto demo-dya)
+pnpm emulators                        # terminal 1: auth 9099, firestore 8080, database 9000 (proyecto demo-dya)
 VITE_USE_EMULATORS=1 pnpm dev         # terminal 2; «Entrar con la cuenta de prueba» → uid owner-test
 ```
 
 ## Desviaciones del plan y decisiones
 
-1. **pnpm 12.6.0** (`corepack enable` sin errores y pnpm ya disponible en la máquina: no hizo falta `npm i -g`; fijado en `packageManager`). `pnpm-workspace.yaml` solo declara `allowBuilds` (los scripts de instalación de `@firebase/util`, `protobufjs`, `esbuild` y `re2` no hacen falta) y `minimumReleaseAgeExclude` para `lucide-react@1.69.0`, que pnpm 12 añadió por ser muy reciente.
-2. **TypeScript 6.0.3**, no 7.0.2: `typescript-eslint@8.72.1` declara `typescript >=4.8.4 <6.1.0`. Subir cuando typescript-eslint admita 7.
-3. **Vite 8.3.6**: la comprobación de humo pasó (Excalidraw + React Flow, React 19, `pnpm build` y navegación sin errores de consola); no hizo falta bajar a Vite 7.
-4. **Reglas como plantillas.** El plan dice que `render-rules.mjs` toma `OWNER_UID` de `.env`; para no versionar un `firestore.rules` con un UID de prueba, lo versionado es `firestore.rules.tpl` y el `firestore.rules` generado están en `.gitignore`. Antes de `firebase deploy` hay que correr `pnpm rules:render` (necesita `OWNER_UID`).
-5. **`OWNER_UID` en `.env.example`** (sin prefijo `VITE_`: no llega al navegador) y **`VITE_FIREBASE_MEASUREMENT_ID`** (pedida por Juan; Analytics **no** está integrado).
-6. **Fuentes de Excalidraw sin Xiaolai** (el subconjunto CJK, ≈ 13 MB): `public/excalidraw-assets/fonts` pesa 500 KB. Si hace falta CJK: `cp -r node_modules/@excalidraw/excalidraw/dist/prod/fonts/Xiaolai public/excalidraw-assets/fonts/`.
-7. **`useAutosave` con 5.º parámetro opcional `baseline`** y `createSaveQueue` con `initialRevision: number | null` (superset del contrato; ver arriba).
-8. **Login de prueba del emulador**: crea el usuario `owner-test` con la API de administración del emulador de Auth (`localId` fijo) y entra con correo y clave. Solo se ejecuta con `VITE_USE_EMULATORS=1`.
-9. **Open Graph genérico sin imagen**: `index.html` lleva título, descripción y `og:*`, pero no `og:image` (falta el recurso de marca en PNG).
-10. `vercel.json` también excluye `/excalidraw-assets/` del rewrite (los ficheros de `public/` ya se sirven antes del rewrite, pero así queda explícito) y le da caché de 7 días (los nombres no llevan hash).
-11. **CORS (`cors.json`)** abre `GET`/`HEAD` a cualquier origen: la lectura sigue protegida por las reglas y el token de Auth, no por el origen.
+1. **pnpm 12.6.0** (corepack, fijado en `packageManager`). `pnpm-workspace.yaml` solo declara `allowBuilds` y `minimumReleaseAgeExclude` para `lucide-react@1.69.0`.
+2. **TypeScript 6.0.3**, no 7: `typescript-eslint@8.72.1` declara `typescript >=4.8.4 <6.1.0`.
+3. **Vite 8.3.6**: Excalidraw + React Flow, React 19, `pnpm build` y navegación sin errores de consola.
+4. **Reglas como plantillas**: lo versionado es `firestore.rules.tpl`; el `firestore.rules` generado está en `.gitignore`. Antes de `firebase deploy` hay que correr `pnpm rules:render` (necesita `OWNER_UID`). `database.rules.json` se versiona tal cual.
+5. **`OWNER_UID` en `.env.example`** (sin `VITE_`: no llega al navegador) y `VITE_FIREBASE_MEASUREMENT_ID` (Analytics `G-TPM775TWZ2`); `VITE_FIREBASE_DATABASE_URL` para la presencia.
+6. **Login de prueba del emulador**: crea `owner-test` con la API de administración del emulador de Auth y entra con correo y clave (solo con `VITE_USE_EMULATORS=1`). El 400 de `identitytoolkit … /accounts` en consola es ese login (el usuario ya existe), no un error de la app.
+7. `vercel.json` excluye `/excalidraw-assets/` del rewrite y le da caché de 7 días (los nombres no llevan hash).
+8. **Un solo camino de borrado** (`removeSelected`, respeta `locked`, limpia hijos de un frame y aristas colgantes), **de estilo** (`updateNodeData(ids, { style })`) y de paths de formas e iconos (`editors/board/nodes`). Los bloqueados son seleccionables pero no arrastrables, borrables ni conectables.
+9. **Herramienta imagen**: abre el selector de archivo y coloca la imagen en el centro de la vista con la subida de C1. `BoardViewer` recibe `files={{ load }}` en `Viewer`, `EmbedPage` y `BoardEmbed`.
+10. **Foco**: al terminar de editar un texto con Enter o Esc el foco vuelve al nodo (`store/returnFocus.ts`); `ui/Dialog` admite `initialFocus` y exporta `useReturnFocus`.
+11. **Último cambio al cerrar la pestaña**: `drainAndFlush` pasa a la cola lo que retiene el throttle del editor y `useAutosave` escucha `pagehide`; el borrador local se escribe de forma síncrona y se ofrece «Recuperar». La escritura en Firestore al `pagehide` no está garantizada.
+12. **Bundle**: sin `manualChunks`; Firestore y Realtime Database se cargan con `import()`. Bundle inicial **152,7 kB gzip** al integrar la base (objetivo < 250); la medida actual está en «Gates».
+13. **`/note` a 1024 px**: la barra superior oculta el texto del estado y acorta el título para que quepa «Biblioteca».
+14. **Biblioteca**: `NoteCanvas.topRight` admite una función `(ui: CanvasUi) => ReactNode`; el botón propio vive en `TopBar` y el disparador de Excalidraw se oculta por CSS.
+15. **Guardar como copia** (`copyProject`): crea el proyecto, copia los archivos con el mismo `fileId`, escribe el contenido al final y, si algo falla, borra la copia incompleta.
+16. **Borradores por pestaña**: clave `draft:<id>:<sessionId>`; `recoverableDrafts` ofrece los de cualquier sesión cuyo contenido difiera del servidor, el más reciente primero, sin descartar por fecha, y marca `stale` si su revisión base no es la guardada.
+17. **Reparentar sin ciclos** (`store/reparent.ts`) y **guardado validado** (`useEncodedContent` pasa `validateBoardContent` antes de codificar; si falla, no se guarda y el editor muestra el motivo). `validateBoardContent` valida `shape`, `icon`, `fileId` y los campos de `style`.
+18. **Borrar un frame**: los descendientes bloqueados sobreviven con su subárbol y pasan al ancestro superviviente con la posición absoluta conservada.
+19. **Decisiones de C2/D/A/B**: autolayout por niveles (dagre por frame, +32 px de relleno y 40 de cabecera) con `sourceHandle`/`targetHandle` según el sentido; gramática Mermaid ampliada (hexágono, paralelogramo, `-.-`, `===`, `;`, comillas), ignora `style`/`classDef`/`class`/`linkStyle`/`click`/`direction`, sin `&` ni flechas bidireccionales; `toFlowchart` pierde stickies, textos, iconos y estilos. Reemplazar (plantilla, Mermaid, JSON) pide confirmación si el lienzo no está vacío. PNG: margen 48 px, lado máximo 4096 px de CSS (escala 2), fondo blanco. El archivo de una nota se registra en `content.files` al detectarlo; SVG o > 4 MiB se retiran con un toast. En una nota pública un board incrustado solo se ve si el board también es público.
 
-### Decisiones de la integración (T5)
+### Imágenes del board (iteración 2: D23, D27, D28)
 
-12. **Un solo camino de borrado**: React Flow ya no borra (`deleteKeyCode={null}`); lo hace `useShortcuts` con `removeSelected` (respeta `locked`, limpia hijos de un frame y aristas colgantes, un paso de historial). Los atajos se montan con `<Shortcuts container>` dentro de los providers; `BoardMenu` recibe `getViewport` y `onContentChanged` (fitView tras medir).
-13. **Un solo camino de estilo**: `updateNodeData(ids, { style })` con estilo parcial (tipo `NodeDataPatch`); `patchStyle` de C2 se eliminó.
-14. **Bloqueados**: `toDisplayNodes` deja `locked` como no arrastrable, no borrable y no conectable, pero **seleccionable**. «Desbloquear todo» (ActionBar y Mod+L sin selección) se mantiene.
-15. **Herramienta imagen**: al elegirla abre el selector de archivo y coloca la imagen en el centro de la vista con la subida de C1 (ya no espera un clic en el lienzo).
-16. **Glifos**: `ui/glyphs.tsx` solo conserva rótulos y `ShapePreview`; los paths (`shapePath`) y el mapa de iconos (`iconComponent`) son los de `editors/board/nodes`.
-17. **UI de C2 sin ranuras**: Toolbar, StylePanel, SearchBox y ActionBar se posicionan solos dentro de `.stage`; las ranuras absolutas de C1 los dejaban a tamaño cero. Se quitaron de `Controls` los botones de cuadrícula y snap (ya están en la ActionBar).
-18. **Foco**: al terminar de editar un texto con Enter o Esc el foco vuelve al nodo (`store/returnFocus.ts`); sin eso los atajos callaban hasta el siguiente clic. `ui/Dialog` admite `initialFocus` y exporta `useReturnFocus` (borrar proyecto y reemplazar diagrama enfocan «Cancelar»; al cerrar, el foco vuelve al botón que abrió el menú).
-19. **Imágenes en lectura**: `BoardViewer` recibe `files={{ load }}` en `Viewer`, `EmbedPage` y `BoardEmbed`.
-20. **Último cambio**: `drainAndFlush` (`application/saveQueue.ts`, con test) pasa a la cola lo que retiene el throttle del editor (B 150 ms, C1 250 ms) y la escribe; `useAutosave` admite un 6.º argumento `drain` y escucha también `pagehide`. `useEncodedContent` y `NoteHandle.drain()` lo implementan. B ya no emite al desmontar el lienzo (los efectos del padre se limpian antes). Comprobado: crear una forma y recargar a los ~30 ms deja el borrador y se recupera.
-21. **Bundle**: `vite.config.ts` ya no usa `manualChunks` (arrastraba React y Radix al chunk de Excalidraw y `index.html` precargaba ≈ 1,8 MB gzip). Firestore se carga con `import()` (`infrastructure/firebase/firestore.ts`). `ThemeToggle` y `UserMenu` viven en el chunk inicial, así que no inflan el del editor y no hizo falta moverlos a `ui/`.
-22. **`/note` a 1024 px**: la barra superior de B oculta el texto del estado (queda para lectores de pantalla) y acorta el título para que quepa «Biblioteca».
-
-### Correcciones de la revisión final (T7)
-
-23. **Guardar como copia** (`application/projects.ts`): `saveAsCopy` y `duplicateProject` comparten `copyProject`: crean el proyecto, copian los archivos con el mismo `fileId`, escriben el contenido al final y, si algo falla, borran la copia incompleta.
-24. **Borradores por pestaña** (`application/saveQueue.ts`): clave `draft:<id>:<sessionId>` (un `sessionId` por cola); la cola solo borra el suyo al confirmar. `recoverableDrafts(id, {data, revision})` sustituye a `recoverableDraft`: ofrece los de cualquier sesión cuyo contenido difiera del servidor, **sin descartar por fecha**, el más reciente primero; borra los idénticos al servidor y marca `stale` si su revisión base no es la guardada (los banners lo dicen). `useProject.draft` es el primero de la lista y `discardDraft` borra solo ese y pasa al siguiente. `DraftStorage` pide `length` y `key(i)`; `readDraft`/`clearDraft` reciben la clave completa.
-25. **Reparentar sin ciclos** (`editors/board/store/reparent.ts`): ningún nodo de la selección ni descendiente suyo es destino de otro; los destinos se resuelven a la vez sobre la geometría original. **Guardado validado**: `useEncodedContent` pasa `validateBoardContent` antes de codificar (`computeEncoded`); si falla, no hay `encoded` (no se guarda) y el editor muestra un banner con el motivo.
-26. **Validación** (`model/validate.ts`): `shape` ∈ `SHAPES`, `icon` ∈ `ICONS`, `fileId` string en imágenes y `style.{fill,stroke,textColor}` string y `{strokeWidth,opacity,fontSize}` número finito. `dashed`, `bold` y `align` no se validan (no rompen el pintado).
-27. **Borrar un frame** (`removeSelected`): los descendientes bloqueados sobreviven (con su subárbol) y pasan al ancestro superviviente con la posición absoluta conservada.
-28. **JSON sin imágenes**: el ítem pasa a «Descargar JSON (sin imágenes)» y el toast dice que no es una copia de seguridad completa. Transportar los binarios en el JSON **queda pendiente**.
-
-### Bundle inicial (gzip, lo que pide `index.html`)
-
-| Medida                                 | Tamaño                             |
-| -------------------------------------- | ---------------------------------- |
-| T0 (sin editores)                      | ≈ 288 kB                           |
-| Rama integrada, con `manualChunks`     | 1 863,6 kB (Excalidraw precargado) |
-| Sin `manualChunks`, Firestore estático | 293,7 kB                           |
-| **Final (Firestore con `import()`)**   | **152,7 kB**                       |
-
-### Decisiones y desviaciones de los carriles
-
-- **C1**: `BoardState` añade `editingId`/`setEditingId`; `updateNodeData` mezcla el estilo parcial; `removeSelected` borra hijos y aristas colgantes y respeta `locked`. El color por defecto de texto suelto, iconos, título de frame y aristas usa tokens (legible en oscuro); lo dibujado es literal. Los frames van detrás por CSS (`z-index: -1`) y el texto suelto tiene alto automático. `window.__board` (solo `import.meta.env.DEV`) expone el store para pruebas.
-- **C2**: `model/ops.ts` añade `rootsOf`, `nudge`, `setLocked`, `selectOnly`. Los bloqueados no participan en alinear, distribuir ni mover; un padre y su hijo seleccionados juntos se mueven una sola vez; `wrapInFrame` mete el frame en el padre común; `duplicate` incluye descendientes. Los atajos escuchan `keydown` en captura y mandan sobre los de React Flow. El portapapeles es en memoria (por store), no el del sistema.
-- **D**: layout **por niveles** (dagre por frame, +32 px de relleno y 40 de cabecera) en vez de un grafo compound; `autoLayout` reescribe `sourceHandle`/`targetHandle` según el sentido; `parseFlowchart` devuelve también `direction`; gramática extra (hexágono, paralelogramo, `-.-`, `===`, `;`, comillas) e ignora `style`/`classDef`/`class`/`linkStyle`/`click`/`direction`; no admite `&` ni flechas bidireccionales. `toFlowchart` pierde stickies, textos, iconos y estilos. Reemplazar (plantilla, Mermaid, JSON) pide confirmación si el lienzo no está vacío. PNG: margen 48 px, lado máximo 4096 px de CSS (escala 2), fondo blanco fijo; JSON hasta 8 MB; `html-to-image` por `import()`.
-- **A**: «Error de red» + «Reintentar» también para contenido ilegible; un tipo equivocado en `/view/:type/:id` se trata como «No existe o es privado»; el dueño con sesión ve «Editar» en el visor; tabs manuales (no hay `@radix-ui/react-tabs`); un único ítem de menú alterna publicar/dejar de compartir y aparece «Copiar enlace».
-- **B**: `NoteCanvasProps` añade `topRight` y `onHandle`; `NoteHandle` añade `applyContent` y `drain`. Los avisos (conflicto, error, demasiado grande, «Recuperar») van en un banner bajo la barra de herramientas. El archivo se registra en `content.files` al detectarlo (no al terminar la subida); SVG o > 4 MiB se retiran de la escena con un toast; recuperar un borrador no es deshacible. En una nota pública un board incrustado solo se ve si **el board también es público** (si no, «Diagrama privado o inexistente»); «Abrir» va a `/view/board/:id` en lectura.
+- **D27**: `uploadImages` (`extras/dyaFile.ts`) recibe `remove` (`BoardFiles.remove` → `fileStore.remove`); si una subida agota los reintentos borra lo ya subido y la imagen que falló (al mejor esfuerzo) y relanza. Importar sigue siendo «todo o nada» y ya no deja huérfanos.
+- **D28**: el portapapeles (`ClipPayload.projectId`) lleva el proyecto de origen. Al pegar en otro proyecto, `copyImages` (`ui/clipboard.ts`) baja cada binario con `BoardFiles.loadFrom`, lo sube con `fileId` nuevo (reintentos 1-2-4 s) y remapea los nodos antes de insertar; el pegado sigue siendo un paso de historial. Lo que no se puede leer (sin permiso, borrado) conserva su id, se ve como «Imagen no disponible» y avisa con un toast. Un portapapeles sin `projectId` (versión anterior) se pega como antes.
+- **D23**: las imágenes nuevas van por la cola de la nota (`createUploadQueue`, importada de `editors/note/files`) con `indexedDbPendingStore()` (`canvas/imageUploads.ts`). El nodo entra al **confirmarse la subida**, así que el contenido guardado nunca apunta a un archivo inexistente. Si los reintentos se agotan o se cierra la pestaña, el binario (con posición, tamaño y nombre) sigue en IndexedDB y se repone y sube al recuperar la conexión (`online`, o «Reintentar» en el aviso) o al montar `BoardEditor`. La copia en disco se borra cuando el contenido guardado ya contiene el nodo (o este se borró). Sin IndexedDB solo hay memoria, como antes.
+- **Límites** (D37, D38): `BoardEditor` importa la cola de `editors/note/files.ts` (acoplamiento entre editores); dos pestañas con lo mismo pendiente lo insertan dos veces.
 
 ## Riesgos y deuda
 
-- **Imágenes en Firestore**: cada lectura de un trozo de un proyecto público cuesta una lectura extra por el `get()` al proyecto en las reglas (cuota Spark: 50 000 lecturas al día); una imagen de 1 MiB son 2 trozos. Sin Storage no hay rol IAM ni CORS que configurar.
-- `ContentRepo.load` y `ProjectRepo.get` devuelven `null` ante `permission-denied` (privado y no existente se ven igual, a propósito); los demás errores se propagan.
-- Los tests de reglas escriben `firestore-debug.log` / `ui-debug.log` en la raíz (ignorados por git). `pnpm test:rules` arranca sus emuladores en 9099/8080: si ya hay otros corriendo, falla con «port taken»; entonces `node scripts/render-rules.mjs --emulator` y `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm exec vitest run --config vitest.rules.config.ts` (así se verificó en T5: 25 casos).
-- **Pendientes del board**: conector por clic origen → destino (hoy solo arrastrar desde un handle); el viewport se guarda con el siguiente cambio de contenido (pan y zoom solos no disparan guardado); el historial compara por JSON (O(n); pasar a referencia con tableros de miles de nodos, `ponytail` en `boardStore.ts`); cada forma nueva son dos pasos de historial (crear y escribir la etiqueta).
-- **Pendientes de la nota**: el toast «Reintentar» de subida con Firestore caído solo está probado por test de la cola, no en navegador; con una subida agotada el binario solo sigue en memoria. Los `Abrir`/`Recargar` de un embed solo reciben el ratón cuando Excalidraw activa el embed (doble clic).
-- **Último cambio al cerrar la pestaña**: el borrador local se escribe de forma síncrona y se ofrece «Recuperar»; la escritura en Firestore al `pagehide` no está garantizada (el navegador puede cortarla).
-- Los embeds muestran la atribución «React Flow» (sin plan Pro). El título de la plantilla «Web de 3 capas» se parte en dos líneas (texto suelto estrecho).
-- Sin tests de componentes (Vitest corre en `node`, sin jsdom): la lógica no trivial está en funciones puras probadas; el comportamiento de UI se comprobó en Chrome. Lo cubrirá T6 (e2e).
-- El 400 de `identitytoolkit … /accounts` en consola con emuladores es el login de prueba (el usuario `owner-test` ya existe), no un error de la app.
+- **Imágenes en Firestore**: cada lectura de un trozo de un proyecto público cuesta una lectura extra por el `get()` al proyecto en las reglas (50 000 lecturas/día); una imagen de 1 MiB son 2 trozos.
+- `ContentRepo.load` y `ProjectRepo.get` devuelven `null` ante `permission-denied` (privado y no existente se ven igual, a propósito).
+- Las reglas de Firestore son un recurso compartido del emulador: cada suite que las carga pisa las de otra que corra a la vez; repetir la prueba. Los tests de reglas escriben `firestore-debug.log`, `database-debug.log` y `ui-debug.log` en la raíz (ignorados por git).
+- El emulador compartido acumula proyectos de `owner-test`: `list_projects` solo trae 200, así que las pruebas que listan usan una persona nueva (`seedAllowedUser`).
+- D29 cerrada. Causa: `test:rules` y el e2e compartían el proyecto `demo-dya` del emulador con los demás carriles, que limpian Firestore entre pruebas, recargan reglas y cierran la base de tiempo real (`emulators:exec`). Ahora `test:rules` usa un proyecto por ejecución (`RULES_PROJECT`) y el e2e `demo-dya-e2e` con `global-setup.ts`. El emulador de Auth no separa por proyecto: las cuentas de prueba siguen en `demo-dya`.
+- Los embeds muestran la atribución «React Flow» (sin plan Pro).
+- **D22 cerrado** (D39, D41 y D42): pruebas de componentes con Testing Library, e2e de imágenes y de las correcciones 4–6 de la revisión 2, y `pnpm test` con proyecto de emulador propio. **Fallo abierto hallado por el e2e**: una nota recién abierta pierde lo que otra persona guardó mientras cargaba el lienzo (`onHandle` vuelca la bandeja remota antes de que Excalidraw aplique `initialData` y este la pisa); su prueba en `collab.spec.ts` usa `test.fail` hasta arreglarlo.
+- Un editor abierto mientras un agente escribe por MCP recibe el cambio en vivo y lo fusiona; un agente no aparece en la presencia.
 
 ## Imágenes en Firestore
 
-- **Modelo**: `projects/{id}/files/{fileId} = { mimeType, size, chunks, createdAt }` y `…/chunks/{i} = { data: Bytes }` (≤ 900 000 bytes). Adaptador en `infrastructure/firebase/files.ts`; el troceado y el reparto en batch son puros (`application/fileChunks.ts`, con tests). La meta se escribe la última.
-- **Optimización** (`application/imageOptimize.ts`, lógica pura con el códec del navegador inyectable): lado mayor ≤ 2048 px, WebP 0,82, se conserva solo si pesa menos; GIF tal cual; sin WebP o sin poder decodificar, el original; tope de 4 MiB tras optimizar. La usan `NoteCanvasInner` y `BoardCanvas.placeImage`; copiar o duplicar un proyecto no recodifica.
-- **Medido** (PNG sintético 3200×2400 de 21 016 258 bytes, en Chrome contra los emuladores): el board lo guardó como WebP de 2048×1536 y 138 214 bytes (−99,3 %); pegado en una nota, WebP de 18 356 bytes (Excalidraw ya lo reduce a 1440 px antes). Tras recargar se ve en el editor y en el visor público sin sesión.
-- **Retirado**: `storage.rules.tpl`, `cors.json`, la sección `storage` de `firebase.json`, el emulador de Storage, `firebase/storage` y `VITE_FIREBASE_STORAGE_BUCKET`. Los archivos que ya hubiera en un bucket de pruebas no se migran (no hay datos reales).
-- **Accesibilidad**: los handles de conexión de `NodeChrome` son `role="button"` con «Conectar desde el lado derecho/izquierdo/superior/inferior» (`aria-hidden` en solo lectura o bloqueado).
+- **Modelo**: `projects/{id}/files/{fileId} = { mimeType, size, chunks, createdAt, createdBy }` (`createdBy` = uid que sube; él y el dueño borran meta y trozos, y sin meta cualquier editor borra los trozos huérfanos: D46; las metas anteriores sin `createdBy` son del dueño; `remove` lee `chunks` de la meta, sin `list`) y `…/chunks/{i} = { data: Bytes }` (≤ 900 000 bytes). Adaptador en `infrastructure/firebase/files.ts`; troceado y reparto en batch puros (`application/fileChunks.ts`). La meta se escribe la última.
+- **Optimización** (`application/imageOptimize.ts`): lado mayor ≤ 2048 px, WebP 0,82 si pesa menos; GIF tal cual; tope de 4 MiB tras optimizar. La usan `NoteCanvasInner` y `BoardCanvas.placeImage`; copiar o duplicar no recodifica. Medido: un PNG de 21 MB → WebP de 138 kB (−99,3 %).
+- **Retirado**: `storage.rules.tpl`, `cors.json`, el emulador de Storage, `firebase/storage` y `VITE_FIREBASE_STORAGE_BUCKET`. No hay migración (no hay datos reales).
+- **Accesibilidad**: los handles de conexión de `NodeChrome` son `role="button"` con «Conectar desde el lado …».
 
 ## Gates
 
-`pnpm lint` · `pnpm typecheck` · `pnpm test` (Vitest) · `pnpm test:rules` (emuladores; exige Java 21 en el `PATH`; 27 casos) · `pnpm build`.
+Sobre `chore/deuda-tecnica` tras integrar la iteración 2 (M5, M3, M4, M2, M1; Java: `export PATH="/c/Program Files/Eclipse Adoptium/jre-21.0.13.9-hotspot/bin:$PATH"`):
+
+- `pnpm lint`, `pnpm typecheck` y `pnpm build`: en verde.
+- `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 pnpm test`: **505 pruebas** en 41 ficheros.
+- `pnpm test:rules`: **113 pruebas** en 7 ficheros (Firestore y Realtime Database).
+- `pnpm test:e2e`: **7 pasan** (colaboración x4, humo x3).
 
 ## Lo que sigue
 
-T6 e2e (`tests/e2e/smoke.spec.ts`: board con forma y conector que persisten tras recargar, nota con el board insertado, enlace público sin sesión) → T7 revisión → T8 despliegue (pendiente de Juan: proyecto Firebase (Spark), su UID, la cuenta de Vercel y Analytics, que **no** está integrado).
+D30 y D37–D43 de `docs/deuda.md` → revisión final con GPT-6.1-sol de lo posterior a la revisión 2 → despliegue (pendiente de Juan; ver «Para producción»).
 
 ## Hoja de ruta por fases (decisión de Juan, 2026-11-05)
 
-1. **Fase 1 (esta):** un solo dueño, notas y diagramas, enlace público de solo lectura.
-2. **Fase 2:** colaboración en tiempo real (otra implementación del puerto de contenido; Firestore `onSnapshot` + reconciliación o Yjs).
-3. **Fase 3:** **servidor MCP** para que agentes de IA lean y creen las notas y diagramas de un usuario autenticado. El objetivo es un sistema que haga diagramas y notas y que procese esas notas para arrancar o detallar un proyecto. Requisitos previstos: autenticación por usuario (OAuth o token personal revocable), permisos por proyecto, operaciones `list/read/create/update` sobre los formatos versionados (`NoteContent`, `BoardContent`), validación con los mismos codecs (`validateBoardContent`) y registro de auditoría. Encaja como otro adaptador sobre `application/` (casos de uso y puertos), sin tocar los editores.
-
-## Carril P3 · Servidor MCP (rama `lane/p3-mcp`, sin push)
-
-Detalle de uso, herramientas y seguridad en `docs/mcp.md`. Estado: las 5 entregas hechas; gates `lint`, `typecheck`, `test` (con `FIRESTORE_EMULATOR_HOST`), `test:rules` (36 casos) y `build` en verde; **sin desplegar** (necesita las variables `FIREBASE_SERVICE_ACCOUNT` y `OWNER_UID` en Vercel y las reglas nuevas en producción).
-
-- **Reglas** (`firestore.rules.tpl`): bloques `allowedUsers/{uid}` (escribe solo `OWNER_UID`; cada persona lee el suyo) y `mcpTokens/{hash}` (crear con `uid == auth.uid`, id = sha256 hex, campos cerrados; leer y revocar los propios, `revoked` solo pasa a `true`). `isAllowedCreator()` = `isOwner()` o existe `allowedUsers/{uid}`; se usa en el `create` de `projects` **y** en el de `content/main` (el batch de creación escribe ambos). **Integración con P2:** P2 trae `canCreate()` en el mismo bloque; unificar en una sola función. Ojo: el resto de las reglas de `projects/**` siguen siendo `isOwner() && ownerId == uid`, así que un `allowedUser` solo **crea** vía reglas; para que luego lea, edite o liste lo suyo desde la web, P2 debe generalizar «dueño» a `ownerId == request.auth.uid` (por MCP ya funciona, el servidor autoriza por `ownerId`).
-- **UI** (`src/app/settings/`, ruta `/settings`, ítem «Ajustes» en `UserMenu`): crear token (etiqueta, valor mostrado una vez con copiar), listar y revocar; el dueño ve además «Personas permitidas» (alta por UID + correo, baja). La sección se oculta sola si `allowedUsers` no se puede listar (no eres el dueño). Casos de uso puros en `application/tokens.ts` (`generateToken`, `sha256Hex`); adaptador en `infrastructure/firebase/tokens.ts`. No se tocó `app/services.ts`: `Settings` importa el adaptador directamente (permitido: vive en `app/`).
-- **Servidor** (`src/server/`): `authz.ts` (`canRead`, `canWrite`, `canCreate`, `authenticate`), `note.ts` (nota ⇄ texto; elementos `text` mínimos con índices fraccionarios; test de compatibilidad con `editors/note/codec`), `tools.ts` (una función por herramienta), `mcpServer.ts` (registro con zod), `handler.ts` (POST, un servidor + transporte por petición, 401 con `WWW-Authenticate`), `admin.ts` (cuenta de servicio o emulador).
-- **Empaquetado**: `api/mcp.ts` reexporta `api/_mcp.mjs`, generado con `node scripts/bundle-mcp.mjs` (esbuild; paquetes externos). Motivo: `@vercel/node` 29 transpila cada fichero sin resolver `@/` ni imports sin extensión de `src/`. Un test falla si el fichero versionado no está al día. `tsconfig.server.json` (tipos de Node) y `eslint.config.js` (globals de Node para `src/server` y `api`) son nuevos; `tsconfig.app.json` excluye `src/server`.
-- **Dependencias** (exactas, > 24 h de publicadas): `@modelcontextprotocol/sdk` 1.32.2, `firebase-admin` 14.5.0, `zod` 4.6.7 y `esbuild` 0.28.2 (dev).
-- **Pruebas**: 24 de herramientas/autorización/nota contra el emulador (`tools.test.ts` incluye 401, 403, 404, 413 y dos `update_board` simultáneos) y 3 e2e (`e2e.test.ts`: el bundle en un proceso Node aparte, hablado con `Client` + `StreamableHTTPClientTransport` del SDK: 401 sin token/revocado, crear board desde Mermaid, leer, ampliar, nota, 403 en proyecto ajeno). Sin `FIRESTORE_EMULATOR_HOST` se omiten. `scripts/mcp-serve.mjs` levanta el endpoint a mano. **No probado**: el despliegue real en Vercel (`vercel dev` pide cuenta) ni la lectura de campos `members` con datos de P2 (probado con datos sembrados a mano).
-- **Seguridad (revisión h8, deuda)**: el servidor usa Admin SDK, que **ignora las reglas**; aplica `canRead`/`canWrite`/`canCreate` explícitos que duplican las reglas y sus invariantes a mano. Migrar a `createCustomToken(uid)` + SDK cliente (`signInWithCustomToken`, ID token cacheado con la función caliente) para que las reglas apliquen tal cual. Detalle en `docs/mcp.md` § Seguridad. Tras la revisión: `update_board` solo amplía (sin `replace`), `lastUsedAt` como mucho una vez por hora, `mcpTokens` solo se actualiza revocando un token activo, y el endpoint no registra `Authorization`.
-- **Pendientes**: auditoría del uso (solo `lastUsedAt`); el servidor no tiene límite de tasa; `read_note` ignora imágenes y embeds; `allowedUsers` pide el UID a mano (la pantalla no muestra el UID de quien va a ser añadido); un editor abierto mientras un agente escribe verá conflicto de revisión (la fase 2 lo resuelve con la fusión).
+1. **Fase 1:** notas y diagramas, enlace público de solo lectura. Hecha.
+2. **Fase 2:** colaboración en tiempo real. Hecha (invitaciones, fusión, presencia y cursores en RTDB).
+3. **Fase 3:** servidor MCP para que agentes de IA lean y creen las notas y diagramas de una persona autenticada. Hecha (tokens, reglas, límite, auditoría). El objetivo sigue siendo un sistema que haga diagramas y notas y que procese esas notas para arrancar o detallar un proyecto.

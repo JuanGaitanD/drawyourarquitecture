@@ -6,6 +6,7 @@ import {
   emptyNote,
   encodeNote,
   noteSame,
+  TOMBSTONE_TTL_MS,
   referencedFileIds,
   unionFiles,
 } from './codec';
@@ -70,11 +71,42 @@ describe('colaboración · archivos y comparación', () => {
     expect(noteSame(enc([el('a', 1)]), enc([el('a', 1)], { f: { mimeType: 'image/png', created: 1 } }))).toBe(false);
   });
 
-  it('un elemento borrado hace menos de una hora viaja como tombstone y uno viejo se descarta', () => {
+  it('un elemento borrado viaja como tombstone 30 días y uno más viejo se descarta', () => {
     const now = 10_000_000_000;
     const gone = (id: string, updated: number) => ({ type: 'rectangle', id, isDeleted: true, updated });
-    const c = buildNoteContent([gone('nuevo', now - 1000), gone('viejo', now - 2 * 3_600_000)], {}, {}, now);
-    expect((c.elements as { id: string }[]).map((e) => e.id)).toEqual(['nuevo']);
+    const c = buildNoteContent([gone('nuevo', now - 1000), gone('2h', now - 2 * 3_600_000), gone('viejo', now - 31 * 86_400_000)], {}, {}, now);
+    expect((c.elements as { id: string }[]).map((e) => e.id)).toEqual(['nuevo', '2h']);
+  });
+
+  it('D8: una imagen con la subida sin confirmar no se publica (ni elemento ni archivo) hasta que confirma', () => {
+    const known = { a: { mimeType: 'image/webp', created: 1 }, b: { mimeType: 'image/webp', created: 2 } };
+    const els = [rect, img('a'), img('b')];
+    const hold = new Set(['b']);
+    const c = buildNoteContent(els, {}, known, 0, hold);
+    expect((c.elements as { id: string }[]).map((e) => e.id)).toEqual(['r1', 'a']);
+    expect(Object.keys(c.files)).toEqual(['a']);
+    const after = buildNoteContent(els, {}, known, 0, new Set());
+    expect(Object.keys(after.files).sort()).toEqual(['a', 'b']);
+    expect(after.elements).toHaveLength(3);
+  });
+
+  it('D18: tras 2 h el tombstone sigue en lo guardado, con versión mayor que la del cliente que vuelve', () => {
+    const t0 = 1_000_000_000_000;
+    const rect = { type: 'rectangle', id: 'r', isDeleted: false, version: 1, updated: t0 - 1000 };
+    const borrado = { ...rect, isDeleted: true, version: 2, updated: t0 };
+    // El autor del borrado vuelve a guardar 2 h después: el tombstone sigue ahí (no se purga por tiempo corto).
+    const guardado = buildNoteContent([borrado], {}, {}, t0 + 2 * 3_600_000).elements as (typeof borrado)[];
+    expect(guardado).toHaveLength(1);
+    // Quien vuelve con la versión 1 viva pierde contra el tombstone en `reconcileElements` (gana la versión mayor).
+    expect(guardado[0]!.isDeleted).toBe(true);
+    expect(guardado[0]!.version).toBeGreaterThan(rect.version);
+  });
+
+  it('D18: el tombstone dura exactamente 30 días', () => {
+    const t0 = 1_000_000_000_000;
+    const els = [{ type: 'rectangle', id: 'r', isDeleted: true, updated: t0 }];
+    expect(buildNoteContent(els, {}, {}, t0 + TOMBSTONE_TTL_MS).elements).toHaveLength(1);
+    expect(buildNoteContent(els, {}, {}, t0 + TOMBSTONE_TTL_MS + 1).elements).toHaveLength(0);
   });
 });
 
