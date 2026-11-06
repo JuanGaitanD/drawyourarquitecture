@@ -128,6 +128,8 @@ test.describe('carpetas', () => {
     const dir = uniq('Destino');
     const otra = uniq('Otra');
     const nota = uniq('Arrastrable');
+    // La cuenta de prueba acumula chips y tarjetas: pantalla alta para que no haya scroll y todo quede a la vista.
+    await page.setViewportSize({ width: 1280, height: 2400 });
     await signIn(page);
     await createFolder(page, dir);
     await createFolder(page, otra);
@@ -139,6 +141,9 @@ test.describe('carpetas', () => {
     await title.press('Enter');
     await page.getByRole('button', { name: 'Volver al panel' }).click();
     await loaded(page);
+    // Esperar a las carpetas: si llegan después, empujan la tarjeta y el arrastre agarraría otra cosa.
+    await expect(chip(page, dir)).toBeVisible();
+    await expect(chip(page, otra)).toBeVisible();
     const card = page.getByRole('link', { name: new RegExp(nota) });
     await expect(card).toBeVisible();
 
