@@ -64,7 +64,7 @@ export async function handler(req: IncomingMessage & { body?: unknown }, res: Se
         e.status,
         e.message,
         e.status === 401
-          ? { 'WWW-Authenticate': 'Bearer realm="drawyourarchitecture"' }
+          ? { 'WWW-Authenticate': 'Bearer realm="dya"' }
           : e.status === 429
             ? { 'Retry-After': String(e.retryAfter ?? 60) }
             : {},

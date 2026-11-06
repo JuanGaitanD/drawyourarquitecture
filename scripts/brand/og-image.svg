@@ -15,8 +15,8 @@
     <path d="M19.5 14.5V11.5h1.5" stroke="#fff" stroke-width="1.75" stroke-linecap="round" opacity=".7"/>
   </g>
   <g fill="#fff" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
-    <text x="490" y="290" font-size="56" font-weight="700">drawyourarquitecture</text>
-    <text x="490" y="352" font-size="32" opacity=".88">Notas y diagramas de arquitectura</text>
-    <text x="490" y="404" font-size="24" opacity=".7">Pizarra libre tipo Excalidraw · lienzo tipo Miro</text>
+    <text x="490" y="290" font-size="56" font-weight="700">DYA</text>
+    <text x="490" y="352" font-size="32" opacity=".88">Draw your Architecture</text>
+    <text x="490" y="404" font-size="24" opacity=".7">Notas y diagramas de arquitectura</text>
   </g>
 </svg>

@@ -28,7 +28,7 @@ export function Viewer({ type, id }: { type: ProjectType; id: string }) {
   useEffect(() => {
     if (!title) return;
     const prev = document.title;
-    document.title = `${title} · drawyourarquitecture`;
+    document.title = `${title} · DYA`;
     return () => {
       document.title = prev;
     };
@@ -43,7 +43,7 @@ export function Viewer({ type, id }: { type: ProjectType; id: string }) {
   return (
     <div className={styles.viewer}>
       <header className={styles.header}>
-        <Link href="/" className={styles.brand} aria-label="drawyourarquitecture, ir al inicio">
+        <Link href="/" className={styles.brand} aria-label="DYA (Draw your Architecture), ir al inicio">
           <LogoMark size={24} />
         </Link>
         <h1 className={styles.projectTitle}>{project.title}</h1>

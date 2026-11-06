@@ -58,7 +58,7 @@ const mermaid = z
 /** Un servidor por petición (transporte sin estado): las herramientas quedan ligadas al uid autenticado. */
 export function createMcpServer(mcp: McpContext): McpServer {
   const ctx: ToolContext = { db: mcp.db, uid: mcp.identity.uid };
-  const server = new McpServer({ name: 'drawyourarchitecture', version: '0.1.0' });
+  const server = new McpServer({ name: 'dya', version: '0.1.0' });
 
   server.registerTool(
     'list_projects',

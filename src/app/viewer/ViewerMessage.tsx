@@ -21,7 +21,7 @@ export function MissingMessage({ compact, text = 'No existe o es privado' }: Pro
       </p>
       {compact ? null : (
         <Link href="/" className={styles.link}>
-          Ir a drawyourarquitecture
+          Ir a DYA
         </Link>
       )}
     </div>

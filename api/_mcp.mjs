@@ -1403,7 +1403,7 @@ var title = z.string().min(1).max(MAX_TITLE).describe("T\xEDtulo del proyecto.")
 var mermaid = z.string().min(1).max(MAX_MERMAID).describe("Flowchart de Mermaid (flowchart/graph con LR, TD\u2026; admite subgraph).");
 function createMcpServer(mcp) {
   const ctx = { db: mcp.db, uid: mcp.identity.uid };
-  const server = new McpServer({ name: "drawyourarchitecture", version: "0.1.0" });
+  const server = new McpServer({ name: "dya", version: "0.1.0" });
   server.registerTool(
     "list_projects",
     {
@@ -1570,7 +1570,7 @@ async function handler(req, res) {
         res,
         e.status,
         e.message,
-        e.status === 401 ? { "WWW-Authenticate": 'Bearer realm="drawyourarchitecture"' } : e.status === 429 ? { "Retry-After": String(e.retryAfter ?? 60) } : {}
+        e.status === 401 ? { "WWW-Authenticate": 'Bearer realm="dya"' } : e.status === 429 ? { "Retry-After": String(e.retryAfter ?? 60) } : {}
       );
     }
     console.error("mcp: error inesperado", e);

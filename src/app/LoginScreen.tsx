@@ -114,9 +114,9 @@ export function LoginScreen() {
         <Diagram />
         <div className={styles.brand}>
           <LogoMark size={36} />
-          <h1 className={styles.title}>drawyourarquitecture</h1>
+          <h1 className={styles.title}>DYA</h1>
         </div>
-        <p className={styles.lead}>Notas libres y diagramas de arquitectura, en un solo lugar.</p>
+        <p className={styles.lead}>Draw your Architecture: notas libres y diagramas de arquitectura, en un solo lugar.</p>
 
         {!isFirebaseConfigured ? (
           <div className={styles.notice} role="alert">

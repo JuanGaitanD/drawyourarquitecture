@@ -62,9 +62,9 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className={styles.shell}>
       <header className={styles.header}>
-        <Link href="/" className={styles.brand} aria-label="drawyourarquitecture, ir al panel">
+        <Link href="/" className={styles.brand} aria-label="DYA (Draw your Architecture), ir al panel">
           <LogoMark />
-          <span className={styles.wordmark}>drawyourarquitecture</span>
+          <span className={styles.wordmark}>DYA</span>
         </Link>
         <div className={styles.actions}>
           <ThemeToggle />
