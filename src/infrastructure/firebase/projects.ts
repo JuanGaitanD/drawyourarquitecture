@@ -14,6 +14,7 @@ function toProject(id: string, d: DocumentData): Project | null {
     type: d.type,
     title: d.title,
     isPublic: d.isPublic === true,
+    folderId: typeof d.folderId === 'string' ? d.folderId : null,
     members: toMembers(d.members),
     createdAt: Number(d.createdAt) || 0,
     updatedAt: Number(d.updatedAt) || 0,
@@ -148,6 +149,11 @@ export const projectRepo: ProjectRepo = {
   async update(id, patch) {
     const { fs, db } = await loadFirestore();
     await fs.updateDoc(fs.doc(db, 'projects', id), { ...patch, updatedAt: Date.now() });
+  },
+
+  async setFolder(id, folderId) {
+    const { fs, db } = await loadFirestore();
+    await fs.updateDoc(fs.doc(db, 'projects', id), { folderId, updatedAt: Date.now() });
   },
 
   async remove(id) {

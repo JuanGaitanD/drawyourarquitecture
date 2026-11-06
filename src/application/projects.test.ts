@@ -41,6 +41,7 @@ function setup(opts: { signedIn?: boolean; failUpload?: boolean } = {}) {
       return id;
     },
     update: async () => undefined,
+    setFolder: async () => undefined,
     async remove(id) {
       projects.delete(id);
       contents.delete(id);
@@ -100,6 +101,12 @@ describe('casos de uso de proyectos', () => {
       createdAt: 99,
     });
     expect(contents.get(id)).toBe('{"empty":"note"}');
+  });
+
+  it('createProject en una carpeta guarda folderId; sin carpeta no lo escribe', async () => {
+    const { uc, projects } = setup();
+    expect(projects.get(await uc.createProject('note', 'a', 'c1'))).toMatchObject({ folderId: 'c1' });
+    expect(projects.get(await uc.createProject('note', 'b'))).not.toHaveProperty('folderId');
   });
 
   it('createProject exige sesión', async () => {

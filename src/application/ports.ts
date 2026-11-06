@@ -1,3 +1,4 @@
+import type { Folder } from '@/domain/folder';
 import type { Invite } from '@/domain/invite';
 import type { Project, Role } from '@/domain/project';
 
@@ -44,7 +45,20 @@ export interface ProjectRepo {
   /** Crea el proyecto y su `content/main` (revisión 0) en un mismo batch. Devuelve el id. */
   create(p: Omit<Project, 'id'>, initialData: string): Promise<string>;
   update(id: string, patch: Partial<Pick<Project, 'title' | 'isPublic'>>): Promise<void>;
+  /** Dueño: mueve el proyecto a una carpeta propia o a Inicio (`null`). */
+  setFolder(id: string, folderId: string | null): Promise<void>;
   /** Borra `content/main` y el proyecto en un batch. Los archivos los borra antes el caso de uso. */
+  remove(id: string): Promise<void>;
+}
+
+/** Carpetas del usuario (colección `folders`): solo las lee y escribe su dueño. */
+export interface FolderRepo {
+  /** Carpetas de `uid` en vivo (sin orden: se ordena en cliente). Devuelve la función para cancelar. */
+  subscribe(uid: string, cb: (f: Folder[]) => void, onError: (e: Error) => void): () => void;
+  create(f: Omit<Folder, 'id'>): Promise<string>;
+  rename(id: string, name: string): Promise<void>;
+  move(id: string, parentId: string | null): Promise<void>;
+  /** Borra la carpeta; que esté vacía lo comprueba quien llama (los proyectos viven en otra colección). */
   remove(id: string): Promise<void>;
 }
 
