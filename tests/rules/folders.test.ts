@@ -59,13 +59,13 @@ describe('folders · el dueño', () => {
   it('valida nombre, padre y claves al crear', async () => {
     const fs = asOwner();
     await assertFails(setDoc(folder(fs, 'a'), folderData({ name: '' })));
-    await assertFails(setDoc(folder(fs, 'b'), folderData({ name: 'x'.repeat(81) })));
+    await assertFails(setDoc(folder(fs, 'b'), folderData({ name: 'x'.repeat(41) })));
     await assertFails(setDoc(folder(fs, 'c'), folderData({ name: 7 })));
     await assertFails(setDoc(folder(fs, 'd'), folderData({ parentId: 5 })));
     await assertFails(setDoc(folder(fs, 'e'), folderData({ parentId: 'x'.repeat(65) })));
     await assertFails(setDoc(folder(fs, 'g'), folderData({ extra: 1 })));
     await assertFails(setDoc(folder(fs, 'h'), folderData({ ownerId: STRANGER })));
-    await assertSucceeds(setDoc(folder(fs, 'ok'), folderData({ name: 'x'.repeat(80) })));
+    await assertSucceeds(setDoc(folder(fs, 'ok'), folderData({ name: 'x'.repeat(40) })));
   });
 
   it('al actualizar: ownerId inmutable, nombre válido y solo name, parentId y updatedAt', async () => {
@@ -75,6 +75,16 @@ describe('folders · el dueño', () => {
     await assertFails(updateDoc(folder(fs), { parentId: 3, updatedAt: 2 }));
     await assertFails(updateDoc(folder(fs), { createdAt: 9 }));
     await assertFails(updateDoc(folder(fs), { extra: 1 }));
+  });
+
+  it('un nombre de antes del límite de 40 se conserva al mover, pero no se cambia por otro largo', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'folders', 'larga'), folderData({ name: 'y'.repeat(80) }));
+    });
+    const fs = asOwner();
+    await assertFails(updateDoc(folder(fs, 'larga'), { name: 'z'.repeat(41), updatedAt: 2 }));
+    await assertSucceeds(updateDoc(folder(fs, 'larga'), { parentId: 'f1', updatedAt: 2 }));
+    await assertSucceeds(updateDoc(folder(fs, 'larga'), { name: 'z'.repeat(40), updatedAt: 3 }));
   });
 
   it('crear exige canCreate: sin entrada en allowedEmails no, con ella sí', async () => {

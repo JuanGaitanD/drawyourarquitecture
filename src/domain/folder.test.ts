@@ -23,8 +23,9 @@ const f = (id: string, parentId: string | null, name = id): Folder => ({
 const folders = [f('uni', null, 'Universidad'), f('s5', 'uni', 'Semestre 5'), f('redes', 's5', 'Redes'), f('s6', 'uni', 'Semestre 6'), f('job', null, 'Trabajo')];
 
 describe('normalizeFolderName', () => {
-  it('recorta, limita a 80 y devuelve vacío si no queda nada', () => {
+  it('recorta, limita a 40 y devuelve vacío si no queda nada', () => {
     expect(normalizeFolderName('  Universidad ')).toBe('Universidad');
+    expect(MAX_FOLDER_NAME_LENGTH).toBe(40);
     expect(normalizeFolderName('x'.repeat(200))).toHaveLength(MAX_FOLDER_NAME_LENGTH);
     expect(normalizeFolderName('   ')).toBe('');
     expect(normalizeFolderName(undefined)).toBe('');

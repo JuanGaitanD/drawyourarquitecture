@@ -8,7 +8,7 @@ export interface Folder {
   updatedAt: number;
 }
 
-export const MAX_FOLDER_NAME_LENGTH = 80;
+export const MAX_FOLDER_NAME_LENGTH = 40;
 
 /** Recorta y limita el nombre escrito por la persona. Devuelve `''` si no queda nada: quien llama lo rechaza. */
 export function normalizeFolderName(raw: string | undefined | null): string {
