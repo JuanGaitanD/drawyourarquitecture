@@ -46,4 +46,13 @@ describe('plantillas', () => {
       instantiateTemplate({ id: 'x', name: 'Rota', description: '', raw: { schemaVersion: 2 } }),
     ).toThrow(/Rota/);
   });
+
+  // D16: un texto suelto tiene alto automático y ancho fijo; si el ancho no cabe, el título se parte en dos líneas.
+  it.each(TEMPLATES.map((t) => [t.name, t] as const))('«%s»: los textos sueltos caben en una línea', (_n, t) => {
+    for (const n of instantiateTemplate(t).nodes.filter((x) => x.data.kind === 'text')) {
+      const longest = Math.max(...n.data.label.split(/\r?\n/).map((l) => l.length));
+      const estimated = longest * n.data.style.fontSize * 0.62 + 16; // media de una sans en negrita + relleno
+      expect(n.width ?? 0, n.data.label).toBeGreaterThanOrEqual(estimated);
+    }
+  });
 });

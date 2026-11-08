@@ -1,6 +1,17 @@
-import { Copy, Ellipsis, Globe, GlobeLock, Link as LinkIcon, Pencil, Trash2 } from 'lucide-react';
+import {
+  Copy,
+  Ellipsis,
+  Folder as FolderIcon,
+  FolderInput,
+  Globe,
+  GlobeLock,
+  Link as LinkIcon,
+  Pencil,
+  Trash2,
+} from 'lucide-react';
 import { useEffect, useRef, useState, type KeyboardEvent, type Ref } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
+import type { Folder } from '@/domain/folder';
 import { MAX_TITLE_LENGTH, normalizeTitle, type Project } from '@/domain/project';
 import {
   Button,
@@ -16,18 +27,36 @@ import {
   useToast,
 } from '@/ui';
 import { deleteProject, duplicateProject, projectRepo } from '../services';
+import folderStyles from './FolderView.module.css';
+import { MoveDialog } from './MoveDialog';
 import styles from './ProjectCard.module.css';
 import { formatAbsolute, formatRelative } from './relativeTime';
 import { TYPE_META } from './typeMeta';
+import { useDragSource } from './useDragDrop';
 
 const publicLink = (p: Project) => `${window.location.origin}/view/${p.type}/${p.id}`;
 
-export function ProjectCard({ project, now }: { project: Project; now: number }) {
+export function ProjectCard({
+  project,
+  now,
+  folders,
+  folderLabel,
+}: {
+  project: Project;
+  now: number;
+  /** Carpetas del dueño: con ellas el menú ofrece «Mover a carpeta…». */
+  folders?: readonly Folder[];
+  /** Ruta de su carpeta (p. ej. en los resultados de búsqueda, que cruzan carpetas). */
+  folderLabel?: string;
+}) {
   const { toast } = useToast();
+  const [here] = useLocation();
+  const drag = useDragSource({ kind: 'project', id: project.id, from: project.folderId ?? null });
   const { label, Icon } = TYPE_META[project.type];
   const [renaming, setRenaming] = useState(false);
   const [busy, setBusy] = useState<'duplicate' | 'delete' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [moving, setMoving] = useState(false);
   const linkRef = useRef<HTMLAnchorElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const wantsRename = useRef(false);
@@ -43,6 +72,7 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
 
   // El diálogo se abre desde un menú: al cerrarlo el foco vuelve al botón de opciones, no al cuerpo.
   useReturnFocus(confirmDelete, triggerRef);
+  useReturnFocus(moving, triggerRef);
 
   const fail = (title: string, retry?: () => void) =>
     toast({
@@ -103,6 +133,11 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
     }
   }
 
+  async function moveTo(folderId: string | null) {
+    await projectRepo.setFolder(project.id, folderId);
+    toast({ kind: 'success', title: 'Proyecto movido' });
+  }
+
   async function remove() {
     setBusy('delete');
     try {
@@ -130,6 +165,12 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
       <time dateTime={new Date(project.updatedAt).toISOString()} title={formatAbsolute(project.updatedAt)}>
         {formatRelative(project.updatedAt, now)}
       </time>
+      {folderLabel ? (
+        <span className={folderStyles.where} title={`Carpeta: ${folderLabel}`}>
+          <FolderIcon size={12} aria-hidden="true" />
+          <span className={folderStyles.whereName}>{folderLabel}</span>
+        </span>
+      ) : null}
     </span>
   );
 
@@ -148,7 +189,13 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
           </span>
         </div>
       ) : (
-        <Link ref={linkRef} href={`/${project.type}/${project.id}`} className={styles.surface}>
+        <Link
+          ref={linkRef}
+          href={`/${project.type}/${project.id}`}
+          state={{ from: here }}
+          className={styles.surface}
+          {...(folders ? drag.props : {})}
+        >
           {preview}
           <span className={styles.body}>
             <span className={styles.title}>{project.title}</span>
@@ -205,6 +252,11 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
             <DropdownMenuItem icon={<Copy size={16} />} onSelect={() => void duplicate()}>
               Duplicar
             </DropdownMenuItem>
+            {folders ? (
+              <DropdownMenuItem icon={<FolderInput size={16} />} onSelect={() => setMoving(true)}>
+                Mover a carpeta…
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               icon={project.isPublic ? <GlobeLock size={16} /> : <Globe size={16} />}
@@ -224,6 +276,17 @@ export function ProjectCard({ project, now }: { project: Project; now: number })
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {folders ? (
+        <MoveDialog
+          open={moving}
+          onOpenChange={setMoving}
+          title={`Mover «${project.title}»`}
+          folders={folders}
+          current={project.folderId ?? null}
+          onMove={moveTo}
+        />
+      ) : null}
 
       <Dialog open={confirmDelete} onOpenChange={(o) => busy !== 'delete' && setConfirmDelete(o)}>
         <DialogContent

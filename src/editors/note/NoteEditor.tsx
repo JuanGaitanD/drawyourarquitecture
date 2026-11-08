@@ -6,7 +6,8 @@ import { useAutosave, useProject, useRemoteContent, type ProjectState } from '@/
 import { identity, projectRepo } from '@/app/services';
 import type { StoredDraft } from '@/application/saveQueue';
 import type { ContentRecord } from '@/application/ports';
-import { ContentTooLargeError } from '@/domain/codec';
+import { ContentTooLargeError, MAX_CONTENT_LABEL } from '@/domain/codec';
+import { backPath } from '@/domain/folder';
 import { normalizeTitle, roleOf, type Project } from '@/domain/project';
 import { Button, useToast } from '@/ui';
 import { decodeNote, encodeNote, noteSame, type NoteContent } from './codec';
@@ -17,10 +18,12 @@ import { TopBar } from './TopBar';
 
 export interface NoteEditorProps {
   id: string;
+  /** Lugar del panel desde el que se abrió (`/` o `/folder/:id`); sin él, la carpeta del proyecto. */
+  origin?: unknown;
 }
 
 /** Ruta `/note/:id` (se monta con `key={id}`): carga la nota y no deja guardar hasta hidratar. */
-export function NoteEditor({ id }: NoteEditorProps) {
+export function NoteEditor({ id, origin }: NoteEditorProps) {
   const p = useProject(id);
   if (p.status === 'loading') return <PageFallback label="Abriendo la nota…" />;
   if (p.status === 'missing') {
@@ -29,7 +32,7 @@ export function NoteEditor({ id }: NoteEditorProps) {
         title="Esta nota no existe o es privada"
         text="Puede que se haya borrado o que no tengas acceso con esta cuenta."
         action={
-          <Link href="/" className={styles.link}>
+          <Link href={backPath(origin)} className={styles.link}>
             Volver al panel
           </Link>
         }
@@ -50,7 +53,15 @@ export function NoteEditor({ id }: NoteEditorProps) {
     );
   }
   if (p.project.type !== 'note') return <Redirect to={`/${p.project.type}/${id}`} replace />;
-  return <Loaded project={p.project} record={p.content} draft={p.draft} discardDraft={p.discardDraft} />;
+  return (
+    <Loaded
+      project={p.project}
+      record={p.content}
+      draft={p.draft}
+      discardDraft={p.discardDraft}
+      origin={origin}
+    />
+  );
 }
 
 function Loaded({
@@ -58,11 +69,13 @@ function Loaded({
   record,
   draft,
   discardDraft,
+  origin,
 }: {
   project: Project;
   record: ContentRecord;
   draft: ProjectState['draft'];
   discardDraft: () => void;
+  origin?: unknown;
 }) {
   const content = useMemo(() => {
     try {
@@ -78,7 +91,7 @@ function Loaded({
         title="El contenido de la nota está dañado"
         text="No se puede abrir y por eso no se guardará nada encima."
         action={
-          <Link href="/" className={styles.link}>
+          <Link href={backPath(origin)} className={styles.link}>
             Volver al panel
           </Link>
         }
@@ -86,7 +99,14 @@ function Loaded({
     );
   }
   return (
-    <Session project={project} record={record} content={content} draft={draft} discardDraft={discardDraft} />
+    <Session
+      project={project}
+      record={record}
+      content={content}
+      draft={draft}
+      discardDraft={discardDraft}
+      origin={origin}
+    />
   );
 }
 
@@ -96,12 +116,14 @@ function Session({
   content,
   draft,
   discardDraft,
+  origin,
 }: {
   project: Project;
   record: ContentRecord;
   content: NoteContent;
   draft: StoredDraft | null;
   discardDraft: () => void;
+  origin?: unknown;
 }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -223,7 +245,9 @@ function Session({
     }
   };
 
-  const back = () => void autosave.flush().finally(() => navigate('/'));
+  // La carpeta del proyecto solo es del panel de quien lo es dueño; un invitado vuelve a Inicio.
+  const backTo = backPath(origin, role === 'owner' ? project.folderId : null);
+  const back = () => void autosave.flush().finally(() => navigate(backTo));
 
   return (
     <div className={styles.page}>
@@ -280,7 +304,7 @@ function Session({
         {tooLarge ? (
           <Banner
             tone="danger"
-            text="La nota supera el tope de 900 kB y no se puede guardar. Quita elementos para poder guardar de nuevo."
+            text={`La nota supera el tope de ${MAX_CONTENT_LABEL} y no se puede guardar. Quita elementos para poder guardar de nuevo.`}
           />
         ) : null}
         {draft ? (

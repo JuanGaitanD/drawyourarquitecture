@@ -6,10 +6,14 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_PROJECT_ID?: string;
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string;
   readonly VITE_FIREBASE_APP_ID?: string;
+  /** URL de la instancia de Realtime Database (presencia y cursores). Sin ella, la presencia se desactiva. */
+  readonly VITE_FIREBASE_DATABASE_URL?: string;
   /** Reservada: el proyecto tiene Analytics, pero todavía no se integra. */
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
   /** «1» conecta Auth y Firestore a los emuladores locales (proyecto demo-dya). */
   readonly VITE_USE_EMULATORS?: string;
+  /** Solo con emuladores: proyecto del emulador (por defecto demo-dya); el e2e usa uno propio para no pisar el compartido. */
+  readonly VITE_EMULATOR_PROJECT?: string;
 }
 interface ImportMeta {
   readonly env: ImportMetaEnv;

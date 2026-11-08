@@ -6,6 +6,7 @@ import {
   ConnectionMode,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
   reconnectEdge,
   useReactFlow,
@@ -28,21 +29,20 @@ import { nanoid } from 'nanoid';
 import { useTheme, useToast } from '@/ui';
 import { edgeTypes } from '../edges';
 import { makeEdge, type BoardEdge, type BoardNode } from '../model/board';
-import { sortParentsFirst } from '../model/geometry';
 import { nodeTypes, useBoardFiles } from '../nodes';
 import { useBoard, useBoardStore } from '../store/BoardStoreProvider';
 import { reparentNodes } from '../store/reparent';
 import { ARIA_LABELS } from './ariaLabels';
 import { GRID, isCreateTool, nodeForTool } from './createNode';
+import { connectEdge } from './connect';
 import { toDisplayNodes } from './displayNodes';
 import flow from './flow.module.css';
 import { optimizeImage } from '@/application/imageOptimize';
-import { imageNodeSize, imageProblem, pickImage, uploadWithRetry } from './imageFile';
-import { makeNode } from '../model/board';
+import { imageNodeSize, imageProblem, pickImage } from './imageFile';
 
 export interface BoardCanvasProps {
   initialViewport: Viewport;
-  /** Se llama al terminar de mover o hacer zoom (el editor lo guarda con el siguiente cambio de contenido). */
+  /** Se llama al terminar de mover o hacer zoom (el editor lo guarda con retraso, aunque el contenido no cambie). */
   onViewportChange: (v: Viewport) => void;
 }
 
@@ -57,6 +57,7 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
   const nodes = useBoard((s) => s.nodes);
   const edges = useBoard((s) => s.edges);
   const tool = useBoard((s) => s.tool);
+  const connectFrom = useBoard((s) => s.connectFrom);
   const gridOn = useBoard((s) => s.gridOn);
   const snapOn = useBoard((s) => s.snapOn);
   const { resolved } = useTheme();
@@ -65,7 +66,7 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
   const files = useBoardFiles();
   const { toast } = useToast();
 
-  const display = useMemo(() => toDisplayNodes(nodes), [nodes]);
+  const display = useMemo(() => toDisplayNodes(nodes, connectFrom), [nodes, connectFrom]);
   const select = tool === 'select';
 
   const onNodesChange: OnNodesChange<BoardNode> = useCallback(
@@ -105,27 +106,14 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
     [store],
   );
 
-  /** Inserta y selecciona un nodo nuevo en un solo paso de historial. */
-  const insert = useCallback(
-    (node: BoardNode, edit: boolean) => {
-      const s = store.getState();
-      s.setNodes((ns) =>
-        sortParentsFirst([
-          ...ns.map((n) => (n.selected ? { ...n, selected: false } : n)),
-          { ...node, selected: true },
-        ]),
-      );
-      s.setTool('select');
-      s.setEditingId(edit ? node.id : null);
-    },
-    [store],
-  );
+  /** Inserta y selecciona un nodo nuevo en un solo paso de historial (con su etiqueta si se edita al crear). */
+  const insert = useCallback((node: BoardNode, edit: boolean) => store.getState().insertNode(node, edit), [store]);
 
   const placeImage = useCallback(
     async (point: { x: number; y: number }) => {
-      const upload = files?.upload;
+      const addImage = files?.addImage;
       store.getState().setTool('select');
-      if (!upload) return toast({ title: 'No se pueden añadir imágenes aquí', kind: 'error' });
+      if (!addImage) return toast({ title: 'No se pueden añadir imágenes aquí', kind: 'error' });
       const file = await pickImage();
       if (!file) return;
       const problem = imageProblem(file);
@@ -138,23 +126,9 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
       }
       const fileId = nanoid();
       const { width, height } = await imageNodeSize(file);
-      const attempt = async (): Promise<void> => {
-        try {
-          await uploadWithRetry((b) => upload(fileId, b), blob);
-        } catch {
-          toast({
-            title: 'No se pudo subir la imagen',
-            kind: 'error',
-            action: { label: 'Reintentar', onClick: () => void attempt() },
-          });
-          return;
-        }
-        const at = { x: point.x - width / 2, y: point.y - height / 2 };
-        insert({ ...makeNode('image', at, { fileId, label: file.name }), width, height }, false);
-      };
-      await attempt();
+      addImage(fileId, blob, { x: point.x - width / 2, y: point.y - height / 2, width, height, label: file.name });
     },
-    [files, insert, store, toast],
+    [files, store, toast],
   );
 
   const createAt = useCallback(
@@ -181,11 +155,33 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
   }, [tool, placeImage, flowStore, getViewport]);
 
   const creating = isCreateTool(tool);
-  const onPaneClick = useCallback((e: ReactMouseEvent) => creating && createAt(e), [creating, createAt]);
+  // Conector por clic: el primer clic en un nodo elige el origen y el segundo en otro crea la arista (un paso de
+  // historial) y vuelve a «Seleccionar». Un clic en el vacío cancela el origen; Esc, también (ver `escape`).
+  const connectClick = useCallback(
+    (id: string) => {
+      const s = store.getState();
+      if (s.nodes.find((n) => n.id === id)?.data.locked) return;
+      if (!s.connectFrom || s.connectFrom === id) return s.setConnectFrom(id);
+      const edge = connectEdge(s.connectFrom, id, s.nodes);
+      if (edge) s.addEdges([edge]);
+      s.setTool('select');
+    },
+    [store],
+  );
+  const onPaneClick = useCallback(
+    (e: ReactMouseEvent) => {
+      if (tool === 'connector') store.getState().setConnectFrom(null);
+      else if (creating) createAt(e);
+    },
+    [tool, creating, createAt, store],
+  );
   // Un frame cubre el lienzo bajo él: el clic de una herramienta de creación también cuenta ahí.
   const onNodeClick = useCallback(
-    (e: ReactMouseEvent, n: Node) => creating && n.type === 'frame' && createAt(e),
-    [creating, createAt],
+    (e: ReactMouseEvent, n: Node) => {
+      if (tool === 'connector') connectClick(n.id);
+      else if (creating && n.type === 'frame') createAt(e);
+    },
+    [tool, creating, createAt, connectClick],
   );
 
   const startEdit = useCallback((id: string) => store.getState().setEditingId(id), [store]);
@@ -242,7 +238,7 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
       snapGrid={[GRID, GRID]}
       nodesDraggable={select}
       nodesConnectable={select || tool === 'connector'}
-      elementsSelectable={select || tool === 'connector'}
+      elementsSelectable={select}
       edgesReconnectable={select}
       selectionOnDrag={select}
       panOnDrag={tool === 'hand' ? true : [1, 2]}
@@ -260,6 +256,13 @@ export function BoardCanvas({ initialViewport, onViewportChange }: BoardCanvasPr
           return s.fill !== 'transparent' ? s.fill : s.stroke;
         }}
       />
+      {tool === 'connector' ? (
+        <Panel position="top-center" className={flow.hint}>
+          <span role="status">
+            {connectFrom ? 'Elige el nodo de destino · Esc cancela' : 'Elige el nodo de origen · Esc cancela'}
+          </span>
+        </Panel>
+      ) : null}
       {/* Cuadrícula y snap se conmutan desde la ActionBar. */}
       <Controls showInteractive={false} position="bottom-left" />
     </ReactFlow>

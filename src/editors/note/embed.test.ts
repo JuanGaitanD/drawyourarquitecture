@@ -32,6 +32,10 @@ describe('validateEmbeddable', () => {
     }
   });
 
+  it('un enlace del dominio anterior de producción sigue siendo un board propio', () => {
+    expect(parseBoardLink('https://drawyourarchitecture.vercel.app/embed/board/abc', 'https://dya.juandgaitan.com')).toBe('abc');
+  });
+
   it('el enlace que genera la nota se reconoce', () => {
     expect(parseBoardLink(boardEmbedLink('Zk3-9', O), O)).toBe('Zk3-9');
   });

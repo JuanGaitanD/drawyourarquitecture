@@ -14,7 +14,7 @@ export interface ProjectDeps {
 export function createProjectUseCases(deps: ProjectDeps) {
   const now = deps.now ?? Date.now;
 
-  async function createProject(type: ProjectType, title?: string): Promise<string> {
+  async function createProject(type: ProjectType, title?: string, folderId?: string | null): Promise<string> {
     const user = deps.identity.current();
     if (!user) throw new Error('Hace falta iniciar sesión.');
     const t = now();
@@ -24,6 +24,7 @@ export function createProjectUseCases(deps: ProjectDeps) {
         type,
         title: normalizeTitle(title ?? DEFAULT_TITLE),
         isPublic: false,
+        ...(folderId ? { folderId } : {}),
         createdAt: t,
         updatedAt: t,
       },

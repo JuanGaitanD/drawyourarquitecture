@@ -1,8 +1,15 @@
 // Persistencia como string versionado (plan · invariante 1).
-// ponytail: por encima de 900 KB hay error visible; el blob en Storage queda para cuando un board real lo alcance.
+// Hasta DOC_CONTENT_BYTES el contenido cabe en un documento (`content/main.data`); por encima se trocea en
+// `content/main/chunks/{i}` (application/contentChunks.ts) y el tope práctico es MAX_CONTENT_BYTES.
 
 export const SCHEMA_VERSION = 1 as const;
-export const MAX_CONTENT_BYTES = 900_000;
+/** Un documento de Firestore admite 1 MiB: lo que cabe en un solo trozo. */
+export const DOC_CONTENT_BYTES = 900_000;
+/** Tope práctico del contenido troceado: una transacción admite ~10 MiB. */
+export const MAX_CONTENT_BYTES = 8 * 1024 * 1024;
+
+/** El tope escrito para personas («8 MiB»), derivado de `MAX_CONTENT_BYTES` para que los avisos no se desfasen. */
+export const MAX_CONTENT_LABEL = `${MAX_CONTENT_BYTES / 1024 / 1024} MiB`;
 
 export class ContentTooLargeError extends Error {
   readonly bytes: number;

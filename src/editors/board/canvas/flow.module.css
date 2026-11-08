@@ -69,3 +69,20 @@
 .tool_connector :global(.react-flow__pane) {
   cursor: crosshair;
 }
+
+/* Conector por clic: aviso de qué falta elegir y resalte del origen. */
+.hint {
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.flow :global(.board-connect-source) {
+  outline: 2px dashed var(--selection);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}

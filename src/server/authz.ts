@@ -1,72 +1,51 @@
 import type { Firestore } from 'firebase-admin/firestore';
 import { TOKEN_PREFIX, sha256Hex } from '../application/tokens';
 
-// Firebase Admin se salta las reglas de Firestore: la autorización vive aquí, en una sola función por
-// permiso, y cada herramienta la llama antes de leer o escribir (docs/mcp.md · Seguridad).
+// La autorización de los datos NO está aquí: las reglas de Firestore la aplican porque el servidor opera con el
+// SDK web autenticado como la persona (userDb.ts). Aquí solo se resuelve quién llama (token → uid) y se traduce
+// `permission-denied` a 403.
 
-export type ErrorStatus = 400 | 401 | 403 | 404 | 413;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 413 | 429;
 
 /** Error con código HTTP que las herramientas devuelven al cliente MCP como `isError`. */
 export class ToolError extends Error {
   readonly status: ErrorStatus;
-  constructor(status: ErrorStatus, message: string) {
+  /** Segundos hasta poder reintentar (429). */
+  readonly retryAfter?: number;
+  constructor(status: ErrorStatus, message: string, retryAfter?: number) {
     super(message);
     this.name = 'ToolError';
     this.status = status;
+    this.retryAfter = retryAfter;
   }
 }
 
-export type MemberRole = 'editor' | 'viewer';
+/** Una regla de Firestore rechazó la operación (también un proyecto inexistente: `resource` nulo = denegado). */
+export const isPermissionDenied = (e: unknown): boolean =>
+  typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'permission-denied';
 
-/** Lo mínimo de `projects/{id}` que decide el acceso. `members` es opcional (sin él = solo el dueño). */
-export interface ProjectAccess {
-  ownerId: string;
-  isPublic?: boolean;
-  members?: unknown;
-}
-
-function roleOf(p: ProjectAccess, uid: string): MemberRole | undefined {
-  const m = p.members;
-  if (typeof m !== 'object' || m === null || !Object.hasOwn(m, uid)) return undefined;
-  const r = (m as Record<string, unknown>)[uid];
-  return r === 'editor' || r === 'viewer' ? r : undefined;
-}
-
-/** Leer: dueño, miembro (editor o viewer) o proyecto público. */
-export function canRead(p: ProjectAccess, uid: string): boolean {
-  return p.ownerId === uid || roleOf(p, uid) !== undefined || p.isPublic === true;
-}
-
-/** Escribir: dueño o miembro con rol `editor`. */
-export function canWrite(p: ProjectAccess, uid: string): boolean {
-  return p.ownerId === uid || roleOf(p, uid) === 'editor';
-}
-
-/** Crear proyectos: el dueño de la app (`OWNER_UID`) o quien esté en `allowedUsers`. */
-export async function canCreate(
-  db: Firestore,
-  uid: string,
-  ownerUid: string | undefined = process.env.OWNER_UID,
-): Promise<boolean> {
-  if (ownerUid && uid === ownerUid) return true;
-  return (await db.collection('allowedUsers').doc(uid).get()).exists;
+export interface Identity {
+  uid: string;
+  /** sha256 del token: id de `mcpTokens`, clave del límite de tasa y de la auditoría. */
+  tokenHash: string;
 }
 
 /** Cada llamada MCP no debe costar una escritura: `lastUsedAt` se refresca como mucho una vez por hora. */
 const LAST_USED_EVERY_MS = 3_600_000;
 
 /**
- * `Authorization: Bearer dya_…` → uid. Busca el sha256 en `mcpTokens`; sin token, con formato
- * inválido, inexistente o revocado lanza 401. Anota `lastUsedAt` como mucho una vez por hora.
+ * `Authorization: Bearer dya_…` → uid. Busca el sha256 en `mcpTokens` (con Admin: aún no hay identidad con la
+ * que pasar las reglas); sin token, con formato inválido, inexistente o revocado lanza 401. Anota `lastUsedAt`
+ * como mucho una vez por hora.
  */
-export async function authenticate(db: Firestore, header: string | undefined): Promise<string> {
+export async function authenticate(db: Firestore, header: string | undefined): Promise<Identity> {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? '');
   if (!m) throw new ToolError(401, 'Falta el encabezado Authorization: Bearer <token>.');
   const token = m[1];
   if (!token.startsWith(TOKEN_PREFIX) || token.length > 200) throw new ToolError(401, 'Token no válido.');
-  const ref = db.collection('mcpTokens').doc(await sha256Hex(token));
-  const snap = await ref.get();
-  const data = snap.data();
+  const tokenHash = await sha256Hex(token);
+  const ref = db.collection('mcpTokens').doc(tokenHash);
+  const data = (await ref.get()).data();
   if (!data || data.revoked === true || typeof data.uid !== 'string' || data.uid === '') {
     throw new ToolError(401, 'Token no válido o revocado.');
   }
@@ -74,5 +53,5 @@ export async function authenticate(db: Firestore, header: string | undefined): P
   if (typeof data.lastUsedAt !== 'number' || now - data.lastUsedAt >= LAST_USED_EVERY_MS) {
     await ref.update({ lastUsedAt: now }).catch(() => undefined);
   }
-  return data.uid;
+  return { uid: data.uid, tokenHash };
 }

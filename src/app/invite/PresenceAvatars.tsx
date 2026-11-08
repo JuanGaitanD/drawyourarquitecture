@@ -4,9 +4,9 @@ import styles from './PresenceAvatars.module.css';
 
 const MAX = 4;
 
-/** Avatares de quienes están conectados al proyecto (iniciales con su color; sin cursores). */
+/** Avatares de quienes están conectados al proyecto (iniciales con su color). */
 export function PresenceAvatars({ projectId }: { projectId: string }) {
-  const others = usePresence(projectId);
+  const { others } = usePresence(projectId);
   if (others.length === 0) return null;
   const shown = others.slice(0, MAX);
   const extra = others.length - shown.length;

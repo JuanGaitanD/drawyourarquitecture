@@ -13,10 +13,17 @@ export interface McpTokenRecord {
   revoked: boolean;
 }
 
-export interface AllowedUser {
-  uid: string;
+/** Entrada de `allowedEmails/{email}`: quien puede crear proyectos además del dueño. */
+export interface AllowedEmail {
+  /** Correo en minúsculas (también es el id del documento). */
   email: string;
   addedAt: number;
+}
+
+/** Correo normalizado (recortado y en minúsculas) o `null` si no tiene forma de correo. Misma forma que las reglas. */
+export function normalizeEmail(raw: string): string | null {
+  const email = raw.trim().toLowerCase();
+  return email.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : null;
 }
 
 /** `dya_` + 32 bytes aleatorios en base64url (sin relleno). */
