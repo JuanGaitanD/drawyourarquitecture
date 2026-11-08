@@ -288,3 +288,11 @@ describe('replaceNoteText', () => {
     expect(replaceNoteText(note, noteText(note.elements), 5).elements[0]).toBe(wrapped);
   });
 });
+
+describe('medida', () => {
+  it('el ancho cuenta grafemas: diez emojis miden lo mismo que diez letras', () => {
+    const [emoji] = textToElements('😀'.repeat(10));
+    const [letters] = textToElements('a'.repeat(10));
+    expect(emoji.width).toBe(letters.width);
+  });
+});

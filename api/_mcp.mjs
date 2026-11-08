@@ -988,7 +988,7 @@ function emptyNote() {
 function measure(body, fontSize) {
   const lines = body.split("\n");
   return {
-    width: Math.ceil(Math.max(...lines.map((l) => l.length), 1) * fontSize * CHAR_W),
+    width: Math.ceil(Math.max(...lines.map((l) => graphemes(l).length), 1) * fontSize * CHAR_W),
     height: Math.ceil(lines.length * fontSize * LINE_HEIGHT)
   };
 }
