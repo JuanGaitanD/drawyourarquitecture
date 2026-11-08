@@ -37,6 +37,15 @@ export function emptyNote(): NoteContent {
   return { schemaVersion: 1, elements: [], appState: {}, files: {} };
 }
 
+/** Caja aproximada de un texto (Excalidraw la recalcula al abrir, con `autoResize`). */
+function measure(body: string, fontSize: number): { width: number; height: number } {
+  const lines = body.split('\n');
+  return {
+    width: Math.ceil(Math.max(...lines.map((l) => l.length), 1) * fontSize * CHAR_W),
+    height: Math.ceil(lines.length * fontSize * LINE_HEIGHT),
+  };
+}
+
 /** Texto en bloques (separados por línea en blanco) → elementos `text` apilados. `# `…`### ` agranda el cuerpo. */
 export function textToElements(text: string, now = Date.now()): Record<string, unknown>[] {
   const blocks = text
@@ -51,9 +60,7 @@ export function textToElements(text: string, now = Date.now()): Record<string, u
     const h = /^(#{1,3})\s+(.*)$/s.exec(raw);
     const body = h ? h[2] : raw;
     const fontSize = h ? HEADING_SIZE[h[1].length] : FONT_SIZE;
-    const lines = body.split('\n');
-    const width = Math.ceil(Math.max(...lines.map((l) => l.length), 1) * fontSize * CHAR_W);
-    const height = Math.ceil(lines.length * fontSize * LINE_HEIGHT);
+    const { width, height } = measure(body, fontSize);
     const el = {
       id: textId(),
       type: 'text',
@@ -125,12 +132,65 @@ export function decodeNote(data: string): NoteContent {
 
 /** Texto de los elementos vivos en orden de lectura (por filas de arriba abajo, y de izquierda a derecha). */
 export function noteText(elements: readonly Record<string, unknown>[]): string {
+  return readingOrder(elements)
+    .map((e) => e.text as string)
+    .join('\n\n');
+}
+
+/** Elementos `text` vivos y no vacíos en orden de lectura. */
+function readingOrder(elements: readonly Record<string, unknown>[]): Record<string, unknown>[] {
+  const row = (e: Record<string, unknown>) => Math.round((Number(e.y) || 0) / 20);
   return elements
     .filter((e) => e.type === 'text' && e.isDeleted !== true && typeof e.text === 'string' && e.text !== '')
-    .map((e) => ({ t: e.text as string, x: Number(e.x) || 0, row: Math.round((Number(e.y) || 0) / 20) }))
-    .sort((a, b) => a.row - b.row || a.x - b.x)
-    .map((e) => e.t)
-    .join('\n\n');
+    .sort((a, b) => row(a) - row(b) || (Number(a.x) || 0) - (Number(b.x) || 0));
+}
+
+/**
+ * Reemplaza el texto de la nota y conserva lo demás. Los textos vivos (en el orden de `noteText`) se emparejan por
+ * posición con los bloques nuevos: igual → intacto; distinto → se edita en su sitio (posición, estilo, contenedor);
+ * de más → se apilan debajo de todo; los que sobran → borrados (tombstone, como hace Excalidraw). Imágenes, diagramas
+ * incrustados, formas y `files` no se tocan. ponytail: empareja por posición; insertar un bloque en medio corre el
+ * texto de los siguientes un hueco (el orden de lectura no cambia). Un diff por contenido si eso molesta.
+ */
+export function replaceNoteText(note: NoteContent, text: string, now = Date.now()): NoteContent {
+  const blocks = textToElements(text, now);
+  const old = readingOrder(note.elements);
+  const bump = (e: Record<string, unknown>, over: Record<string, unknown>) => ({
+    ...e,
+    ...over,
+    version: (Number(e.version) || 1) + 1,
+    versionNonce: rand(),
+    updated: now,
+  });
+  const changed = new Map<Record<string, unknown>, Record<string, unknown>>();
+  old.forEach((e, i) => {
+    const b = blocks[i];
+    if (!b) return void changed.set(e, bump(e, { isDeleted: true }));
+    // Sin «# » el bloque sale con el cuerpo normal: se respeta el tamaño que ya tenía.
+    const fontSize = b.fontSize === FONT_SIZE ? e.fontSize : b.fontSize;
+    if (b.text === e.text && fontSize === e.fontSize) return;
+    // Una etiqueta de forma (`containerId`) conserva la geometría que le da su contenedor.
+    const size = e.containerId == null ? measure(b.text as string, Number(fontSize) || FONT_SIZE) : {};
+    changed.set(e, bump(e, { text: b.text, originalText: b.text, fontSize, ...size }));
+  });
+  const extra = blocks.slice(old.length);
+  const live = note.elements.filter((e) => e.isDeleted !== true);
+  const left = old.length ? Math.min(...old.map((e) => Number(e.x) || 0)) : 0;
+  const bottom = live.length
+    ? Math.max(...live.map((e) => (Number(e.y) || 0) + (Number(e.height) || 0))) + GAP
+    : 0;
+  // Índices fraccionarios después del mayor existente (un sufijo que no acaba en «0» deja una clave válida).
+  const maxIndex = note.elements.reduce<string>(
+    (m, e) => (typeof e.index === 'string' && e.index > m ? e.index : m),
+    '',
+  );
+  const added = extra.map((b, i) => ({
+    ...b,
+    x: left,
+    y: bottom + (b.y as number) - (extra[0].y as number),
+    index: `${maxIndex}${orderKey(i)}V`,
+  }));
+  return { ...note, elements: [...note.elements.map((e) => changed.get(e) ?? e), ...added] };
 }
 
 /** Resumen para el modelo: cuántos elementos vivos hay de cada tipo. */

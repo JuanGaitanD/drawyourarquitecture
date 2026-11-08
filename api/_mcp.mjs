@@ -150,6 +150,7 @@ import {
   getDocs,
   limit,
   query,
+  updateDoc,
   where,
   writeBatch
 } from "firebase/firestore";
@@ -984,6 +985,13 @@ var textId = () => crypto.randomUUID().replaceAll("-", "").slice(0, 21);
 function emptyNote() {
   return { schemaVersion: 1, elements: [], appState: {}, files: {} };
 }
+function measure(body, fontSize) {
+  const lines = body.split("\n");
+  return {
+    width: Math.ceil(Math.max(...lines.map((l) => l.length), 1) * fontSize * CHAR_W),
+    height: Math.ceil(lines.length * fontSize * LINE_HEIGHT)
+  };
+}
 function textToElements(text, now2 = Date.now()) {
   const blocks = text.replace(/\r\n?/g, "\n").split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
   if (blocks.length > MAX_NOTE_BLOCKS)
@@ -993,9 +1001,7 @@ function textToElements(text, now2 = Date.now()) {
     const h = /^(#{1,3})\s+(.*)$/s.exec(raw);
     const body = h ? h[2] : raw;
     const fontSize = h ? HEADING_SIZE[h[1].length] : FONT_SIZE;
-    const lines = body.split("\n");
-    const width = Math.ceil(Math.max(...lines.map((l) => l.length), 1) * fontSize * CHAR_W);
-    const height = Math.ceil(lines.length * fontSize * LINE_HEIGHT);
+    const { width, height } = measure(body, fontSize);
     const el = {
       id: textId(),
       type: "text",
@@ -1060,7 +1066,46 @@ function decodeNote(data) {
   };
 }
 function noteText(elements) {
-  return elements.filter((e) => e.type === "text" && e.isDeleted !== true && typeof e.text === "string" && e.text !== "").map((e) => ({ t: e.text, x: Number(e.x) || 0, row: Math.round((Number(e.y) || 0) / 20) })).sort((a, b) => a.row - b.row || a.x - b.x).map((e) => e.t).join("\n\n");
+  return readingOrder(elements).map((e) => e.text).join("\n\n");
+}
+function readingOrder(elements) {
+  const row = (e) => Math.round((Number(e.y) || 0) / 20);
+  return elements.filter((e) => e.type === "text" && e.isDeleted !== true && typeof e.text === "string" && e.text !== "").sort((a, b) => row(a) - row(b) || (Number(a.x) || 0) - (Number(b.x) || 0));
+}
+function replaceNoteText(note, text, now2 = Date.now()) {
+  const blocks = textToElements(text, now2);
+  const old = readingOrder(note.elements);
+  const bump = (e, over) => ({
+    ...e,
+    ...over,
+    version: (Number(e.version) || 1) + 1,
+    versionNonce: rand(),
+    updated: now2
+  });
+  const changed = /* @__PURE__ */ new Map();
+  old.forEach((e, i) => {
+    const b = blocks[i];
+    if (!b) return void changed.set(e, bump(e, { isDeleted: true }));
+    const fontSize = b.fontSize === FONT_SIZE ? e.fontSize : b.fontSize;
+    if (b.text === e.text && fontSize === e.fontSize) return;
+    const size = e.containerId == null ? measure(b.text, Number(fontSize) || FONT_SIZE) : {};
+    changed.set(e, bump(e, { text: b.text, originalText: b.text, fontSize, ...size }));
+  });
+  const extra = blocks.slice(old.length);
+  const live = note.elements.filter((e) => e.isDeleted !== true);
+  const left = old.length ? Math.min(...old.map((e) => Number(e.x) || 0)) : 0;
+  const bottom = live.length ? Math.max(...live.map((e) => (Number(e.y) || 0) + (Number(e.height) || 0))) + GAP : 0;
+  const maxIndex = note.elements.reduce(
+    (m, e) => typeof e.index === "string" && e.index > m ? e.index : m,
+    ""
+  );
+  const added = extra.map((b, i) => ({
+    ...b,
+    x: left,
+    y: bottom + b.y - extra[0].y,
+    index: `${maxIndex}${orderKey(i)}V`
+  }));
+  return { ...note, elements: [...note.elements.map((e) => changed.get(e) ?? e), ...added] };
 }
 function noteSummary(elements) {
   const byType = {};
@@ -1355,33 +1400,90 @@ function placeBelow(base, add) {
   );
 }
 var MAX_CONFLICT_RETRIES = 5;
-var updateBoard = denied(async (ctx, args) => {
-  if (!ID_RE.test(args.id)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
-  const incoming = await boardFromMermaid(args.mermaid);
+async function saveWithRetry(ctx, id2, step, busy) {
   for (let attempt = 1; attempt <= MAX_CONFLICT_RETRIES; attempt++) {
-    const { revision: read, board: base } = await loadBoard(ctx, args.id);
-    const merged = validateBoardContent({
-      ...base,
-      nodes: [...base.nodes, ...placeBelow(base, incoming)],
-      edges: [...base.edges, ...incoming.edges]
-    });
-    if (!merged.ok) throw new ToolError(400, `El resultado no es v\xE1lido: ${merged.error}`);
-    const next = merged.value;
+    const { read, data, out } = await step();
     let saved;
     try {
-      saved = await contentOf(ctx).save(args.id, encodeOrFail(next), read);
+      saved = await contentOf(ctx).save(id2, data, read);
     } catch (e) {
-      if (!isPermissionDenied(e) || (await contentOf(ctx).load(args.id))?.revision === read) throw e;
+      if (!isPermissionDenied(e) || (await contentOf(ctx).load(id2))?.revision === read) throw e;
       continue;
     }
     if ("conflict" in saved) continue;
+    return { revision: saved.revision, out };
+  }
+  throw new ToolError(409, `${busy} cambia sin parar: reintenta en unos segundos.`);
+}
+var updateBoard = denied(async (ctx, args) => {
+  if (!ID_RE.test(args.id)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
+  const incoming = await boardFromMermaid(args.mermaid);
+  const { revision, out: next } = await saveWithRetry(
+    ctx,
+    args.id,
+    async () => {
+      const { revision: read, board: base } = await loadBoard(ctx, args.id);
+      const merged = validateBoardContent({
+        ...base,
+        nodes: [...base.nodes, ...placeBelow(base, incoming)],
+        edges: [...base.edges, ...incoming.edges]
+      });
+      if (!merged.ok) throw new ToolError(400, `El resultado no es v\xE1lido: ${merged.error}`);
+      return { read, data: encodeOrFail(merged.value), out: merged.value };
+    },
+    "El diagrama"
+  );
+  return {
+    text: `Diagrama ampliado: revisi\xF3n ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
+    data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length }
+  };
+});
+var updateNote = denied(
+  async (ctx, args) => {
+    const { text } = args;
+    if (args.title === void 0 && text === void 0)
+      throw new ToolError(400, "Indica `title`, `text` o ambos.");
+    const title2 = args.title === void 0 ? void 0 : checkTitle(args.title);
+    if (text !== void 0 && text.length > MAX_NOTE_TEXT)
+      throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como m\xE1ximo.`);
+    const { ref } = await loadProject(ctx, args.id, "note");
+    if (title2 !== void 0) await updateDoc(ref, { title: title2, updatedAt: now(ctx) });
+    const saved = text === void 0 ? void 0 : await saveWithRetry(
+      ctx,
+      args.id,
+      async () => {
+        const { data, revision: read } = await loadContent(ctx, args.id);
+        let note;
+        try {
+          note = decodeNote(data);
+        } catch (e) {
+          throw new ToolError(400, e instanceof Error ? e.message : "La nota est\xE1 da\xF1ada.");
+        }
+        let next;
+        try {
+          next = encodeOrFail(replaceNoteText(note, text, now(ctx)));
+        } catch (e) {
+          if (e instanceof RangeError) throw new ToolError(413, e.message);
+          throw e;
+        }
+        return { read, data: next, out: void 0 };
+      },
+      "La nota"
+    );
+    const done = [
+      title2 !== void 0 ? `t\xEDtulo \xAB${title2}\xBB` : "",
+      saved ? `texto (revisi\xF3n ${saved.revision})` : ""
+    ].filter(Boolean).join(" y ");
     return {
-      text: `Diagrama ampliado: revisi\xF3n ${saved.revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
-      data: { id: args.id, revision: saved.revision, nodes: next.nodes.length, edges: next.edges.length }
+      text: `Nota actualizada: ${done}.`,
+      data: {
+        id: args.id,
+        ...title2 !== void 0 ? { title: title2 } : {},
+        ...saved ? { revision: saved.revision } : {}
+      }
     };
   }
-  throw new ToolError(409, "El diagrama cambia sin parar: reintenta en unos segundos.");
-});
+);
 
 // src/server/mcpServer.ts
 async function run(ctx, tool, args, fn) {
@@ -1451,6 +1553,18 @@ function createMcpServer(mcp) {
       inputSchema: { id, mermaid }
     },
     (a) => run(mcp, "update_board", a, () => updateBoard(ctx, a))
+  );
+  server.registerTool(
+    "update_note",
+    {
+      description: "Edita una nota existente: `title` la renombra (solo el due\xF1o) y `text` reemplaza su texto (mismo formato que create_note) conservando im\xE1genes, diagramas incrustados y la posici\xF3n y el estilo de los bloques. Los bloques se emparejan en orden de lectura con los de read_note: lo igual no se toca, lo distinto se edita en su sitio, lo de m\xE1s va debajo y lo que falta se borra. Al menos uno de los dos.",
+      inputSchema: {
+        id,
+        title: title.optional(),
+        text: z.string().max(MAX_NOTE_TEXT).optional().describe("Texto completo nuevo de la nota (parte de lo que devuelve read_note).")
+      }
+    },
+    (a) => run(mcp, "update_note", a, () => updateNote(ctx, a))
   );
   return server;
 }

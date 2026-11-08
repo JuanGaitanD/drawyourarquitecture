@@ -7,6 +7,7 @@ import {
   getDocs,
   limit,
   query,
+  updateDoc,
   where,
   writeBatch,
   type DocumentReference,
@@ -22,7 +23,16 @@ import { parseFlowchart, toFlowchart } from '../editors/board/model/mermaid';
 import { validateBoardContent } from '../editors/board/model/validate';
 import { createContentRepo } from '../infrastructure/firebase/contentRepo';
 import { ToolError, isPermissionDenied } from './authz';
-import { MAX_NOTE_TEXT, buildNote, decodeNote, noteEmbeds, noteImages, noteSummary, noteText } from './note';
+import {
+  MAX_NOTE_TEXT,
+  buildNote,
+  decodeNote,
+  noteEmbeds,
+  noteImages,
+  noteSummary,
+  noteText,
+  replaceNoteText,
+} from './note';
 
 // Una función por herramienta. Reciben el Firestore del SDK web ya autenticado como la persona: los permisos los
 // deciden las reglas y `permission-denied` se traduce a 403 (`denied`). Devuelven `{ text, data? }`.
@@ -343,35 +353,110 @@ function placeBelow(base: BoardContent, add: BoardContent): BoardNode[] {
 
 const MAX_CONFLICT_RETRIES = 5;
 
-export const updateBoard = denied(async (ctx: ToolContext, args: { id: string; mermaid: string }) => {
-  if (!ID_RE.test(args.id)) throw new ToolError(400, 'Id de proyecto no válido.');
-  const incoming = await boardFromMermaid(args.mermaid);
-
-  // Leer → ampliar → `save` con la revisión leída. Si otra escritura se coló, `save` devuelve conflicto y se
-  // vuelve a leer. Quien solo puede leer (viewer) llega al commit y las reglas lo rechazan: 403 (`denied`).
+/**
+ * Leer → transformar (`step`) → `save` con la revisión leída. Si otra escritura se coló, `save` devuelve conflicto y
+ * se vuelve a leer. Quien solo puede leer (viewer) llega al commit y las reglas lo rechazan: 403 (`denied`).
+ */
+async function saveWithRetry<T>(
+  ctx: ToolContext,
+  id: string,
+  step: () => Promise<{ read: number; data: string; out: T }>,
+  busy: string,
+): Promise<{ revision: number; out: T }> {
   for (let attempt = 1; attempt <= MAX_CONFLICT_RETRIES; attempt++) {
-    const { revision: read, board: base } = await loadBoard(ctx, args.id);
-    const merged = validateBoardContent({
-      ...base,
-      nodes: [...base.nodes, ...placeBelow(base, incoming)],
-      edges: [...base.edges, ...incoming.edges],
-    });
-    if (!merged.ok) throw new ToolError(400, `El resultado no es válido: ${merged.error}`);
-    const next: BoardContent = merged.value;
+    const { read, data, out } = await step();
     let saved;
     try {
-      saved = await contentOf(ctx).save(args.id, encodeOrFail(next), read);
+      saved = await contentOf(ctx).save(id, data, read);
     } catch (e) {
       // El SDK web es optimista: si otra escritura se coló entre la lectura y el commit, la regla
       // `revision == anterior + 1` falla y sale `permission-denied`. Cambió la revisión = conflicto; si no, 403.
-      if (!isPermissionDenied(e) || (await contentOf(ctx).load(args.id))?.revision === read) throw e;
+      if (!isPermissionDenied(e) || (await contentOf(ctx).load(id))?.revision === read) throw e;
       continue;
     }
     if ('conflict' in saved) continue;
-    return {
-      text: `Diagrama ampliado: revisión ${saved.revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
-      data: { id: args.id, revision: saved.revision, nodes: next.nodes.length, edges: next.edges.length },
-    };
+    return { revision: saved.revision, out };
   }
-  throw new ToolError(409, 'El diagrama cambia sin parar: reintenta en unos segundos.');
+  throw new ToolError(409, `${busy} cambia sin parar: reintenta en unos segundos.`);
+}
+
+export const updateBoard = denied(async (ctx: ToolContext, args: { id: string; mermaid: string }) => {
+  if (!ID_RE.test(args.id)) throw new ToolError(400, 'Id de proyecto no válido.');
+  const incoming = await boardFromMermaid(args.mermaid);
+  const { revision, out: next } = await saveWithRetry(
+    ctx,
+    args.id,
+    async () => {
+      const { revision: read, board: base } = await loadBoard(ctx, args.id);
+      const merged = validateBoardContent({
+        ...base,
+        nodes: [...base.nodes, ...placeBelow(base, incoming)],
+        edges: [...base.edges, ...incoming.edges],
+      });
+      if (!merged.ok) throw new ToolError(400, `El resultado no es válido: ${merged.error}`);
+      return { read, data: encodeOrFail(merged.value), out: merged.value };
+    },
+    'El diagrama',
+  );
+  return {
+    text: `Diagrama ampliado: revisión ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
+    data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length },
+  };
 });
+
+/**
+ * Edita una nota: `title` renombra el proyecto (las reglas: solo el dueño) y `text` reemplaza el texto conservando
+ * imágenes, diagramas incrustados y la posición y el estilo de los textos (`replaceNoteText`). El título va primero:
+ * si las reglas lo rechazan no se toca el texto. No es atómico: un 409 en el texto deja el título ya cambiado.
+ */
+export const updateNote = denied(
+  async (ctx: ToolContext, args: { id: string; title?: string; text?: string }) => {
+    const { text } = args;
+    if (args.title === undefined && text === undefined)
+      throw new ToolError(400, 'Indica `title`, `text` o ambos.');
+    const title = args.title === undefined ? undefined : checkTitle(args.title);
+    if (text !== undefined && text.length > MAX_NOTE_TEXT)
+      throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como máximo.`);
+    const { ref } = await loadProject(ctx, args.id, 'note');
+    if (title !== undefined) await updateDoc(ref, { title, updatedAt: now(ctx) });
+    const saved =
+      text === undefined
+        ? undefined
+        : await saveWithRetry(
+            ctx,
+            args.id,
+            async () => {
+              const { data, revision: read } = await loadContent(ctx, args.id);
+              let note;
+              try {
+                note = decodeNote(data);
+              } catch (e) {
+                throw new ToolError(400, e instanceof Error ? e.message : 'La nota está dañada.');
+              }
+              let next: string;
+              try {
+                next = encodeOrFail(replaceNoteText(note, text, now(ctx)));
+              } catch (e) {
+                if (e instanceof RangeError) throw new ToolError(413, e.message);
+                throw e;
+              }
+              return { read, data: next, out: undefined };
+            },
+            'La nota',
+          );
+    const done = [
+      title !== undefined ? `título «${title}»` : '',
+      saved ? `texto (revisión ${saved.revision})` : '',
+    ]
+      .filter(Boolean)
+      .join(' y ');
+    return {
+      text: `Nota actualizada: ${done}.`,
+      data: {
+        id: args.id,
+        ...(title !== undefined ? { title } : {}),
+        ...(saved ? { revision: saved.revision } : {}),
+      },
+    };
+  },
+);

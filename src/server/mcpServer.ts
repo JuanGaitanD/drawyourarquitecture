@@ -12,6 +12,7 @@ import {
   readBoard,
   readNote,
   updateBoard,
+  updateNote,
   type ToolContext,
   type ToolResult,
 } from './tools';
@@ -110,6 +111,23 @@ export function createMcpServer(mcp: McpContext): McpServer {
       inputSchema: { id, mermaid },
     },
     (a) => run(mcp, 'update_board', a, () => updateBoard(ctx, a)),
+  );
+  server.registerTool(
+    'update_note',
+    {
+      description:
+        'Edita una nota existente: `title` la renombra (solo el dueño) y `text` reemplaza su texto (mismo formato que create_note) conservando imágenes, diagramas incrustados y la posición y el estilo de los bloques. Los bloques se emparejan en orden de lectura con los de read_note: lo igual no se toca, lo distinto se edita en su sitio, lo de más va debajo y lo que falta se borra. Al menos uno de los dos.',
+      inputSchema: {
+        id,
+        title: title.optional(),
+        text: z
+          .string()
+          .max(MAX_NOTE_TEXT)
+          .optional()
+          .describe('Texto completo nuevo de la nota (parte de lo que devuelve read_note).'),
+      },
+    },
+    (a) => run(mcp, 'update_note', a, () => updateNote(ctx, a)),
   );
   return server;
 }

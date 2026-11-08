@@ -82,6 +82,7 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
         'read_board',
         'read_note',
         'update_board',
+        'update_note',
       ]);
 
       const created = await call(client, 'create_board', {
@@ -108,6 +109,18 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
       const note = await call(client, 'create_note', { title: 'Nota E2E', text: '# Hola\n\nUn párrafo' });
       const noteId = /Nota creada: (\S+)/.exec(note.text)?.[1] as string;
       expect((await call(client, 'read_note', { id: noteId })).text).toContain('Un párrafo');
+
+      const edited = await call(client, 'update_note', {
+        id: noteId,
+        title: 'Nota editada',
+        text: 'Hola\n\nOtro párrafo',
+      });
+      expect(edited).toMatchObject({ isError: false });
+      const reread = (await call(client, 'read_note', { id: noteId })).text;
+      expect(reread).toContain('# Nota editada');
+      expect(reread).toContain('Otro párrafo');
+      expect(reread).not.toContain('Un párrafo');
+      expect((await call(client, 'update_note', { id: noteId })).text).toMatch(/^400/);
     } finally {
       await client.close();
     }

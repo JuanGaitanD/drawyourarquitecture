@@ -9,6 +9,7 @@ import {
   noteSummary,
   noteText,
   orderKey,
+  replaceNoteText,
   textToElements,
 } from './note';
 
@@ -133,5 +134,81 @@ describe('noteImages / noteEmbeds', () => {
       el({ type: 'text', link: 'https://x.test/embed/board/otro' }),
     ]);
     expect(embeds).toEqual(['abc_1', 'def-2']);
+  });
+});
+
+describe('replaceNoteText', () => {
+  const img: Record<string, unknown> = {
+    id: 'img',
+    type: 'image',
+    fileId: 'f1',
+    x: 0,
+    y: 500,
+    width: 100,
+    height: 100,
+    isDeleted: false,
+    index: 'a5',
+  };
+  const emb: Record<string, unknown> = {
+    id: 'emb',
+    type: 'embeddable',
+    link: 'https://x.test/embed/board/b1',
+    x: 300,
+    y: 0,
+    isDeleted: false,
+    index: 'a6',
+  };
+  const base = () => {
+    const n = buildNote('# Semana del 9/10/2026\n\n- [ ] Pendiente\n\nIgual', 1);
+    return {
+      ...n,
+      elements: [...n.elements, img, emb],
+      files: { f1: { mimeType: 'image/png', created: 1 } },
+    };
+  };
+  const live = (els: Record<string, unknown>[]) => els.filter((e) => e.isDeleted !== true);
+
+  it('edita en su sitio lo que cambia; no toca lo igual ni lo que no es texto', () => {
+    const before = base();
+    const after = replaceNoteText(before, 'Semana del 9/11/2026\n\n- [x] Pendiente\n\nIgual', 99);
+    const [t0, t1, t2] = before.elements;
+    const [n0, n1, n2] = after.elements;
+    expect(n0).toMatchObject({
+      id: t0.id,
+      x: t0.x,
+      y: t0.y,
+      fontSize: 36,
+      text: 'Semana del 9/11/2026',
+      originalText: 'Semana del 9/11/2026',
+      version: 2,
+      updated: 99,
+    });
+    expect(n0.versionNonce).not.toBe(t0.versionNonce);
+    expect(n1).toMatchObject({ id: t1.id, text: '- [x] Pendiente', version: 2 });
+    expect(n2).toBe(t2);
+    expect(after.elements).toContain(img);
+    expect(after.elements).toContain(emb);
+    expect(after.files).toEqual(before.files);
+    expect(noteText(after.elements)).toBe('Semana del 9/11/2026\n\n- [x] Pendiente\n\nIgual');
+  });
+
+  it('los bloques de más van debajo de todo con índices posteriores; los que sobran quedan como borrados', () => {
+    const more = replaceNoteText(base(), 'a\n\nb\n\nc\n\nd', 5);
+    const added = more.elements[more.elements.length - 1];
+    expect(added).toMatchObject({ type: 'text', text: 'd', isDeleted: false });
+    expect(added.y as number).toBeGreaterThan(600);
+    expect((added.index as string) > 'a6').toBe(true);
+    expect(noteText(more.elements)).toBe('a\n\nb\n\nc\n\nd');
+
+    const less = replaceNoteText(base(), 'solo uno', 5);
+    expect(live(less.elements)).toHaveLength(3);
+    expect(less.elements.filter((e) => e.isDeleted === true)).toHaveLength(2);
+    expect(less.elements.find((e) => e.isDeleted === true)).toMatchObject({ version: 2, updated: 5 });
+    expect(noteText(less.elements)).toBe('solo uno');
+  });
+
+  it('texto vacío borra todo el texto y conserva imágenes y diagramas', () => {
+    const r = replaceNoteText(base(), '', 5);
+    expect(live(r.elements).map((e) => e.id)).toEqual(['img', 'emb']);
   });
 });
