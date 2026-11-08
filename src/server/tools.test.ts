@@ -391,6 +391,40 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
     });
   });
 
+  describe('update_note · troceado y concurrencia', () => {
+    it('edita una nota troceada (> 900 000 bytes): recompone, conserva el resto y sube una revisión', async () => {
+      const owner = await as(OWNER);
+      // 2000 bloques de ~90 caracteres: ≈ 1,3 MB codificados → troceado.
+      const blocks = Array.from({ length: 2000 }, (_, i) => `Bloque ${i} ${'x'.repeat(80)}`);
+      const id = (
+        (await createNote(owner, { title: 'grande', text: blocks.join('\n\n') })).data as { id: string }
+      ).id;
+      const main = db.collection('projects').doc(id).collection('content').doc('main');
+      const before = (await main.get()).data() as { chunks?: number; revision: number };
+      expect(before.chunks).toBeGreaterThanOrEqual(2);
+
+      blocks[0] = 'Primero corregido';
+      const r = await updateNote(owner, { id, text: blocks.join('\n\n') });
+      expect((r.data as { revision: number }).revision).toBe(before.revision + 1);
+      const read = (await readNote(owner, { id })).data as { text: string; total: number };
+      expect(read.text.startsWith('Primero corregido\n\nBloque 1 ')).toBe(true);
+      expect(read.total).toBe(2000);
+    });
+
+    it('dos ediciones simultáneas se serializan: revisión +2, sin error', async () => {
+      const id = await seedProject(db, { ownerId: OWNER, type: 'note' });
+      await Promise.all([
+        updateNote(await as(OWNER), { id, text: 'Uno' }),
+        updateNote(await as(OWNER), { id, text: 'Dos' }),
+      ]);
+      const main = (
+        await db.collection('projects').doc(id).collection('content').doc('main').get()
+      ).data() as { revision: number; data: string };
+      expect(main.revision).toBe(2);
+      expect(['Uno', 'Dos']).toContain(noteText(decodeNote(main.data).elements));
+    });
+  });
+
   describe('contenido troceado (> 900 000 bytes)', () => {
     // 1 500 líneas `a-->b` = 3 000 nodos y 1 500 aristas: ≈ 1,2 MB codificados, y el Mermaid cabe en el tope de 100 000.
     const bigMermaid = (tag: string, n: number) =>

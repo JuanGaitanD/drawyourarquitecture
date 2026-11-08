@@ -46,6 +46,37 @@ function measure(body: string, fontSize: number): { width: number; height: numbe
   };
 }
 
+/** Margen interior de una etiqueta en su contenedor (`BOUND_TEXT_PADDING` de Excalidraw). */
+const BOUND_PADDING = 5;
+
+/** Ajusta cada línea a `maxWidth` por palabras (aprox. con `CHAR_W`); corta las palabras que no caben. */
+function wrap(body: string, fontSize: number, maxWidth: number): string {
+  const max = Math.max(1, Math.floor(maxWidth / (fontSize * CHAR_W)));
+  return body
+    .split('\n')
+    .map((line) => {
+      const out: string[] = [];
+      let cur = '';
+      for (let w of line.split(' ')) {
+        while (w.length > max) {
+          if (cur) out.push(cur);
+          cur = '';
+          out.push(w.slice(0, max));
+          w = w.slice(max);
+        }
+        if (!cur) cur = w;
+        else if (cur.length + 1 + w.length <= max) cur += ` ${w}`;
+        else {
+          out.push(cur);
+          cur = w;
+        }
+      }
+      out.push(cur);
+      return out.join('\n');
+    })
+    .join('\n');
+}
+
 /** Texto en bloques (separados por línea en blanco) → elementos `text` apilados. `# `…`### ` agranda el cuerpo. */
 export function textToElements(text: string, now = Date.now()): Record<string, unknown>[] {
   const blocks = text
@@ -163,18 +194,53 @@ export function replaceNoteText(note: NoteContent, text: string, now = Date.now(
     updated: now,
   });
   const changed = new Map<Record<string, unknown>, Record<string, unknown>>();
+  const num = (v: unknown) => Number(v) || 0;
   old.forEach((e, i) => {
     const b = blocks[i];
     if (!b) return void changed.set(e, bump(e, { isDeleted: true }));
+    const body = b.text as string;
     // Sin «# » el bloque sale con el cuerpo normal: se respeta el tamaño que ya tenía.
     const fontSize = b.fontSize === FONT_SIZE ? e.fontSize : b.fontSize;
-    if (b.text === e.text && fontSize === e.fontSize) return;
-    // Una etiqueta de forma (`containerId`) conserva la geometría que le da su contenedor.
-    const size = e.containerId == null ? measure(b.text as string, Number(fontSize) || FONT_SIZE) : {};
-    changed.set(e, bump(e, { text: b.text, originalText: b.text, fontSize, ...size }));
+    // `read_note` devuelve `text` (ya ajustado en líneas); el original sin ajustar es `originalText`.
+    if ((body === e.text || body === e.originalText) && fontSize === e.fontSize) return;
+    const size = Number(fontSize) || FONT_SIZE;
+    const container =
+      e.containerId == null
+        ? undefined
+        : note.elements.find((c) => c.id === e.containerId && c.isDeleted !== true);
+    let geometry: Record<string, unknown>;
+    if (container && container.type !== 'arrow') {
+      // Etiqueta de forma: se ajusta al ancho del contenedor y se centra; si no cabe, el contenedor crece en alto.
+      // ponytail: ancho útil de rectángulo también en elipses y rombos (Excalidraw lo afina al editar la etiqueta).
+      const wrapped = wrap(body, size, num(container.width) - 2 * BOUND_PADDING);
+      const box = measure(wrapped, size);
+      const ch = Math.max(num(container.height), box.height + 2 * BOUND_PADDING);
+      if (ch !== num(container.height)) changed.set(container, bump(container, { height: ch }));
+      const y =
+        e.verticalAlign === 'top'
+          ? num(container.y) + BOUND_PADDING
+          : e.verticalAlign === 'bottom'
+            ? num(container.y) + ch - BOUND_PADDING - box.height
+            : num(container.y) + (ch - box.height) / 2;
+      geometry = { text: wrapped, ...box, x: num(container.x) + (num(container.width) - box.width) / 2, y };
+    } else if (container) {
+      // Etiqueta de flecha: mismo centro (Excalidraw la recoloca en el punto medio de la flecha).
+      const box = measure(body, size);
+      const cx = num(e.x) + num(e.width) / 2;
+      const cy = num(e.y) + num(e.height) / 2;
+      geometry = { text: body, ...box, x: cx - box.width / 2, y: cy - box.height / 2 };
+    } else if (e.autoResize === false) {
+      // Ancho fijado por la persona: se conserva y el texto se ajusta a él.
+      const wrapped = wrap(body, size, num(e.width));
+      geometry = { text: wrapped, height: measure(wrapped, size).height };
+    } else {
+      geometry = { text: body, ...measure(body, size) };
+    }
+    changed.set(e, bump(e, { ...geometry, originalText: body, fontSize }));
   });
   const extra = blocks.slice(old.length);
-  const live = note.elements.filter((e) => e.isDeleted !== true);
+  // Lo añadido va debajo de todo, medido ya con los textos editados (pueden haber crecido).
+  const live = note.elements.map((e) => changed.get(e) ?? e).filter((e) => e.isDeleted !== true);
   const left = old.length ? Math.min(...old.map((e) => Number(e.x) || 0)) : 0;
   const bottom = live.length
     ? Math.max(...live.map((e) => (Number(e.y) || 0) + (Number(e.height) || 0))) + GAP

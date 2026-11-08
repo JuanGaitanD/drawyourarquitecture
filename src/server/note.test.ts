@@ -211,4 +211,70 @@ describe('replaceNoteText', () => {
     const r = replaceNoteText(base(), '', 5);
     expect(live(r.elements).map((e) => e.id)).toEqual(['img', 'emb']);
   });
+
+  it('lo añadido va debajo de los textos ya editados aunque hayan crecido', () => {
+    const r = replaceNoteText(buildNote('corto', 1), `${Array(10).fill('línea').join('\n')}\n\nnuevo`, 5);
+    const [first, added] = r.elements;
+    expect(added.y as number).toBeGreaterThanOrEqual((first.y as number) + (first.height as number));
+  });
+
+  it('una etiqueta de forma se ajusta al ancho del contenedor, se centra y el contenedor crece si no cabe', () => {
+    const rect = {
+      id: 'r',
+      type: 'rectangle',
+      x: 100,
+      y: 100,
+      width: 120,
+      height: 40,
+      version: 1,
+      isDeleted: false,
+    };
+    const [label] = textToElements('Hola', 1);
+    const bound = {
+      ...label,
+      containerId: 'r',
+      x: 140,
+      y: 108,
+      verticalAlign: 'middle',
+      textAlign: 'center',
+    };
+    const r = replaceNoteText(
+      { ...buildNote('', 1), elements: [rect, bound] },
+      'una frase bastante larga para la caja',
+      5,
+    );
+    const [c, t] = r.elements;
+    const lines = (t.text as string).split('\n');
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.every((l) => l.length * 20 * 0.6 <= 110)).toBe(true);
+    expect(t.originalText).toBe('una frase bastante larga para la caja');
+    expect(c.height as number).toBeGreaterThanOrEqual((t.height as number) + 10);
+    expect(c.version).toBe(2);
+    expect((t.x as number) + (t.width as number) / 2).toBeCloseTo(160);
+    expect((t.y as number) + (t.height as number) / 2).toBeCloseTo(
+      (c.y as number) + (c.height as number) / 2,
+    );
+    expect(noteText(r.elements)).toBe(t.text);
+  });
+
+  it('un texto de ancho fijo conserva el ancho y ajusta las líneas a él', () => {
+    const [t] = textToElements('corto', 1);
+    const fixed = { ...t, width: 120, autoResize: false };
+    const r = replaceNoteText(
+      { ...buildNote('', 1), elements: [fixed] },
+      'una corrección algo más larga que antes',
+      5,
+    );
+    const [n] = r.elements;
+    expect(n.width).toBe(120);
+    expect((n.text as string).split('\n').length).toBeGreaterThan(1);
+    expect(n.originalText).toBe('una corrección algo más larga que antes');
+  });
+
+  it('devolver el texto ya ajustado que muestra read_note no cambia nada', () => {
+    const [t] = textToElements('x', 1);
+    const wrapped = { ...t, text: 'una frase\nlarga', originalText: 'una frase larga', autoResize: false };
+    const note = { ...buildNote('', 1), elements: [wrapped] };
+    expect(replaceNoteText(note, noteText(note.elements), 5).elements[0]).toBe(wrapped);
+  });
 });
