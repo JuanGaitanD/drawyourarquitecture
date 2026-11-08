@@ -218,7 +218,7 @@ describe('replaceNoteText', () => {
     expect(added.y as number).toBeGreaterThanOrEqual((first.y as number) + (first.height as number));
   });
 
-  it('una etiqueta de forma se ajusta al ancho del contenedor, se centra y el contenedor crece si no cabe', () => {
+  it('una etiqueta de forma se ajusta al ancho del contenedor y se centra, sin tocar el contenedor', () => {
     const rect = {
       id: 'r',
       type: 'rectangle',
@@ -248,8 +248,7 @@ describe('replaceNoteText', () => {
     expect(lines.length).toBeGreaterThan(1);
     expect(lines.every((l) => l.length * 20 * 0.6 <= 110)).toBe(true);
     expect(t.originalText).toBe('una frase bastante larga para la caja');
-    expect(c.height as number).toBeGreaterThanOrEqual((t.height as number) + 10);
-    expect(c.version).toBe(2);
+    expect(c).toBe(rect); // el contenedor (y sus flechas conectadas) no se tocan
     expect((t.x as number) + (t.width as number) / 2).toBeCloseTo(160);
     expect((t.y as number) + (t.height as number) / 2).toBeCloseTo(
       (c.y as number) + (c.height as number) / 2,
@@ -269,6 +268,17 @@ describe('replaceNoteText', () => {
     expect(n.width).toBe(120);
     expect((n.text as string).split('\n').length).toBeGreaterThan(1);
     expect(n.originalText).toBe('una corrección algo más larga que antes');
+  });
+
+  it('el ajuste no parte emojis ni quita la sangría de las líneas que caben', () => {
+    const [t] = textToElements('x', 1);
+    const fixed = { ...t, width: 120, autoResize: false }; // 120 / (20 × 0,6) = 10 grafemas por línea
+    const at = (text: string) =>
+      replaceNoteText({ ...buildNote('', 1), elements: [fixed] }, text, 5).elements[0].text as string;
+    const emoji = at('123456789😀👩‍💻abc');
+    expect(emoji.split('\n')).toEqual(['123456789😀', '👩‍💻abc']);
+    expect(at('inicio\n    codigo')).toBe('inicio\n    codigo');
+    expect(at('x\n  una línea bastante larga')).toBe('x\n  una\nlínea\nbastante\nlarga');
   });
 
   it('devolver el texto ya ajustado que muestra read_note no cambia nada', () => {

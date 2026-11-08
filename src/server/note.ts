@@ -55,27 +55,36 @@ function wrap(body: string, fontSize: number, maxWidth: number): string {
   return body
     .split('\n')
     .map((line) => {
+      // Se cuenta por grafemas (un emoji no se parte); una línea que cabe queda tal cual, con su sangría.
+      if (graphemes(line).length <= max) return line;
+      const indent = line.length - line.trimStart().length;
+      const words = line
+        .slice(indent)
+        .split(' ')
+        .flatMap((word) => {
+          const g = graphemes(word);
+          const parts: string[][] = [];
+          for (let i = 0; i < g.length; i += max) parts.push(g.slice(i, i + max));
+          return parts.length ? parts : [[]];
+        });
       const out: string[] = [];
-      let cur = '';
-      for (let w of line.split(' ')) {
-        while (w.length > max) {
-          if (cur) out.push(cur);
-          cur = '';
-          out.push(w.slice(0, max));
-          w = w.slice(max);
-        }
-        if (!cur) cur = w;
-        else if (cur.length + 1 + w.length <= max) cur += ` ${w}`;
+      let cur = graphemes(line.slice(0, indent));
+      words.forEach((w, i) => {
+        if (i === 0) cur.push(...w);
+        else if (cur.length + 1 + w.length <= max) cur.push(' ', ...w);
         else {
-          out.push(cur);
-          cur = w;
+          out.push(cur.join(''));
+          cur = [...w];
         }
-      }
-      out.push(cur);
+      });
+      out.push(cur.join(''));
       return out.join('\n');
     })
     .join('\n');
 }
+
+const segmenter = new Intl.Segmenter();
+const graphemes = (s: string): string[] => Array.from(segmenter.segment(s), (x) => x.segment);
 
 /** Texto en bloques (separados por línea en blanco) → elementos `text` apilados. `# `…`### ` agranda el cuerpo. */
 export function textToElements(text: string, now = Date.now()): Record<string, unknown>[] {
@@ -210,12 +219,12 @@ export function replaceNoteText(note: NoteContent, text: string, now = Date.now(
         : note.elements.find((c) => c.id === e.containerId && c.isDeleted !== true);
     let geometry: Record<string, unknown>;
     if (container && container.type !== 'arrow') {
-      // Etiqueta de forma: se ajusta al ancho del contenedor y se centra; si no cabe, el contenedor crece en alto.
-      // ponytail: ancho útil de rectángulo también en elipses y rombos (Excalidraw lo afina al editar la etiqueta).
+      // Etiqueta de forma: se ajusta al ancho del contenedor y se centra en él. El contenedor no se toca: agrandarlo
+      // dejaría sus flechas conectadas en la geometría anterior. ponytail: si no cabe en alto, desborda hasta que
+      // Excalidraw lo ajusta al editar la etiqueta; en elipses y rombos se usa el ancho útil del rectángulo.
       const wrapped = wrap(body, size, num(container.width) - 2 * BOUND_PADDING);
       const box = measure(wrapped, size);
-      const ch = Math.max(num(container.height), box.height + 2 * BOUND_PADDING);
-      if (ch !== num(container.height)) changed.set(container, bump(container, { height: ch }));
+      const ch = num(container.height);
       const y =
         e.verticalAlign === 'top'
           ? num(container.y) + BOUND_PADDING

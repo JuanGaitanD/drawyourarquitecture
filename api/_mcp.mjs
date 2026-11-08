@@ -996,26 +996,30 @@ var BOUND_PADDING = 5;
 function wrap(body, fontSize, maxWidth) {
   const max = Math.max(1, Math.floor(maxWidth / (fontSize * CHAR_W)));
   return body.split("\n").map((line) => {
+    if (graphemes(line).length <= max) return line;
+    const indent = line.length - line.trimStart().length;
+    const words = line.slice(indent).split(" ").flatMap((word) => {
+      const g = graphemes(word);
+      const parts = [];
+      for (let i = 0; i < g.length; i += max) parts.push(g.slice(i, i + max));
+      return parts.length ? parts : [[]];
+    });
     const out = [];
-    let cur = "";
-    for (let w of line.split(" ")) {
-      while (w.length > max) {
-        if (cur) out.push(cur);
-        cur = "";
-        out.push(w.slice(0, max));
-        w = w.slice(max);
-      }
-      if (!cur) cur = w;
-      else if (cur.length + 1 + w.length <= max) cur += ` ${w}`;
+    let cur = graphemes(line.slice(0, indent));
+    words.forEach((w, i) => {
+      if (i === 0) cur.push(...w);
+      else if (cur.length + 1 + w.length <= max) cur.push(" ", ...w);
       else {
-        out.push(cur);
-        cur = w;
+        out.push(cur.join(""));
+        cur = [...w];
       }
-    }
-    out.push(cur);
+    });
+    out.push(cur.join(""));
     return out.join("\n");
   }).join("\n");
 }
+var segmenter = new Intl.Segmenter();
+var graphemes = (s) => Array.from(segmenter.segment(s), (x) => x.segment);
 function textToElements(text, now2 = Date.now()) {
   const blocks = text.replace(/\r\n?/g, "\n").split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
   if (blocks.length > MAX_NOTE_BLOCKS)
@@ -1120,8 +1124,7 @@ function replaceNoteText(note, text, now2 = Date.now()) {
     if (container && container.type !== "arrow") {
       const wrapped = wrap(body, size, num(container.width) - 2 * BOUND_PADDING);
       const box = measure(wrapped, size);
-      const ch = Math.max(num(container.height), box.height + 2 * BOUND_PADDING);
-      if (ch !== num(container.height)) changed.set(container, bump(container, { height: ch }));
+      const ch = num(container.height);
       const y = e.verticalAlign === "top" ? num(container.y) + BOUND_PADDING : e.verticalAlign === "bottom" ? num(container.y) + ch - BOUND_PADDING - box.height : num(container.y) + (ch - box.height) / 2;
       geometry = { text: wrapped, ...box, x: num(container.x) + (num(container.width) - box.width) / 2, y };
     } else if (container) {
