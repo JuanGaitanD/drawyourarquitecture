@@ -1,0 +1,485 @@
+{
+  "schemaVersion": 1,
+  "nodes": [
+    {
+      "id": "title",
+      "type": "text",
+      "position": {
+        "x": 0,
+        "y": -80
+      },
+      "width": 560,
+      "height": 40,
+      "data": {
+        "label": "Arquitectura orientada a eventos",
+        "style": {
+          "fill": "transparent",
+          "stroke": "transparent",
+          "strokeWidth": 0,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 24,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": true
+        },
+        "kind": "text"
+      }
+    },
+    {
+      "id": "f-prod",
+      "type": "frame",
+      "position": {
+        "x": 0,
+        "y": 88
+      },
+      "width": 224,
+      "height": 344,
+      "data": {
+        "label": "Productores",
+        "style": {
+          "fill": "#dbeafe80",
+          "stroke": "#2563eb",
+          "strokeWidth": 1,
+          "dashed": true,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": false
+        },
+        "kind": "frame"
+      }
+    },
+    {
+      "id": "f-cons",
+      "type": "frame",
+      "position": {
+        "x": 448,
+        "y": 186
+      },
+      "width": 224,
+      "height": 488,
+      "data": {
+        "label": "Consumidores",
+        "style": {
+          "fill": "#dcfce780",
+          "stroke": "#16a34a",
+          "strokeWidth": 1,
+          "dashed": true,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": false
+        },
+        "kind": "frame"
+      }
+    },
+    {
+      "id": "orders",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 72
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Servicio de pedidos",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dbeafe",
+          "stroke": "#2563eb",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-prod"
+    },
+    {
+      "id": "pay",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 216
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Servicio de pagos",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dbeafe",
+          "stroke": "#2563eb",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-prod"
+    },
+    {
+      "id": "bus",
+      "type": "icon",
+      "position": {
+        "x": 304,
+        "y": 228
+      },
+      "width": 64,
+      "height": 64,
+      "data": {
+        "label": "Event bus\n(Kafka)",
+        "icon": "queue",
+        "style": {
+          "fill": "transparent",
+          "stroke": "#1f2937",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "icon"
+      }
+    },
+    {
+      "id": "inv",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 72
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Inventario",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dcfce7",
+          "stroke": "#16a34a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-cons"
+    },
+    {
+      "id": "notif",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 216
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Notificaciones",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dcfce7",
+          "stroke": "#16a34a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-cons"
+    },
+    {
+      "id": "ana",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 360
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Analítica",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#dcfce7",
+          "stroke": "#16a34a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-cons"
+    },
+    {
+      "id": "db",
+      "type": "shape",
+      "position": {
+        "x": 752,
+        "y": 454
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Stock",
+        "shape": "cylinder",
+        "style": {
+          "fill": "#fef3c7",
+          "stroke": "#d97706",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      }
+    },
+    {
+      "id": "lake",
+      "type": "shape",
+      "position": {
+        "x": 752,
+        "y": 310
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Data lake",
+        "shape": "cylinder",
+        "style": {
+          "fill": "#fef3c7",
+          "stroke": "#d97706",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      }
+    },
+    {
+      "id": "dlq",
+      "type": "shape",
+      "position": {
+        "x": 480,
+        "y": 42
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Dead-letter queue",
+        "shape": "document",
+        "style": {
+          "fill": "#ede9fe",
+          "stroke": "#7c3aed",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      }
+    },
+    {
+      "id": "note",
+      "type": "sticky",
+      "position": {
+        "x": 0,
+        "y": 714
+      },
+      "width": 180,
+      "height": 180,
+      "data": {
+        "label": "Eventos idempotentes; reintentos con backoff exponencial.",
+        "style": {
+          "fill": "#fff9b1",
+          "stroke": "transparent",
+          "strokeWidth": 0,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "sticky"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "type": "labeled",
+      "source": "orders",
+      "target": "bus",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "PedidoCreado"
+      }
+    },
+    {
+      "id": "e2",
+      "type": "labeled",
+      "source": "pay",
+      "target": "bus",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "PagoConfirmado"
+      }
+    },
+    {
+      "id": "e3",
+      "type": "labeled",
+      "source": "bus",
+      "target": "inv",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "PedidoCreado"
+      }
+    },
+    {
+      "id": "e4",
+      "type": "labeled",
+      "source": "bus",
+      "target": "notif",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "PagoConfirmado"
+      }
+    },
+    {
+      "id": "e5",
+      "type": "labeled",
+      "source": "bus",
+      "target": "ana",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "*"
+      }
+    },
+    {
+      "id": "e6",
+      "type": "labeled",
+      "source": "inv",
+      "target": "db",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2
+      }
+    },
+    {
+      "id": "e7",
+      "type": "labeled",
+      "source": "ana",
+      "target": "lake",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2
+      }
+    },
+    {
+      "id": "e8",
+      "type": "labeled",
+      "source": "bus",
+      "target": "dlq",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": true,
+        "color": "#475569",
+        "width": 2,
+        "label": "fallos"
+      }
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  }
+}

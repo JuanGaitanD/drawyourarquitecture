@@ -1,0 +1,360 @@
+import { FileX2, TriangleAlert } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, Redirect, useLocation } from 'wouter';
+import { PageFallback } from '@/app/PageFallback';
+import { useAutosave, useProject, useRemoteContent, type ProjectState } from '@/app/hooks';
+import { identity, projectRepo } from '@/app/services';
+import type { StoredDraft } from '@/application/saveQueue';
+import type { ContentRecord } from '@/application/ports';
+import { ContentTooLargeError, MAX_CONTENT_LABEL } from '@/domain/codec';
+import { backPath } from '@/domain/folder';
+import { normalizeTitle, roleOf, type Project } from '@/domain/project';
+import { Button, useToast } from '@/ui';
+import { decodeNote, encodeNote, noteSame, type NoteContent } from './codec';
+import styles from './NoteEditor.module.css';
+import { NoteCanvas, type NoteHandle } from './NoteCanvas';
+import { createRemoteInbox } from './remoteInbox';
+import { TopBar } from './TopBar';
+
+export interface NoteEditorProps {
+  id: string;
+  /** Lugar del panel desde el que se abrió (`/` o `/folder/:id`); sin él, la carpeta del proyecto. */
+  origin?: unknown;
+}
+
+/** Ruta `/note/:id` (se monta con `key={id}`): carga la nota y no deja guardar hasta hidratar. */
+export function NoteEditor({ id, origin }: NoteEditorProps) {
+  const p = useProject(id);
+  if (p.status === 'loading') return <PageFallback label="Abriendo la nota…" />;
+  if (p.status === 'missing') {
+    return (
+      <Problem
+        title="Esta nota no existe o es privada"
+        text="Puede que se haya borrado o que no tengas acceso con esta cuenta."
+        action={
+          <Link href={backPath(origin)} className={styles.link}>
+            Volver al panel
+          </Link>
+        }
+      />
+    );
+  }
+  if (p.status === 'error' || !p.project || !p.content) {
+    return (
+      <Problem
+        title="No se pudo cargar la nota"
+        text={`${p.error?.message ?? 'Error de red.'} No se guardará nada hasta que cargue bien.`}
+        action={
+          <Button variant="primary" onClick={p.reload}>
+            Reintentar
+          </Button>
+        }
+      />
+    );
+  }
+  if (p.project.type !== 'note') return <Redirect to={`/${p.project.type}/${id}`} replace />;
+  return (
+    <Loaded
+      project={p.project}
+      record={p.content}
+      draft={p.draft}
+      discardDraft={p.discardDraft}
+      origin={origin}
+    />
+  );
+}
+
+function Loaded({
+  project,
+  record,
+  draft,
+  discardDraft,
+  origin,
+}: {
+  project: Project;
+  record: ContentRecord;
+  draft: ProjectState['draft'];
+  discardDraft: () => void;
+  origin?: unknown;
+}) {
+  const content = useMemo(() => {
+    try {
+      return decodeNote(record.data);
+    } catch (e) {
+      return e instanceof Error ? e : new Error(String(e));
+    }
+  }, [record.data]);
+
+  if (content instanceof Error) {
+    return (
+      <Problem
+        title="El contenido de la nota está dañado"
+        text="No se puede abrir y por eso no se guardará nada encima."
+        action={
+          <Link href={backPath(origin)} className={styles.link}>
+            Volver al panel
+          </Link>
+        }
+      />
+    );
+  }
+  return (
+    <Session
+      project={project}
+      record={record}
+      content={content}
+      draft={draft}
+      discardDraft={discardDraft}
+      origin={origin}
+    />
+  );
+}
+
+function Session({
+  project,
+  record,
+  content,
+  draft,
+  discardDraft,
+  origin,
+}: {
+  project: Project;
+  record: ContentRecord;
+  content: NoteContent;
+  draft: StoredDraft | null;
+  discardDraft: () => void;
+  origin?: unknown;
+}) {
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+  const role = roleOf(project, identity.current()?.uid);
+  const viewOnly = role === 'viewer';
+  const [title, setTitle] = useState(project.title);
+  const [isPublic, setIsPublic] = useState(project.isPublic);
+  const [encoded, setEncoded] = useState<string | null>(null);
+  const [tooLarge, setTooLarge] = useState(false);
+  const [handle, setHandle] = useState<NoteHandle | null>(null);
+  // El drain no se borra al desmontar el lienzo: useAutosave lo usa en su limpieza para no perder el último trazo.
+  const drainRef = useRef<NoteHandle['drain'] | null>(null);
+  const mergeRef = useRef<NoteHandle['merge'] | null>(null);
+  const handleRef = useRef<NoteHandle | null>(null);
+  // Última revisión del servidor que ya se fusionó en la escena (o que esta pestaña escribió).
+  const seen = useRef(record.revision);
+  const inbox = useMemo(() => createRemoteInbox<ContentRecord>(), []);
+  const applyRemoteRecord = useRef<(r: ContentRecord) => void>(() => undefined);
+  const onHandle = useCallback((h: NoteHandle | null) => {
+    if (h) {
+      drainRef.current = h.drain;
+      mergeRef.current = h.merge;
+    }
+    handleRef.current = h;
+    setHandle(h);
+    if (h) inbox.flush(applyRemoteRecord.current);
+  }, [inbox]);
+  const syncOpts = useMemo(
+    () => ({
+      same: noteSame,
+      fastFirstMs: 150,
+      merge: (l: string, r: string) => {
+        if (!mergeRef.current) throw new Error('El editor aún no está listo para fusionar.');
+        return mergeRef.current(l, r);
+      },
+      // Sin fusión, la revisión escrita ya es la vista; con fusión, la instantánea de esa revisión traerá lo ajeno.
+      onSaved: (r: { data: string; revision: number; merged?: string }) => {
+        if (r.merged !== undefined) return;
+        if (r.revision > seen.current) seen.current = r.revision;
+        try {
+          handleRef.current?.saved(decodeNote(r.data));
+        } catch {
+          /* sin fondo conocido: el siguiente remoto lo corrige */
+        }
+      },
+    }),
+    [],
+  );
+  const drain = useCallback((): string | null => {
+    const c = drainRef.current?.();
+    if (!c) return null;
+    try {
+      return encodeNote(c);
+    } catch (e) {
+      if (e instanceof ContentTooLargeError) return null; // el aviso lo da onChange; no se guarda nada a medias
+      throw e;
+    }
+  }, []);
+
+  // El lienzo solo llama a onChange tras aplicar initialData: aquí `hydrated` ya es cierto.
+  const autosave = useAutosave(project.id, encoded, true, record.revision, undefined, drain, syncOpts);
+
+  useEffect(() => {
+    applyRemoteRecord.current = (r) => {
+      const h = handleRef.current;
+      if (!h || r.revision <= seen.current) return;
+      seen.current = r.revision;
+      try {
+        void h.applyRemote(decodeNote(r.data));
+        autosave.acceptRemote(r.data);
+      } catch {
+        /* contenido ilegible: se ignora, el guardado en transacción lo volverá a fusionar */
+      }
+    };
+  });
+  // Si Excalidraw aún no entregó su handle, el último remoto espera y se aplica al registrarlo.
+  useRemoteContent(project.id, (r) => inbox.push(r, handleRef.current !== null, applyRemoteRecord.current));
+
+  const onChange = useCallback((c: NoteContent) => {
+    try {
+      setEncoded(encodeNote(c));
+      setTooLarge(false);
+    } catch (e) {
+      if (!(e instanceof ContentTooLargeError)) throw e;
+      setTooLarge(true); // se conserva lo último guardable; no se pisa con nada a medias
+    }
+  }, []);
+
+  const rename = (raw: string) => {
+    const prev = title;
+    const next = normalizeTitle(raw);
+    setTitle(next);
+    projectRepo.update(project.id, { title: next }).catch(() => {
+      setTitle(prev);
+      toast({
+        kind: 'error',
+        title: 'No se pudo cambiar el título',
+        description: 'Se conserva el anterior.',
+      });
+    });
+  };
+
+  const publish = (value: boolean) => {
+    setIsPublic(value);
+    projectRepo.update(project.id, { isPublic: value }).catch(() => {
+      setIsPublic(!value);
+      toast({ kind: 'error', title: 'No se pudo cambiar la visibilidad' });
+    });
+  };
+
+  const recover = async () => {
+    if (!draft || !handle) return;
+    try {
+      await handle.applyContent(decodeNote(draft.data));
+      discardDraft();
+      toast({ kind: 'success', title: 'Cambios recuperados' });
+    } catch {
+      toast({ kind: 'error', title: 'No se pudo recuperar el borrador' });
+    }
+  };
+
+  // La carpeta del proyecto solo es del panel de quien lo es dueño; un invitado vuelve a Inicio.
+  const backTo = backPath(origin, role === 'owner' ? project.folderId : null);
+  const back = () => void autosave.flush().finally(() => navigate(backTo));
+
+  return (
+    <div className={styles.page}>
+      <NoteCanvas
+        projectId={project.id}
+        content={content}
+        readonly={viewOnly}
+        onChange={onChange}
+        onHandle={onHandle}
+        topRight={(ui) => (
+          <TopBar
+            library={ui}
+            projectId={project.id}
+            canShare={role === 'owner'}
+            title={title}
+            onTitle={rename}
+            status={autosave.status}
+            tooLarge={tooLarge}
+            isPublic={isPublic}
+            onPublic={publish}
+            shareUrl={`${location.origin}/view/note/${project.id}`}
+            onBack={back}
+          />
+        )}
+      />
+      <div className={styles.banners}>
+        {autosave.status === 'conflicto' ? (
+          <Banner
+            tone="danger"
+            text="Otra pestaña guardó esta nota. Si sigues aquí, esos cambios se perderían."
+            actions={
+              <>
+                <Button size="sm" onClick={() => void autosave.resolveConflict('reload')}>
+                  Recargar
+                </Button>
+                <Button size="sm" variant="primary" onClick={() => void autosave.resolveConflict('copy')}>
+                  Guardar como copia
+                </Button>
+              </>
+            }
+          />
+        ) : null}
+        {autosave.status === 'error' ? (
+          <Banner
+            tone="danger"
+            text={`No se pudo guardar: ${autosave.error?.message ?? 'error desconocido'}. Tus cambios siguen en esta pestaña.`}
+            actions={
+              <Button size="sm" variant="primary" onClick={() => void autosave.flush()}>
+                Reintentar
+              </Button>
+            }
+          />
+        ) : null}
+        {tooLarge ? (
+          <Banner
+            tone="danger"
+            text={`La nota supera el tope de ${MAX_CONTENT_LABEL} y no se puede guardar. Quita elementos para poder guardar de nuevo.`}
+          />
+        ) : null}
+        {draft ? (
+          <Banner
+            tone="warn"
+            text={`Hay cambios sin guardar de ${new Date(draft.at).toLocaleString('es')} en este navegador${draft.stale ? ' (hechos sobre una versión anterior: otra pestaña guardó después)' : ''}.`}
+            actions={
+              <>
+                <Button size="sm" onClick={discardDraft}>
+                  Descartar
+                </Button>
+                <Button size="sm" variant="primary" disabled={!handle} onClick={() => void recover()}>
+                  Recuperar
+                </Button>
+              </>
+            }
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function Banner({
+  tone,
+  text,
+  actions,
+}: {
+  tone: 'danger' | 'warn';
+  text: string;
+  actions?: React.ReactNode;
+}) {
+  return (
+    <div className={`${styles.banner} ${styles[tone]}`} role={tone === 'danger' ? 'alert' : 'status'}>
+      <TriangleAlert size={18} aria-hidden="true" className={styles.bannerIcon} />
+      <p className={styles.bannerText}>{text}</p>
+      {actions ? <div className={styles.bannerActions}>{actions}</div> : null}
+    </div>
+  );
+}
+
+function Problem({ title, text, action }: { title: string; text: string; action: React.ReactNode }) {
+  return (
+    <div className={styles.problem}>
+      <span className={styles.problemIcon} aria-hidden="true">
+        <FileX2 size={26} />
+      </span>
+      <h1 className={styles.problemTitle}>{title}</h1>
+      <p className={styles.problemText}>{text}</p>
+      {action}
+    </div>
+  );
+}

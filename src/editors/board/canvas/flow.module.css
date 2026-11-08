@@ -1,0 +1,88 @@
+/* React Flow puenteado a los tokens (el tema llega por data-theme y por colorMode). */
+.flow {
+  --xy-background-color: var(--surface-app);
+  --xy-background-pattern-color: var(--border-strong);
+  --xy-minimap-background-color: var(--surface-raised);
+  --xy-minimap-mask-background-color: rgb(var(--shadow-color) / 0.12);
+  --xy-minimap-mask-stroke-color: var(--selection);
+  --xy-minimap-node-background-color: var(--border-strong);
+  --xy-controls-button-background-color: var(--surface-raised);
+  --xy-controls-button-background-color-hover: var(--surface-hover);
+  --xy-controls-button-color: var(--text-muted);
+  --xy-controls-button-color-hover: var(--text);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: var(--shadow-md);
+  --xy-selection-background-color: var(--selection-soft);
+  --xy-selection-border: 1px solid var(--selection);
+  --xy-edge-stroke: var(--text-muted);
+  --xy-attribution-background-color: transparent;
+  font-family: var(--font-sans);
+}
+.flow :global(.react-flow__node-frame) {
+  z-index: -1 !important;
+}
+.flow :global(.react-flow__attribution) {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+.flow :global(.react-flow__attribution a) {
+  color: inherit;
+}
+.flow :global(.react-flow__controls) {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.flow :global(.react-flow__controls-button) {
+  width: 32px;
+  height: 32px;
+  border-bottom-color: var(--border);
+}
+.flow :global(.react-flow__controls-button:focus-visible),
+.flow :global(.react-flow__minimap:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+.flow :global(.react-flow__controls-button[aria-pressed='true']) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.flow :global(.react-flow__minimap) {
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.flow :global(.react-flow__edge.selected .react-flow__edge-path),
+.flow :global(.react-flow__edge:focus-visible .react-flow__edge-path) {
+  stroke: var(--selection);
+}
+.flow :global(.react-flow__reconnect-anchor) {
+  background: var(--surface);
+  border: 2px solid var(--selection);
+}
+
+.tool_hand :global(.react-flow__pane) {
+  cursor: grab;
+}
+.tool_create :global(.react-flow__pane),
+.tool_connector :global(.react-flow__pane) {
+  cursor: crosshair;
+}
+
+/* Conector por clic: aviso de qué falta elegir y resalte del origen. */
+.hint {
+  margin-top: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.flow :global(.board-connect-source) {
+  outline: 2px dashed var(--selection);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}

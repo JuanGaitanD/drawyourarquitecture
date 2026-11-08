@@ -1,0 +1,73 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    // Espejo de acceso: Realtime Database no lee Firestore, así que el dueño publica aquí quién puede entrar.
+    // Todo cuelga del uid del dueño del proyecto (`acl/$owner/$pid`): solo él escribe bajo su rama, así nadie
+    // puede «reclamar» el proyecto de otro. Firestore sigue siendo la fuente de verdad; este espejo es una copia
+    // autoritativa y versionada: `{ version, members, invites }`.
+    "acl": {
+      "$owner": {
+        "$pid": {
+          // El dueño publica el espejo entero y versionado (`version` = `aclRev` del proyecto en Firestore): una
+          // escritura con versión anterior a la publicada se rechaza (una pestaña con datos viejos no restaura
+          // permisos revocados). Se evalúa también en escrituras parciales, con el valor ya combinado.
+          ".write": "auth != null && auth.uid === $owner && (!newData.exists() || (newData.child('version').isNumber() && (!data.child('version').exists() || newData.child('version').val() >= data.child('version').val())))",
+
+          // Lectura del dueño: la transacción de publicación compara con lo publicado antes de escribir.
+          ".read": "auth != null && auth.uid === $owner",
+
+          "version": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+
+          // Invitaciones vigentes (las publica el dueño al crearlas y las borra al revocarlas).
+          "invites": {
+            "$token": {
+              ".validate": "$token.length >= 20 && $token.length <= 64 && newData.hasChildren(['role', 'expiresAt']) && (newData.child('role').val() === 'editor' || newData.child('role').val() === 'viewer') && newData.child('expiresAt').isNumber()",
+              "role": {},
+              "expiresAt": {},
+              "$other": { ".validate": false }
+            }
+          },
+
+          // Miembros. El dueño sincroniza los que ya existen; un invitado se registra a sí mismo solo con el
+          // token de una invitación vigente y con el rol exacto de esa invitación (puede salir cuando quiera).
+          "members": {
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid && (!newData.exists() || (newData.child('token').isString() && root.child('acl').child($owner).child($pid).child('invites').child(newData.child('token').val()).child('role').val() === newData.child('role').val() && root.child('acl').child($owner).child($pid).child('invites').child(newData.child('token').val()).child('expiresAt').val() > now))",
+              ".validate": "newData.hasChild('role') && (newData.child('role').val() === 'editor' || newData.child('role').val() === 'viewer')",
+              "role": {},
+              "token": { ".validate": "newData.isString() && newData.val().length <= 64" },
+              "$other": { ".validate": false }
+            }
+          },
+
+          "$other": { ".validate": false }
+        }
+      }
+    },
+
+    // Presencia y cursores: solo el dueño y los miembros leen la sala; cada uno escribe únicamente bajo su uid.
+    // Cada pestaña es una sesión (`presence/$owner/$pid/$uid/$sid`) con su `onDisconnect().remove()`: el nodo existe
+    // mientras haya conexión (sin latidos ni caducidad) y cerrar una pestaña no borra a la otra.
+    "presence": {
+      "$owner": {
+        "$pid": {
+          ".read": "auth != null && (auth.uid === $owner || root.child('acl').child($owner).child($pid).child('members').child(auth.uid).exists())",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && (!newData.exists() || auth.uid === $owner || root.child('acl').child($owner).child($pid).child('members').child(auth.uid).exists())",
+            "$sid": {
+              ".validate": "$sid.matches(/^[A-Za-z0-9_-]{8,64}$/) && newData.hasChildren(['name', 'color', 'at']) && newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('color').isString() && newData.child('color').val().matches(/^#[0-9a-fA-F]{6}$/) && newData.child('at').isNumber()",
+              "name": {},
+              "color": {},
+              "at": {},
+              "x": { ".validate": "newData.isNumber()" },
+              "y": { ".validate": "newData.isNumber()" },
+              "$other": { ".validate": false }
+            }
+          }
+        }
+      }
+    }
+  }
+}

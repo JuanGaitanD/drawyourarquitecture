@@ -1,0 +1,24 @@
+.root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+/* Excalidraw llena a su contenedor; sin altura propia no se vería nada. */
+.root > :global(.excalidraw-container),
+.root > :global(.excalidraw) {
+  height: 100%;
+}
+
+.topRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-sans);
+}
+
+/* El disparador por defecto de la Biblioteca se sustituye por un botón de nuestra barra (TopBar). */
+.root :global(.default-sidebar-trigger) {
+  display: none;
+}

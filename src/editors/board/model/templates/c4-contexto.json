@@ -1,0 +1,322 @@
+{
+  "schemaVersion": 1,
+  "nodes": [
+    {
+      "id": "title",
+      "type": "text",
+      "position": {
+        "x": 0,
+        "y": -80
+      },
+      "width": 560,
+      "height": 40,
+      "data": {
+        "label": "C4 · Nivel 1: contexto del sistema",
+        "style": {
+          "fill": "transparent",
+          "stroke": "transparent",
+          "strokeWidth": 0,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 24,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": true
+        },
+        "kind": "text"
+      }
+    },
+    {
+      "id": "cliente",
+      "type": "shape",
+      "position": {
+        "x": 0,
+        "y": 88
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Cliente\n[Persona]",
+        "shape": "actor",
+        "style": {
+          "fill": "#1d4ed8",
+          "stroke": "#1e3a8a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#ffffff",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      }
+    },
+    {
+      "id": "f-co",
+      "type": "frame",
+      "position": {
+        "x": 240,
+        "y": 147
+      },
+      "width": 524,
+      "height": 216,
+      "data": {
+        "label": "Fintech S.A.",
+        "style": {
+          "fill": "#e5e7eb80",
+          "stroke": "#6b7280",
+          "strokeWidth": 1,
+          "dashed": true,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "left",
+          "bold": false
+        },
+        "kind": "frame"
+      }
+    },
+    {
+      "id": "soporte",
+      "type": "shape",
+      "position": {
+        "x": 32,
+        "y": 80
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Agente de soporte\n[Persona]",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#1d4ed8",
+          "stroke": "#1e3a8a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#ffffff",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-co"
+    },
+    {
+      "id": "sys",
+      "type": "shape",
+      "position": {
+        "x": 272,
+        "y": 72
+      },
+      "width": 220,
+      "height": 112,
+      "data": {
+        "label": "Plataforma de pagos\n[Sistema de software]",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#0f766e",
+          "stroke": "#134e4a",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#ffffff",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      },
+      "parentId": "f-co"
+    },
+    {
+      "id": "bank",
+      "type": "shape",
+      "position": {
+        "x": 844,
+        "y": 304
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Pasarela bancaria\n[Sistema externo]",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#9ca3af",
+          "stroke": "#4b5563",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      }
+    },
+    {
+      "id": "mail",
+      "type": "shape",
+      "position": {
+        "x": 844,
+        "y": 16
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Servicio de correo\n[Sistema externo]",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#9ca3af",
+          "stroke": "#4b5563",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      }
+    },
+    {
+      "id": "fraud",
+      "type": "shape",
+      "position": {
+        "x": 844,
+        "y": 160
+      },
+      "width": 160,
+      "height": 96,
+      "data": {
+        "label": "Antifraude\n[Sistema externo]",
+        "shape": "round_rectangle",
+        "style": {
+          "fill": "#9ca3af",
+          "stroke": "#4b5563",
+          "strokeWidth": 2,
+          "dashed": false,
+          "opacity": 1,
+          "fontSize": 14,
+          "textColor": "#111827",
+          "align": "center",
+          "bold": false
+        },
+        "kind": "shape"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "type": "labeled",
+      "source": "cliente",
+      "target": "sys",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "Paga y consulta movimientos"
+      }
+    },
+    {
+      "id": "e2",
+      "type": "labeled",
+      "source": "soporte",
+      "target": "sys",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "Gestiona disputas"
+      }
+    },
+    {
+      "id": "e3",
+      "type": "labeled",
+      "source": "sys",
+      "target": "bank",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "Autoriza cargos\n[HTTPS]"
+      }
+    },
+    {
+      "id": "e4",
+      "type": "labeled",
+      "source": "sys",
+      "target": "fraud",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "Evalúa riesgo\n[HTTPS]"
+      }
+    },
+    {
+      "id": "e5",
+      "type": "labeled",
+      "source": "sys",
+      "target": "mail",
+      "sourceHandle": "r",
+      "targetHandle": "l",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": false,
+        "color": "#475569",
+        "width": 2,
+        "label": "Envía recibos\n[SMTP]"
+      }
+    },
+    {
+      "id": "e6",
+      "type": "labeled",
+      "source": "mail",
+      "target": "cliente",
+      "sourceHandle": "l",
+      "targetHandle": "r",
+      "data": {
+        "path": "bezier",
+        "markerStart": false,
+        "markerEnd": true,
+        "dashed": true,
+        "color": "#475569",
+        "width": 2,
+        "label": "Entrega correos"
+      }
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  }
+}

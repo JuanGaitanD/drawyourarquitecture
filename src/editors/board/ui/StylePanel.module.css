@@ -1,0 +1,14 @@
+.panel {
+  top: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 2 * var(--space-6));
+  animation: rise var(--duration) var(--ease);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+}

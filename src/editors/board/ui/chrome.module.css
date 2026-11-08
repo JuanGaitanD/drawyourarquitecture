@@ -1,0 +1,33 @@
+/* Superficie flotante común de Toolbar, StylePanel, ActionBar y SearchBox. Se coloca sola dentro del
+   contenedor del editor (que debe ser `position: relative`). */
+.bar {
+  position: absolute;
+  z-index: var(--z-canvas-ui);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  /* La barra no debe robar los eventos de ratón del lienzo en sus huecos. */
+  pointer-events: auto;
+}
+
+.column {
+  flex-direction: column;
+}
+
+.divider {
+  flex: none;
+  align-self: stretch;
+  background: var(--border);
+  width: 1px;
+  margin: var(--space-1) var(--space-1);
+}
+.column .divider {
+  width: auto;
+  height: 1px;
+  margin: var(--space-1);
+}

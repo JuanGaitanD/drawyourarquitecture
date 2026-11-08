@@ -1,0 +1,46 @@
+{
+  "nombre": "drawyourarquitecture",
+  "tipo": "web-spa",
+  "lenguaje": "ts",
+  "runtime": "node 24",
+  "gestor": "pnpm",
+  "idioma": "es",
+  "comandos": {
+    "instalar": "pnpm install",
+    "dev": "pnpm dev",
+    "lint": "pnpm lint",
+    "tipos": "pnpm typecheck",
+    "tests": "pnpm test",
+    "tests_reglas": "pnpm test:rules",
+    "build": "pnpm build",
+    "emuladores": "pnpm emulators"
+  },
+  "patrones_tests": ["src/**/*.test.{ts,tsx}", "tests/rules/**/*.test.ts", "tests/e2e/**/*.spec.ts"],
+  "capas": {
+    "regla": "domain ← application ← infrastructure; editors y app consumen application y domain; solo app/ conecta infrastructure/firebase",
+    "rutas": {
+      "domain": "src/domain",
+      "application": "src/application",
+      "infrastructure": "src/infrastructure/firebase",
+      "editors": "src/editors",
+      "ui": "src/ui",
+      "app": "src/app"
+    }
+  },
+  "ambitos_commit": [
+    "base",
+    "domain",
+    "application",
+    "infra",
+    "ui",
+    "app",
+    "dashboard",
+    "viewer",
+    "note",
+    "board",
+    "rules",
+    "e2e",
+    "docs",
+    "deps"
+  ]
+}
