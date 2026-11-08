@@ -1,6 +1,6 @@
 # Servidor MCP
 
-DYA (Draw your Architecture) expone un servidor [MCP](https://modelcontextprotocol.io) para que un agente (Claude Code, Cursor, etc.) trabaje con tus notas y diagramas: lista proyectos, lee notas y boards, crea notas y boards nuevos y amplía un board desde Mermaid.
+DYA (Draw your Architecture) expone un servidor [MCP](https://modelcontextprotocol.io) para que un agente (Claude Code, Cursor, etc.) trabaje con tus notas y diagramas: lista proyectos, lee notas y boards, crea notas y boards nuevos, edita el título y el texto de una nota y amplía un board desde Mermaid.
 
 - Endpoint: `https://dya.juandgaitan.com/api/mcp` (función de Vercel, Node).
 - Transporte: Streamable HTTP **sin estado** del SDK oficial (`@modelcontextprotocol/sdk`), solo `POST` y respuestas JSON (sin sesiones ni SSE).
@@ -50,7 +50,19 @@ Otros clientes con configuración JSON:
 | `read_board`    | `id`                                      | Mermaid del diagrama (`toFlowchart`) y JSON compacto de nodos y aristas. El Mermaid pierde stickies, textos, iconos y estilos.              |
 | `create_note`   | `title`, `text`                           | Nota nueva. El texto se divide en bloques por línea en blanco; cada bloque es un elemento `text` de Excalidraw. `#`, `##`, `###` = títulos. |
 | `create_board`  | `title`, `mermaid`                        | Diagrama nuevo desde un flowchart de Mermaid, ordenado con dagre (el mismo `parseFlowchart` + `autoLayout` de la app).                      |
+| `update_note`   | `id`, `title?`, `text?` (al menos uno) | **Edita** una nota existente. `title` la renombra (solo el dueño: las reglas no dejan al editor tocar el título). `text` reemplaza el texto (mismo formato que `create_note`) y **conserva** imágenes, diagramas incrustados, formas y la posición y el estilo de cada texto (ver «`update_note`: cómo se reemplaza el texto»). Transacción con `revision + 1`. |
 | `update_board`  | `id`, `mermaid`                           | **Amplía** el board: añade lo nuevo **debajo** de lo existente y conserva lo que hay (posiciones, estilos, frames, stickies e imágenes). No hay modo de sustitución. Transacción con `revision + 1`. |
+
+### `update_note`: cómo se reemplaza el texto
+
+Los textos vivos de la nota, en el orden de lectura de `read_note` (filas de arriba abajo, de izquierda a derecha; también las etiquetas de las formas), se emparejan **por posición** con los bloques nuevos:
+
+- Bloque igual → el elemento no se toca (ni versión ni posición).
+- Bloque distinto → se edita **en su sitio**: mismo id, posición, color, fuente y contenedor; cambian `text`, `originalText`, el tamaño aproximado (salvo en etiquetas de forma) y `version`/`versionNonce`/`updated`, así el editor abierto lo fusiona por elemento. Sin «# » se conserva el tamaño de letra que tenía (un título leído con `read_note` y devuelto sin «# » sigue siendo título); con «# », «## » o «### » pasa al tamaño de ese nivel.
+- Bloques de más → elementos nuevos apilados **debajo de todo** lo que hay (también de imágenes y diagramas), alineados con el texto existente y con índices de orden posteriores.
+- Textos que sobran → se borran como lo hace Excalidraw (`isDeleted`, tombstone de 30 días). `text: ""` borra todo el texto y deja lo demás.
+
+Límite: el emparejamiento es por posición, no por contenido. Insertar un bloque en medio edita los siguientes un hueco hacia abajo (el último sale como bloque nuevo, debajo de todo): el orden de lectura se mantiene, pero los textos ya no ocupan el sitio en el que estaban. Para cambios puntuales (corregir un título, marcar `- [x]`), lo seguro es mandar el texto completo de `read_note` con solo esas líneas cambiadas. `title` y `text` no son atómicos entre sí: el título se escribe primero (si las reglas lo rechazan, el texto no se toca) y un 409 en el texto deja el título ya cambiado.
 
 Mermaid admite `flowchart`/`graph` (LR, TD…), formas `[]` `()` `([])` `{}` `(())` `[()]` `{{}}`, aristas `-->` `---` `-.->` `==>` con etiqueta, y `subgraph` anidados (pasan a frames). Los estilos (`style`, `classDef`…) se ignoran.
 
@@ -67,7 +79,7 @@ Si el board o la nota están abiertos en el editor mientras un agente escribe, e
 | 404    | El proyecto existe pero no tiene contenido. |
 | 429    | Respuesta HTTP: más de 60 peticiones en el minuto para ese token (`Retry-After`, en segundos, hasta la siguiente ventana). |
 | 400    | Id mal formado, tipo equivocado (nota vs. board), Mermaid no válido (con la línea) o contenido que no pasa `validateBoardContent`. |
-| 409    | `update_board`: la revisión cambió cinco veces seguidas mientras se ampliaba (otra escritura en curso); reintenta. |
+| 409    | `update_board` / `update_note`: la revisión cambió cinco veces seguidas mientras se guardaba (otra escritura en curso); reintenta. |
 | 413    | Texto, Mermaid o contenido por encima de los límites (8 MiB codificado). |
 | 405    | Cualquier método distinto de `POST`. |
 
@@ -83,7 +95,7 @@ Si el board o la nota están abiertos en el editor mientras un agente escribe, e
 - Las reglas de `mcpTokens` dejan a cada persona crear, listar y revocar **solo los suyos** (campos cerrados y `revoked == false` al crear; la única actualización del cliente es `revoked` de `false` a `true`: no puede escribir `lastUsedAt` ni reactivar). `allowedEmails` solo la escribe el dueño.
 - El contenido que entra (Mermaid, texto) se valida con `validateBoardContent` y el codec de nota, con límites de tamaño. Los errores inesperados devuelven un 500 genérico y no filtran detalles.
 - Los ids de proyecto son aleatorios de 20 caracteres y un proyecto inexistente da el mismo 403 que uno ajeno: la respuesta no confirma que existan.
-- `update_board` lee el board, lo amplía y guarda con `save` (transacción) y la revisión leída. El SDK web es optimista: si otra escritura se cuela, `save` devuelve conflicto o la regla `revision == anterior + 1` rechaza el commit con `permission-denied`; el servidor relee la revisión y, si cambió, vuelve a leer y reintenta (hasta 5 veces, después 409) en vez de dar un 403 falso.
+- `update_board` y `update_note` leen el contenido, lo transforman y guardan con `save` (transacción) y la revisión leída. El SDK web es optimista: si otra escritura se cuela, `save` devuelve conflicto o la regla `revision == anterior + 1` rechaza el commit con `permission-denied`; el servidor relee la revisión y, si cambió, vuelve a leer y reintenta (hasta 5 veces, después 409) en vez de dar un 403 falso.
 
 ## 5. Despliegue (Vercel)
 

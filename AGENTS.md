@@ -9,7 +9,7 @@ App web personal y de código abierto con dos tipos de proyecto, como TinkerCAD:
 
 Los proyectos propios se organizan en **carpetas anidadas** en el panel (`/folder/:id`).
 
-Firebase Auth con Google. Crean proyectos el dueño (`OWNER_UID`, renderizado en las reglas) y las cuentas con **correo verificado** en `allowedEmails/{correo}` (el dueño las gestiona en Ajustes); se comparte por invitación (editor o viewer) con edición y cursores en tiempo real, y los enlaces públicos son de solo lectura. Un servidor MCP (`/api/mcp`, `src/server/`) deja que agentes lean y creen notas y boards como la propia persona. Pantalla objetivo: laptop (≥ 1024 px). Fuente de verdad del alcance y los contratos: `docs/plan.md`; stack: `docs/stack.md`; arquitectura: `docs/architecture.md`; MCP: `docs/mcp.md`; deuda: `docs/deuda.md`.
+Firebase Auth con Google. Crean proyectos el dueño (`OWNER_UID`, renderizado en las reglas) y las cuentas con **correo verificado** en `allowedEmails/{correo}` (el dueño las gestiona en Ajustes); se comparte por invitación (editor o viewer) con edición y cursores en tiempo real, y los enlaces públicos son de solo lectura. Un servidor MCP (`/api/mcp`, `src/server/`) deja que agentes lean y creen notas y boards, editen notas (`update_note`) y amplíen boards (`update_board`) como la propia persona. Pantalla objetivo: laptop (≥ 1024 px). Fuente de verdad del alcance y los contratos: `docs/plan.md`; stack: `docs/stack.md`; arquitectura: `docs/architecture.md`; MCP: `docs/mcp.md`; deuda: `docs/deuda.md`.
 
 ## Idioma
 
