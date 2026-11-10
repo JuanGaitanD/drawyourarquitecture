@@ -55,6 +55,8 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
     child?.kill();
   });
 
+  // Primera llamada a Firestore desde el proceso hijo: Admin busca antes credenciales de GCE y, sin red de Google,
+  // espera su timeout (unos 5 s). Margen para ese arranque en frío.
   it('sin token o con token revocado: 401 (con WWW-Authenticate)', async () => {
     const raw = await fetch(url, {
       method: 'POST',
@@ -68,7 +70,7 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
     await expect(connect(token)).rejects.toThrow(/401/);
     await expect(connect('dya_inventado')).rejects.toThrow(/401/);
     expect((await fetch(url, { method: 'GET' })).status).toBe(405);
-  });
+  }, 20_000);
 
   it('con token: lista las herramientas, crea un board desde Mermaid, lo lee y lo amplía', async () => {
     const { token } = await seedToken(db, await seedAllowedUser(db));
