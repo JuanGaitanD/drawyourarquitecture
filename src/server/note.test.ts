@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { decodeNote as decodeEditorNote } from '../editors/note/codec';
 import {
   buildNote,
+  EMBED_SHIFT,
   decodeNote,
+  embedInNote,
   encodeNote,
+  hasBoardEmbed,
   noteEmbeds,
   noteImages,
   noteSummary,
@@ -11,6 +14,7 @@ import {
   orderKey,
   replaceNoteText,
   textToElements,
+  type NoteContent,
 } from './note';
 
 describe('textToElements', () => {
@@ -294,5 +298,128 @@ describe('medida', () => {
     const [emoji] = textToElements('😀'.repeat(10));
     const [letters] = textToElements('a'.repeat(10));
     expect(emoji.width).toBe(letters.width);
+  });
+});
+
+describe('embedInNote', () => {
+  const T = 1_700_000_000_000;
+  const embedOf = (n: NoteContent) => n.elements.find((e) => e.type === 'embeddable')!;
+  const byText = (n: NoteContent, text: string) => n.elements.find((e) => e.text === text)!;
+  const box = (id: string, over: Record<string, unknown>) => ({
+    id,
+    type: 'rectangle',
+    x: 0,
+    y: 0,
+    width: 100,
+    height: 100,
+    version: 1,
+    index: 'a0',
+    isDeleted: false,
+    ...over,
+  });
+
+  it('sin after: debajo de todo, alineado con el texto, índice posterior y enlace que reconocen noteEmbeds y la UI', () => {
+    const note = buildNote('Uno\n\nDos', T);
+    const out = embedInNote(note, 'b1', undefined, T);
+    const e = embedOf(out);
+    const last = byText(note, 'Dos');
+    expect(e).toMatchObject({
+      type: 'embeddable',
+      x: 0,
+      width: 640,
+      height: 400,
+      version: 1,
+      isDeleted: false,
+    });
+    expect(e.y).toBe((last.y as number) + (last.height as number) + 24);
+    expect((e.index as string) > (last.index as string)).toBe(true);
+    expect(noteEmbeds(out.elements)).toEqual(['b1']);
+    expect(hasBoardEmbed(out, 'b1')).toBe(true);
+    expect(out.elements.slice(0, 2)).toEqual(note.elements);
+  });
+
+  it('con after (prefijo): debajo del bloque; lo de debajo baja EMBED_SHIFT y sube versión; lo de arriba intacto', () => {
+    const note = buildNote('# Piezas\n\nPlugin wigi-pmo y más\n\nSharePoint, sitio\n\nFlujo técnico', T);
+    const out = embedInNote(note, 'b1', '  Plugin wigi ', T);
+    const anchor = byText(out, 'Plugin wigi-pmo y más');
+    expect(embedOf(out)).toMatchObject({ x: 0, y: (anchor.y as number) + (anchor.height as number) + 24 });
+    for (const t of ['Piezas', 'Plugin wigi-pmo y más']) expect(byText(out, t)).toEqual(byText(note, t));
+    for (const t of ['SharePoint, sitio', 'Flujo técnico']) {
+      expect(byText(out, t).y).toBe((byText(note, t).y as number) + EMBED_SHIFT);
+      expect(byText(out, t).version).toBe(2);
+    }
+    expect(noteText(out.elements)).toBe(noteText(note.elements));
+  });
+
+  it('conserva el orden de lectura de dos textos en la misma fila de 20 a distinta y', () => {
+    const [a, b] = textToElements('A\n\nB', T);
+    const note = { ...buildNote('Ancla', T) };
+    note.elements = [...note.elements, { ...a, x: 100, y: 100 }, { ...b, x: 0, y: 109 }];
+    const out = embedInNote(note, 'b1', 'Ancla', T);
+    expect(noteText(out.elements)).toBe('Ancla\n\nB\n\nA');
+  });
+
+  it('after inexistente, ambiguo o vacío → RangeError', () => {
+    const note = buildNote('Uno\n\nUno más', T);
+    expect(() => embedInNote(note, 'b1', 'Nada', T)).toThrow(/ningún bloque/);
+    expect(() => embedInNote(note, 'b1', 'Uno', T)).toThrow(/2 bloques/);
+    expect(() => embedInNote(note, 'b1', '   ', T)).toThrow(RangeError);
+  });
+
+  it('unidades: una etiqueta baja con su forma; una forma que cruza la línea y el embed la cortaría → error', () => {
+    const [anchor, label] = textToElements('Ancla\n\nEtiqueta', T);
+    const below = {
+      ...buildNote('', T),
+      elements: [
+        anchor,
+        box('s', { y: 200, boundElements: [{ id: label.id, type: 'text' }] }),
+        { ...label, y: 230, containerId: 's' },
+      ],
+    };
+    const out = embedInNote(below, 'b1', 'Ancla', T);
+    expect(out.elements.find((e) => e.id === 's')!.y).toBe(200 + EMBED_SHIFT);
+    expect(byText(out, 'Etiqueta').y).toBe(230 + EMBED_SHIFT);
+
+    // La forma empieza arriba (y 10) y baja más allá del ancla: no se mueve y el embed la taparía.
+    const crossing = { ...below, elements: [anchor, box('s', { x: 0, y: 10, height: 300 })] };
+    expect(() => embedInNote(crossing, 'b1', 'Ancla', T)).toThrow(/sitio limpio/);
+  });
+
+  it('marcos: un hijo de un marco que cruza la línea no baja, y si el embed corta el marco → error; after en un marco → error', () => {
+    const [anchor, child] = textToElements('Ancla\n\nHijo', T);
+    const frame = box('f', { type: 'frame', x: 0, y: 10, width: 800, height: 400 });
+    const note = { ...buildNote('', T), elements: [anchor, frame, { ...child, y: 300, frameId: 'f' }] };
+    expect(() => embedInNote(note, 'b1', 'Ancla', T)).toThrow(/sitio limpio/);
+
+    // El marco queda a la derecha del embed: no lo corta, y su hijo no baja aunque esté por debajo.
+    const aside = {
+      ...note,
+      elements: [anchor, { ...frame, x: 700 }, { ...child, x: 720, y: 300, frameId: 'f' }],
+    };
+    const out = embedInNote(aside, 'b1', 'Ancla', T);
+    expect(byText(out, 'Hijo').y).toBe(300);
+
+    const inFrame = { ...note, elements: [{ ...anchor, frameId: 'f' }, frame] };
+    expect(() => embedInNote(inFrame, 'b1', 'Ancla', T)).toThrow(/marco/);
+  });
+
+  it('un cambio de orden de lectura → error: un texto suelto bajaría por debajo del hijo de un marco que no se mueve', () => {
+    const [anchor, loose, child] = textToElements('Ancla\n\nSuelto\n\nHijo', T);
+    const frame = box('f', { type: 'frame', x: 700, y: 10, width: 300, height: 400 });
+    const note = {
+      ...buildNote('', T),
+      elements: [anchor, { ...loose, y: 150 }, frame, { ...child, x: 720, y: 200, frameId: 'f' }],
+    };
+    expect(() => embedInNote(note, 'b1', 'Ancla', T)).toThrow(/sitio limpio/);
+  });
+
+  it('hasBoardEmbed sigue la política de la UI: el enlace de producción cuenta; otro dominio o borrado, no', () => {
+    const link = (origin: string, isDeleted = false) => ({
+      ...buildNote('', T),
+      elements: [box('e', { type: 'embeddable', link: `${origin}/embed/board/b1`, isDeleted })],
+    });
+    expect(hasBoardEmbed(link('https://drawyourarchitecture.vercel.app'), 'b1')).toBe(true);
+    expect(hasBoardEmbed(link('https://otro.example'), 'b1')).toBe(false);
+    expect(hasBoardEmbed(link('https://dya.juandgaitan.com', true), 'b1')).toBe(false);
   });
 });

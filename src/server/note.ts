@@ -1,4 +1,11 @@
 import { decode, encode } from '../domain/codec';
+import {
+  EMBED_SIZE,
+  SITE_ORIGINS,
+  boardEmbedLink,
+  newEmbeddable,
+  parseBoardLink,
+} from '../editors/note/embed';
 
 // Contenido de nota en el servidor. Misma forma que `editors/note/codec.ts` (un test lo comprueba), pero
 // sin importar el alias `@/` ni el motor: el servidor se empaqueta aparte (scripts/bundle-mcp.mjs).
@@ -249,23 +256,124 @@ export function replaceNoteText(note: NoteContent, text: string, now = Date.now(
   });
   const extra = blocks.slice(old.length);
   // Lo añadido va debajo de todo, medido ya con los textos editados (pueden haber crecido).
-  const live = note.elements.map((e) => changed.get(e) ?? e).filter((e) => e.isDeleted !== true);
-  const left = old.length ? Math.min(...old.map((e) => Number(e.x) || 0)) : 0;
-  const bottom = live.length
-    ? Math.max(...live.map((e) => (Number(e.y) || 0) + (Number(e.height) || 0))) + GAP
-    : 0;
-  // Índices fraccionarios después del mayor existente (un sufijo que no acaba en «0» deja una clave válida).
-  const maxIndex = note.elements.reduce<string>(
-    (m, e) => (typeof e.index === 'string' && e.index > m ? e.index : m),
-    '',
-  );
+  const elements = note.elements.map((e) => changed.get(e) ?? e);
+  const { left, bottom, nextIndex } = appendAt(elements);
   const added = extra.map((b, i) => ({
     ...b,
     x: left,
     y: bottom + (b.y as number) - (extra[0].y as number),
-    index: `${maxIndex}${orderKey(i)}V`,
+    index: nextIndex(i),
   }));
-  return { ...note, elements: [...note.elements.map((e) => changed.get(e) ?? e), ...added] };
+  return { ...note, elements: [...elements, ...added] };
+}
+
+/**
+ * Dónde se añade algo al final: debajo de todo lo vivo, alineado con el texto más a la izquierda, con índices
+ * fraccionarios después del mayor existente (un sufijo que no acaba en «0» deja una clave válida).
+ */
+function appendAt(elements: readonly Record<string, unknown>[]) {
+  const live = elements.filter((e) => e.isDeleted !== true);
+  const texts = readingOrder(elements);
+  const maxIndex = elements.reduce<string>(
+    (m, e) => (typeof e.index === 'string' && e.index > m ? e.index : m),
+    '',
+  );
+  return {
+    left: texts.length ? Math.min(...texts.map((e) => Number(e.x) || 0)) : 0,
+    bottom: live.length
+      ? Math.max(...live.map((e) => (Number(e.y) || 0) + (Number(e.height) || 0))) + GAP
+      : 0,
+    nextIndex: (i: number) => `${maxIndex}${orderKey(i)}V`,
+  };
+}
+
+/** Origen con el que el servidor escribe los enlaces de los diagramas incrustados (lo acepta `parseBoardLink`). */
+const EMBED_ORIGIN = SITE_ORIGINS[0];
+
+/** ¿La nota ya tiene incrustado ese diagrama? Misma política que la interfaz (`parseBoardLink`). */
+export function hasBoardEmbed(note: NoteContent, boardId: string): boolean {
+  return note.elements.some(
+    (e) =>
+      e.type === 'embeddable' &&
+      e.isDeleted !== true &&
+      typeof e.link === 'string' &&
+      parseBoardLink(e.link, EMBED_ORIGIN) === boardId,
+  );
+}
+
+/** Lo que baja el contenido al hacer hueco: el alto del embed más tres filas de 20 (múltiplo de 20: ver `readingOrder`). */
+export const EMBED_SHIFT = EMBED_SIZE.height + 60;
+
+type El = Record<string, unknown>;
+const num = (v: unknown) => Number(v) || 0;
+const overlaps = (a: El, b: El) =>
+  num(a.x) < num(b.x) + num(b.width) &&
+  num(b.x) < num(a.x) + num(a.width) &&
+  num(a.y) < num(b.y) + num(b.height) &&
+  num(b.y) < num(a.y) + num(a.height);
+
+/**
+ * Incrusta el diagrama `boardId` con el mismo elemento que «Insertar diagrama» de la app (`newEmbeddable`). Sin
+ * `after`, debajo de todo. Con `after`, debajo del único bloque de texto que empieza por él (como lo da `read_note`),
+ * y lo de debajo baja `EMBED_SHIFT` por unidades (un hijo con su marco, una etiqueta con su forma). Lanza `RangeError`
+ * si el bloque no existe, es ambiguo o está en un marco, y si el hueco taparía algo o cambiaría el orden de lectura.
+ * ponytail: se desplaza por `y`; una columna paralela también baja y una flecha de arriba a abajo queda suelta de
+ * su destino hasta que se edita en la app. Mover esas flechas si molesta.
+ */
+export function embedInNote(
+  note: NoteContent,
+  boardId: string,
+  after: string | undefined,
+  now = Date.now(),
+): NoteContent {
+  const { left, bottom, nextIndex } = appendAt(note.elements);
+  const embed = (pos: { x: number; y: number }): El => ({
+    ...newEmbeddable(pos, boardEmbedLink(boardId, EMBED_ORIGIN)),
+    index: nextIndex(0),
+    updated: now,
+  });
+  if (after === undefined) return { ...note, elements: [...note.elements, embed({ x: left, y: bottom })] };
+
+  const prefix = after.trim();
+  const texts = readingOrder(note.elements);
+  const hits = prefix ? texts.filter((t) => (t.text as string).trim().startsWith(prefix)) : [];
+  if (hits.length === 0) throw new RangeError(`No hay ningún bloque que empiece por «${prefix}».`);
+  if (hits.length > 1)
+    throw new RangeError(`Hay ${hits.length} bloques que empiezan por «${prefix}»: da más texto del bloque.`);
+
+  const byId = new Map(note.elements.map((e) => [e.id, e]));
+  /** Unidad que se mueve junta: el marco del elemento, si no su contenedor (etiquetas), si no él mismo. */
+  const root = (e: El): El => {
+    const box = (e.containerId != null && byId.get(e.containerId)) || e;
+    return (box.frameId != null && byId.get(box.frameId)) || box;
+  };
+  const anchor = (hits[0].containerId != null && byId.get(hits[0].containerId)) || hits[0];
+  if (root(anchor) !== anchor)
+    throw new RangeError('El bloque está dentro de un marco: usa otro bloque o sin `after`.');
+
+  const line = num(anchor.y) + num(anchor.height);
+  const moved = new Set<El>();
+  const elements = note.elements.map((e): El => {
+    if (e.isDeleted === true || num(root(e).y) < line) return e;
+    const next = {
+      ...e,
+      y: num(e.y) + EMBED_SHIFT,
+      version: num(e.version) + 1,
+      versionNonce: rand(),
+      updated: now,
+    };
+    moved.add(next);
+    return next;
+  });
+  const added = embed({ x: num(anchor.x), y: line + GAP });
+  const blocked = elements.some((e) => e.isDeleted !== true && !moved.has(e) && overlaps(e, added));
+  const order = (els: readonly El[]) =>
+    readingOrder(els)
+      .map((e) => e.id)
+      .join(' ');
+  if (blocked || order(elements) !== order(note.elements))
+    throw new RangeError('No hay sitio limpio debajo de ese bloque: usa otro bloque o sin `after`.');
+  return { ...note, elements: [...elements, added] };
 }
 
 /** Resumen para el modelo: cuántos elementos vivos hay de cada tipo. */

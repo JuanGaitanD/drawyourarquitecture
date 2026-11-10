@@ -1152,6 +1152,53 @@ var moveProject = denied(
   }
 );
 
+// src/editors/note/embed.ts
+import { nanoid as nanoid2 } from "nanoid";
+var EMBED_SIZE = { width: 640, height: 400 };
+var BOARD_PATH = /^\/embed\/board\/([\w-]+)\/?$/;
+var SITE_ORIGINS = ["https://dya.juandgaitan.com", "https://drawyourarchitecture.vercel.app"];
+var boardEmbedLink = (boardId, origin) => `${origin}/embed/board/${boardId}`;
+function parseBoardLink(link, origin) {
+  try {
+    const u = new URL(link ?? "");
+    const m = BOARD_PATH.exec(u.pathname);
+    return (u.origin === origin || SITE_ORIGINS.includes(u.origin)) && !u.search && !u.hash && m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+var int = () => Math.floor(Math.random() * 2 ** 31);
+function newEmbeddable(pos, link, id2 = nanoid2()) {
+  return {
+    id: id2,
+    type: "embeddable",
+    x: pos.x,
+    y: pos.y,
+    width: EMBED_SIZE.width,
+    height: EMBED_SIZE.height,
+    angle: 0,
+    strokeColor: "#1e1e1e",
+    backgroundColor: "transparent",
+    fillStyle: "solid",
+    strokeWidth: 2,
+    strokeStyle: "solid",
+    roundness: null,
+    roughness: 0,
+    opacity: 100,
+    seed: int(),
+    version: 1,
+    versionNonce: int(),
+    index: null,
+    isDeleted: false,
+    groupIds: [],
+    frameId: null,
+    boundElements: null,
+    updated: Date.now(),
+    link,
+    locked: false
+  };
+}
+
 // src/server/note.ts
 var MAX_NOTE_TEXT = 2e5;
 var MAX_NOTE_BLOCKS = 2e3;
@@ -1297,7 +1344,7 @@ function replaceNoteText(note, text, now3 = Date.now()) {
     updated: now3
   });
   const changed = /* @__PURE__ */ new Map();
-  const num = (v) => Number(v) || 0;
+  const num2 = (v) => Number(v) || 0;
   old.forEach((e, i) => {
     const b = blocks[i];
     if (!b) return void changed.set(e, bump(e, { isDeleted: true }));
@@ -1308,18 +1355,18 @@ function replaceNoteText(note, text, now3 = Date.now()) {
     const container = e.containerId == null ? void 0 : note.elements.find((c) => c.id === e.containerId && c.isDeleted !== true);
     let geometry;
     if (container && container.type !== "arrow") {
-      const wrapped = wrap(body, size, num(container.width) - 2 * BOUND_PADDING);
+      const wrapped = wrap(body, size, num2(container.width) - 2 * BOUND_PADDING);
       const box = measure(wrapped, size);
-      const ch = num(container.height);
-      const y = e.verticalAlign === "top" ? num(container.y) + BOUND_PADDING : e.verticalAlign === "bottom" ? num(container.y) + ch - BOUND_PADDING - box.height : num(container.y) + (ch - box.height) / 2;
-      geometry = { text: wrapped, ...box, x: num(container.x) + (num(container.width) - box.width) / 2, y };
+      const ch = num2(container.height);
+      const y = e.verticalAlign === "top" ? num2(container.y) + BOUND_PADDING : e.verticalAlign === "bottom" ? num2(container.y) + ch - BOUND_PADDING - box.height : num2(container.y) + (ch - box.height) / 2;
+      geometry = { text: wrapped, ...box, x: num2(container.x) + (num2(container.width) - box.width) / 2, y };
     } else if (container) {
       const box = measure(body, size);
-      const cx = num(e.x) + num(e.width) / 2;
-      const cy = num(e.y) + num(e.height) / 2;
+      const cx = num2(e.x) + num2(e.width) / 2;
+      const cy = num2(e.y) + num2(e.height) / 2;
       geometry = { text: body, ...box, x: cx - box.width / 2, y: cy - box.height / 2 };
     } else if (e.autoResize === false) {
-      const wrapped = wrap(body, size, num(e.width));
+      const wrapped = wrap(body, size, num2(e.width));
       geometry = { text: wrapped, height: measure(wrapped, size).height };
     } else {
       geometry = { text: body, ...measure(body, size) };
@@ -1327,20 +1374,80 @@ function replaceNoteText(note, text, now3 = Date.now()) {
     changed.set(e, bump(e, { ...geometry, originalText: body, fontSize }));
   });
   const extra = blocks.slice(old.length);
-  const live = note.elements.map((e) => changed.get(e) ?? e).filter((e) => e.isDeleted !== true);
-  const left = old.length ? Math.min(...old.map((e) => Number(e.x) || 0)) : 0;
-  const bottom = live.length ? Math.max(...live.map((e) => (Number(e.y) || 0) + (Number(e.height) || 0))) + GAP : 0;
-  const maxIndex = note.elements.reduce(
-    (m, e) => typeof e.index === "string" && e.index > m ? e.index : m,
-    ""
-  );
+  const elements = note.elements.map((e) => changed.get(e) ?? e);
+  const { left, bottom, nextIndex } = appendAt(elements);
   const added = extra.map((b, i) => ({
     ...b,
     x: left,
     y: bottom + b.y - extra[0].y,
-    index: `${maxIndex}${orderKey(i)}V`
+    index: nextIndex(i)
   }));
-  return { ...note, elements: [...note.elements.map((e) => changed.get(e) ?? e), ...added] };
+  return { ...note, elements: [...elements, ...added] };
+}
+function appendAt(elements) {
+  const live = elements.filter((e) => e.isDeleted !== true);
+  const texts = readingOrder(elements);
+  const maxIndex = elements.reduce(
+    (m, e) => typeof e.index === "string" && e.index > m ? e.index : m,
+    ""
+  );
+  return {
+    left: texts.length ? Math.min(...texts.map((e) => Number(e.x) || 0)) : 0,
+    bottom: live.length ? Math.max(...live.map((e) => (Number(e.y) || 0) + (Number(e.height) || 0))) + GAP : 0,
+    nextIndex: (i) => `${maxIndex}${orderKey(i)}V`
+  };
+}
+var EMBED_ORIGIN = SITE_ORIGINS[0];
+function hasBoardEmbed(note, boardId) {
+  return note.elements.some(
+    (e) => e.type === "embeddable" && e.isDeleted !== true && typeof e.link === "string" && parseBoardLink(e.link, EMBED_ORIGIN) === boardId
+  );
+}
+var EMBED_SHIFT = EMBED_SIZE.height + 60;
+var num = (v) => Number(v) || 0;
+var overlaps = (a, b) => num(a.x) < num(b.x) + num(b.width) && num(b.x) < num(a.x) + num(a.width) && num(a.y) < num(b.y) + num(b.height) && num(b.y) < num(a.y) + num(a.height);
+function embedInNote(note, boardId, after, now3 = Date.now()) {
+  const { left, bottom, nextIndex } = appendAt(note.elements);
+  const embed = (pos) => ({
+    ...newEmbeddable(pos, boardEmbedLink(boardId, EMBED_ORIGIN)),
+    index: nextIndex(0),
+    updated: now3
+  });
+  if (after === void 0) return { ...note, elements: [...note.elements, embed({ x: left, y: bottom })] };
+  const prefix = after.trim();
+  const texts = readingOrder(note.elements);
+  const hits = prefix ? texts.filter((t) => t.text.trim().startsWith(prefix)) : [];
+  if (hits.length === 0) throw new RangeError(`No hay ning\xFAn bloque que empiece por \xAB${prefix}\xBB.`);
+  if (hits.length > 1)
+    throw new RangeError(`Hay ${hits.length} bloques que empiezan por \xAB${prefix}\xBB: da m\xE1s texto del bloque.`);
+  const byId = new Map(note.elements.map((e) => [e.id, e]));
+  const root = (e) => {
+    const box = e.containerId != null && byId.get(e.containerId) || e;
+    return box.frameId != null && byId.get(box.frameId) || box;
+  };
+  const anchor = hits[0].containerId != null && byId.get(hits[0].containerId) || hits[0];
+  if (root(anchor) !== anchor)
+    throw new RangeError("El bloque est\xE1 dentro de un marco: usa otro bloque o sin `after`.");
+  const line = num(anchor.y) + num(anchor.height);
+  const moved = /* @__PURE__ */ new Set();
+  const elements = note.elements.map((e) => {
+    if (e.isDeleted === true || num(root(e).y) < line) return e;
+    const next = {
+      ...e,
+      y: num(e.y) + EMBED_SHIFT,
+      version: num(e.version) + 1,
+      versionNonce: rand(),
+      updated: now3
+    };
+    moved.add(next);
+    return next;
+  });
+  const added = embed({ x: num(anchor.x), y: line + GAP });
+  const blocked = elements.some((e) => e.isDeleted !== true && !moved.has(e) && overlaps(e, added));
+  const order = (els) => readingOrder(els).map((e) => e.id).join(" ");
+  if (blocked || order(elements) !== order(note.elements))
+    throw new RangeError("No hay sitio limpio debajo de ese bloque: usa otro bloque o sin `after`.");
+  return { ...note, elements: [...elements, added] };
 }
 function noteSummary(elements) {
   const byType = {};
@@ -1364,14 +1471,14 @@ function noteImages(note) {
   }
   return out;
 }
-var BOARD_PATH = /^\/embed\/board\/([\w-]+)\/?$/;
+var BOARD_PATH2 = /^\/embed\/board\/([\w-]+)\/?$/;
 function noteEmbeds(elements) {
   const ids = /* @__PURE__ */ new Set();
   for (const e of elements) {
     if (e.type !== "embeddable" || e.isDeleted === true || typeof e.link !== "string") continue;
     try {
       const u = new URL(e.link);
-      const m = BOARD_PATH.exec(u.pathname);
+      const m = BOARD_PATH2.exec(u.pathname);
       if (m && !u.search && !u.hash) ids.add(m[1]);
     } catch {
     }
@@ -1741,6 +1848,42 @@ var updateNote = denied(
     };
   }
 );
+var embedBoard = denied(
+  async (ctx, args) => {
+    if (!ID_RE.test(args.boardId)) throw new ToolError(400, "Id de diagrama no v\xE1lido.");
+    const { project: board } = await loadProject(ctx, args.boardId, "board");
+    await loadProject(ctx, args.id, "note");
+    const { revision } = await saveWithRetry(
+      ctx,
+      args.id,
+      async () => {
+        const { data, revision: read } = await loadContent(ctx, args.id);
+        let note;
+        try {
+          note = decodeNote(data);
+        } catch (e) {
+          throw new ToolError(400, e instanceof Error ? e.message : "La nota est\xE1 da\xF1ada.");
+        }
+        if (hasBoardEmbed(note, args.boardId))
+          throw new ToolError(409, "Ese diagrama ya est\xE1 incrustado en la nota.");
+        let next;
+        try {
+          next = embedInNote(note, args.boardId, args.after, now2(ctx));
+        } catch (e) {
+          if (e instanceof RangeError) throw new ToolError(400, e.message);
+          throw e;
+        }
+        return { read, data: encodeOrFail(next), out: void 0 };
+      },
+      "La nota"
+    );
+    const where3 = args.after === void 0 ? "al final" : `debajo de \xAB${args.after.trim()}\xBB`;
+    return {
+      text: `Diagrama \xAB${board.title}\xBB (${args.boardId}) incrustado en la nota ${where3} (revisi\xF3n ${revision}).`,
+      data: { id: args.id, boardId: args.boardId, revision }
+    };
+  }
+);
 
 // src/server/mcpServer.ts
 async function run(ctx, tool, args, fn) {
@@ -1829,6 +1972,20 @@ function createMcpServer(mcp) {
       }
     },
     (a) => run(mcp, "update_note", a, () => updateNote(ctx, a))
+  );
+  server.registerTool(
+    "embed_board",
+    {
+      description: "Incrusta un diagrama existente en una nota, como \xABInsertar diagrama\xBB de la app. Sin `after`, al final; con `after`, debajo del \xFAnico bloque de texto que empieza por ese texto (tal como lo muestra read_note) y lo de debajo baja para dejarle sitio. Hace falta poder editar la nota (due\xF1o o editor) y leer el diagrama.",
+      inputSchema: {
+        id: id.describe("Id de la nota (de list_projects)."),
+        boardId: id.describe("Id del diagrama que se incrusta (de list_projects)."),
+        after: z.string().min(1).max(2e3).optional().describe(
+          "Inicio del texto del bloque tras el que va el diagrama; debe identificar un solo bloque."
+        )
+      }
+    },
+    (a) => run(mcp, "embed_board", a, () => embedBoard(ctx, a))
   );
   server.registerTool(
     "create_folder",

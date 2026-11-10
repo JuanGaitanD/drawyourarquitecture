@@ -8,6 +8,7 @@ import {
   MAX_TITLE,
   createBoard,
   createNote,
+  embedBoard,
   listProjects,
   readBoard,
   readNote,
@@ -143,6 +144,26 @@ export function createMcpServer(mcp: McpContext): McpServer {
       },
     },
     (a) => run(mcp, 'update_note', a, () => updateNote(ctx, a)),
+  );
+  server.registerTool(
+    'embed_board',
+    {
+      description:
+        'Incrusta un diagrama existente en una nota, como «Insertar diagrama» de la app. Sin `after`, al final; con `after`, debajo del único bloque de texto que empieza por ese texto (tal como lo muestra read_note) y lo de debajo baja para dejarle sitio. Hace falta poder editar la nota (dueño o editor) y leer el diagrama.',
+      inputSchema: {
+        id: id.describe('Id de la nota (de list_projects).'),
+        boardId: id.describe('Id del diagrama que se incrusta (de list_projects).'),
+        after: z
+          .string()
+          .min(1)
+          .max(2000)
+          .optional()
+          .describe(
+            'Inicio del texto del bloque tras el que va el diagrama; debe identificar un solo bloque.',
+          ),
+      },
+    },
+    (a) => run(mcp, 'embed_board', a, () => embedBoard(ctx, a)),
   );
   // Las de carpetas no pasan `id` a `run`: la auditoría guarda ids de proyecto, no de carpeta.
   server.registerTool(

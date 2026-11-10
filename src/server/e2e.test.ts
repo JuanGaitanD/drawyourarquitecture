@@ -82,6 +82,7 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
         'create_folder',
         'create_note',
         'delete_folder',
+        'embed_board',
         'list_projects',
         'move_project',
         'read_board',
@@ -183,6 +184,7 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
       await call(client, 'read_board', { id: 'no-existe' });
       await call(client, 'update_note', { id, text: 'y' });
       await call(client, 'create_folder', { name: 'Auditada' });
+      await call(client, 'embed_board', { id, boardId: 'no-existe' });
     } finally {
       await client.close();
     }
@@ -197,6 +199,7 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
     expect(byTool('update_note')[0]).toMatchObject({ ok: true, projectId: id });
     expect(byTool('create_folder')[0]).toMatchObject({ ok: true });
     expect(byTool('create_folder')[0]).not.toHaveProperty('projectId');
+    expect(byTool('embed_board')[0]).toMatchObject({ ok: false, projectId: id });
     expect(rows.every((r) => r.expireAt.toMillis() > Date.now())).toBe(true);
   });
 

@@ -4,10 +4,11 @@ import { decode } from '../domain/codec';
 import { validateBoardContent } from '../editors/board/model/validate';
 import { getAdminAuth, getAdminDb } from './admin';
 import { ToolError, authenticate } from './authz';
-import { buildNote, decodeNote, encodeNote, noteText } from './note';
+import { EMBED_SHIFT, buildNote, decodeNote, encodeNote, noteEmbeds, noteText } from './note';
 import { EMULATOR, OWNER, loadRules, seedProject, seedToken, uniq, userCtx } from './testkit';
 import { closeUserDbs } from './userDb';
 import {
+  embedBoard,
   createBoard,
   createNote,
   listProjects,
@@ -470,6 +471,69 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
       const viewer = await as(VIEWER);
       expect(((await readBoard(viewer, { id })).data as { nodes: unknown[] }).nodes).toHaveLength(3000);
       expect(await status(updateBoard(viewer, { id, mermaid: 'flowchart LR\nA-->B' }))).toBe(403);
+    });
+  });
+
+  describe('embed_board', () => {
+    const content = async (id: string) =>
+      (await db.collection('projects').doc(id).collection('content').doc('main').get()).data() as {
+        revision: number;
+        data: string;
+      };
+
+    it('el dueño incrusta y read_note lo lista con su Mermaid; el editor de la nota también puede', async () => {
+      const note = await seedProject(db, { ownerId: OWNER, type: 'note', members: { [EDITOR]: 'editor' } });
+      const board = await seedProject(db, { ownerId: OWNER, title: 'Arquitectura' });
+      // El editor de la nota tiene que poder leer el diagrama que incrusta.
+      const other = await seedProject(db, {
+        ownerId: OWNER,
+        title: 'Flujo',
+        members: { [EDITOR]: 'viewer' },
+      });
+      const r = await embedBoard(await as(OWNER), { id: note, boardId: board, after: 'Hola' });
+      expect(r.text).toContain('«Arquitectura»');
+      const read = (await readNote(await as(OWNER), { id: note })).data as {
+        embeds: { boardId: string; mermaid?: string }[];
+      };
+      expect(read.embeds).toEqual([expect.objectContaining({ boardId: board, mermaid: expect.any(String) })]);
+      await embedBoard(await as(EDITOR), { id: note, boardId: other });
+      expect(noteEmbeds(decodeNote((await content(note)).data).elements)).toEqual([board, other]);
+    });
+
+    it('viewer de la nota → 403; diagrama que no puedes leer → 403 con la nota intacta; ya incrustado → 409', async () => {
+      const note = await seedProject(db, { ownerId: OWNER, type: 'note', members: { [VIEWER]: 'viewer' } });
+      const board = await seedProject(db, { ownerId: OWNER, members: { [VIEWER]: 'viewer' } });
+      expect(await status(embedBoard(await as(VIEWER), { id: note, boardId: board }))).toBe(403);
+
+      const foreign = await seedProject(db, { ownerId: STRANGER });
+      const before = await content(note);
+      expect(await status(embedBoard(await as(OWNER), { id: note, boardId: foreign }))).toBe(403);
+      expect(await content(note)).toEqual(before);
+
+      await embedBoard(await as(OWNER), { id: note, boardId: board });
+      expect(await status(embedBoard(await as(OWNER), { id: note, boardId: board, after: 'Hola' }))).toBe(
+        409,
+      );
+      expect(await status(embedBoard(await as(OWNER), { id: note, boardId: 'x/y' }))).toBe(400);
+    });
+
+    it('dos llamadas a la vez: una incrusta y la otra da 409; lo de debajo baja una sola vez y la revisión sube 1', async () => {
+      const note = await seedProject(db, { ownerId: OWNER, type: 'note' });
+      const board = await seedProject(db, { ownerId: OWNER });
+      const before = decodeNote((await content(note)).data).elements.find((e) => e.text === 'mundo')!;
+      const results = await Promise.all(
+        [0, 1].map(async () =>
+          status(embedBoard(await as(OWNER), { id: note, boardId: board, after: 'Hola' })),
+        ),
+      );
+      expect(results.sort()).toEqual([0, 409]);
+      const after = await content(note);
+      const els = decodeNote(after.data).elements;
+      expect(noteEmbeds(els)).toEqual([board]);
+      const mundo = els.find((e) => e.text === 'mundo')!;
+      expect(mundo.y).toBe((before.y as number) + EMBED_SHIFT);
+      expect(mundo.version).toBe((before.version as number) + 1);
+      expect(after.revision).toBe(1);
     });
   });
 });

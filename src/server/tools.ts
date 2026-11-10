@@ -28,6 +28,8 @@ import {
   MAX_NOTE_TEXT,
   buildNote,
   decodeNote,
+  embedInNote,
+  hasBoardEmbed,
   noteEmbeds,
   noteImages,
   noteSummary,
@@ -489,6 +491,49 @@ export const updateNote = denied(
         ...(title !== undefined ? { title } : {}),
         ...(saved ? { revision: saved.revision } : {}),
       },
+    };
+  },
+);
+
+/**
+ * Incrusta un diagrama en una nota (el mismo elemento que «Insertar diagrama» de la app): al final o debajo del bloque
+ * que empieza por `after`. El diagrama se lee como la persona (si no puede leerlo, las reglas dan 403) y el contenido
+ * se guarda como en `update_note` (un viewer de la nota llega al commit y las reglas lo rechazan: 403). El duplicado
+ * se comprueba en cada intento, tras releer: dos llamadas a la vez no lo incrustan dos veces.
+ */
+export const embedBoard = denied(
+  async (ctx: ToolContext, args: { id: string; boardId: string; after?: string }) => {
+    if (!ID_RE.test(args.boardId)) throw new ToolError(400, 'Id de diagrama no válido.');
+    const { project: board } = await loadProject(ctx, args.boardId, 'board');
+    await loadProject(ctx, args.id, 'note');
+    const { revision } = await saveWithRetry(
+      ctx,
+      args.id,
+      async () => {
+        const { data, revision: read } = await loadContent(ctx, args.id);
+        let note;
+        try {
+          note = decodeNote(data);
+        } catch (e) {
+          throw new ToolError(400, e instanceof Error ? e.message : 'La nota está dañada.');
+        }
+        if (hasBoardEmbed(note, args.boardId))
+          throw new ToolError(409, 'Ese diagrama ya está incrustado en la nota.');
+        let next;
+        try {
+          next = embedInNote(note, args.boardId, args.after, now(ctx));
+        } catch (e) {
+          if (e instanceof RangeError) throw new ToolError(400, e.message);
+          throw e;
+        }
+        return { read, data: encodeOrFail(next), out: undefined };
+      },
+      'La nota',
+    );
+    const where = args.after === undefined ? 'al final' : `debajo de «${args.after.trim()}»`;
+    return {
+      text: `Diagrama «${board.title}» (${args.boardId}) incrustado en la nota ${where} (revisión ${revision}).`,
+      data: { id: args.id, boardId: args.boardId, revision },
     };
   },
 );
