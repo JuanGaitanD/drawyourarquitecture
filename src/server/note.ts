@@ -306,11 +306,32 @@ export const EMBED_SHIFT = EMBED_SIZE.height + 60;
 
 type El = Record<string, unknown>;
 const num = (v: unknown) => Number(v) || 0;
-const overlaps = (a: El, b: El) =>
-  num(a.x) < num(b.x) + num(b.width) &&
-  num(b.x) < num(a.x) + num(a.width) &&
-  num(a.y) < num(b.y) + num(b.height) &&
-  num(b.y) < num(a.y) + num(a.height);
+
+/** Caja en la escena: con los puntos de las flechas y líneas, y girada si tiene `angle` (giro sobre su centro). */
+function bbox(e: El): { x: number; y: number; w: number; h: number } {
+  let x = num(e.x);
+  let y = num(e.y);
+  let w = num(e.width);
+  let h = num(e.height);
+  if (Array.isArray(e.points) && e.points.length > 0) {
+    const xs = (e.points as number[][]).map((p) => num(p[0]));
+    const ys = (e.points as number[][]).map((p) => num(p[1]));
+    x += Math.min(...xs);
+    y += Math.min(...ys);
+    w = Math.max(...xs) - Math.min(...xs);
+    h = Math.max(...ys) - Math.min(...ys);
+  }
+  const a = num(e.angle);
+  if (!a) return { x, y, w, h };
+  const [c, s] = [Math.abs(Math.cos(a)), Math.abs(Math.sin(a))];
+  const [W, H] = [w * c + h * s, w * s + h * c];
+  return { x: x + w / 2 - W / 2, y: y + h / 2 - H / 2, w: W, h: H };
+}
+
+function overlaps(p: El, q: El): boolean {
+  const [a, b] = [bbox(p), bbox(q)];
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
 
 /**
  * Incrusta el diagrama `boardId` con el mismo elemento que «Insertar diagrama» de la app (`newEmbeddable`). Sin
@@ -351,10 +372,11 @@ export function embedInNote(
   if (root(anchor) !== anchor)
     throw new RangeError('El bloque está dentro de un marco: usa otro bloque o sin `after`.');
 
-  const line = num(anchor.y) + num(anchor.height);
-  const moved = new Set<El>();
+  // El ancla y su etiqueta no se mueven nunca (una flecha horizontal mide 0 de alto); el embed va debajo de las dos.
+  const bottomOf = (e: El) => bbox(e).y + bbox(e).h;
+  const line = Math.max(bottomOf(anchor), bottomOf(hits[0]));
   const elements = note.elements.map((e): El => {
-    if (e.isDeleted === true || num(root(e).y) < line) return e;
+    if (e.isDeleted === true || root(e) === anchor || bbox(root(e)).y < line) return e;
     const next = {
       ...e,
       y: num(e.y) + EMBED_SHIFT,
@@ -362,11 +384,11 @@ export function embedInNote(
       versionNonce: rand(),
       updated: now,
     };
-    moved.add(next);
     return next;
   });
-  const added = embed({ x: num(anchor.x), y: line + GAP });
-  const blocked = elements.some((e) => e.isDeleted !== true && !moved.has(e) && overlaps(e, added));
+  const added = embed({ x: bbox(anchor).x, y: line + GAP });
+  // Contra todo lo vivo ya desplazado: lo que no se movió y lo que, aun bajando, seguiría invadiéndolo.
+  const blocked = elements.some((e) => e.isDeleted !== true && overlaps(e, added));
   const order = (els: readonly El[]) =>
     readingOrder(els)
       .map((e) => e.id)

@@ -413,6 +413,37 @@ describe('embedInNote', () => {
     expect(() => embedInNote(note, 'b1', 'Ancla', T)).toThrow(/sitio limpio/);
   });
 
+  it('la etiqueta de una flecha horizontal como ancla: ni la flecha ni la etiqueta bajan; el embed va debajo', () => {
+    const [label, next] = textToElements('Etiqueta\n\nSiguiente', T);
+    const arrow = box('a', {
+      type: 'arrow',
+      y: 100,
+      width: 300,
+      height: 0,
+      points: [
+        [0, 0],
+        [300, 0],
+      ],
+    });
+    const note = {
+      ...buildNote('', T),
+      elements: [arrow, { ...label, y: 87.5, containerId: 'a' }, { ...next, y: 200 }],
+    };
+    const out = embedInNote(note, 'b1', 'Etiqueta', T);
+    expect(out.elements.find((e) => e.id === 'a')!.y).toBe(100);
+    expect(byText(out, 'Etiqueta').y).toBe(87.5);
+    expect(byText(out, 'Siguiente').y).toBe(200 + EMBED_SHIFT);
+    expect(embedOf(out).y).toBe(87.5 + (label.height as number) + 24);
+  });
+
+  it('la guarda de solape tiene en cuenta la rotación: un rectángulo girado que cruza el hueco → error', () => {
+    const [anchor] = textToElements('Ancla', T);
+    // 1000 × 20 en (0, -100) girado 90°: en pantalla ocupa x 490–510, y -590–410.
+    const rotated = box('r', { x: 0, y: -100, width: 1000, height: 20, angle: Math.PI / 2 });
+    const note = { ...buildNote('', T), elements: [anchor, rotated] };
+    expect(() => embedInNote(note, 'b1', 'Ancla', T)).toThrow(/sitio limpio/);
+  });
+
   it('hasBoardEmbed sigue la política de la UI: el enlace de producción cuenta; otro dominio o borrado, no', () => {
     const link = (origin: string, isDeleted = false) => ({
       ...buildNote('', T),

@@ -1405,7 +1405,29 @@ function hasBoardEmbed(note, boardId) {
 }
 var EMBED_SHIFT = EMBED_SIZE.height + 60;
 var num = (v) => Number(v) || 0;
-var overlaps = (a, b) => num(a.x) < num(b.x) + num(b.width) && num(b.x) < num(a.x) + num(a.width) && num(a.y) < num(b.y) + num(b.height) && num(b.y) < num(a.y) + num(a.height);
+function bbox(e) {
+  let x = num(e.x);
+  let y = num(e.y);
+  let w = num(e.width);
+  let h = num(e.height);
+  if (Array.isArray(e.points) && e.points.length > 0) {
+    const xs = e.points.map((p) => num(p[0]));
+    const ys = e.points.map((p) => num(p[1]));
+    x += Math.min(...xs);
+    y += Math.min(...ys);
+    w = Math.max(...xs) - Math.min(...xs);
+    h = Math.max(...ys) - Math.min(...ys);
+  }
+  const a = num(e.angle);
+  if (!a) return { x, y, w, h };
+  const [c, s] = [Math.abs(Math.cos(a)), Math.abs(Math.sin(a))];
+  const [W, H] = [w * c + h * s, w * s + h * c];
+  return { x: x + w / 2 - W / 2, y: y + h / 2 - H / 2, w: W, h: H };
+}
+function overlaps(p, q) {
+  const [a, b] = [bbox(p), bbox(q)];
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
 function embedInNote(note, boardId, after, now3 = Date.now()) {
   const { left, bottom, nextIndex } = appendAt(note.elements);
   const embed = (pos) => ({
@@ -1428,10 +1450,10 @@ function embedInNote(note, boardId, after, now3 = Date.now()) {
   const anchor = hits[0].containerId != null && byId.get(hits[0].containerId) || hits[0];
   if (root(anchor) !== anchor)
     throw new RangeError("El bloque est\xE1 dentro de un marco: usa otro bloque o sin `after`.");
-  const line = num(anchor.y) + num(anchor.height);
-  const moved = /* @__PURE__ */ new Set();
+  const bottomOf = (e) => bbox(e).y + bbox(e).h;
+  const line = Math.max(bottomOf(anchor), bottomOf(hits[0]));
   const elements = note.elements.map((e) => {
-    if (e.isDeleted === true || num(root(e).y) < line) return e;
+    if (e.isDeleted === true || root(e) === anchor || bbox(root(e)).y < line) return e;
     const next = {
       ...e,
       y: num(e.y) + EMBED_SHIFT,
@@ -1439,11 +1461,10 @@ function embedInNote(note, boardId, after, now3 = Date.now()) {
       versionNonce: rand(),
       updated: now3
     };
-    moved.add(next);
     return next;
   });
-  const added = embed({ x: num(anchor.x), y: line + GAP });
-  const blocked = elements.some((e) => e.isDeleted !== true && !moved.has(e) && overlaps(e, added));
+  const added = embed({ x: bbox(anchor).x, y: line + GAP });
+  const blocked = elements.some((e) => e.isDeleted !== true && overlaps(e, added));
   const order = (els) => readingOrder(els).map((e) => e.id).join(" ");
   if (blocked || order(elements) !== order(note.elements))
     throw new RangeError("No hay sitio limpio debajo de ese bloque: usa otro bloque o sin `after`.");
