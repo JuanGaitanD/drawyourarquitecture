@@ -30,15 +30,15 @@ async function getAdminAuth() {
 }
 var b64url = (v) => Buffer.from(v).toString("base64url");
 var CUSTOM_TOKEN_AUD = "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit";
-async function createCustomToken(uid, now2 = Math.floor(Date.now() / 1e3)) {
+async function createCustomToken(uid, now3 = Math.floor(Date.now() / 1e3)) {
   if (usingEmulator()) return (await getAdminAuth()).createCustomToken(uid);
   const sa = parseServiceAccount(process.env.FIREBASE_SERVICE_ACCOUNT);
-  return signCustomToken(uid, sa, now2);
+  return signCustomToken(uid, sa, now3);
 }
-function signCustomToken(uid, sa, now2) {
+function signCustomToken(uid, sa, now3) {
   const head = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const body = b64url(
-    JSON.stringify({ iss: sa.client_email, sub: sa.client_email, aud: CUSTOM_TOKEN_AUD, iat: now2, exp: now2 + 3600, uid })
+    JSON.stringify({ iss: sa.client_email, sub: sa.client_email, aud: CUSTOM_TOKEN_AUD, iat: now3, exp: now3 + 3600, uid })
   );
   const sig = createSign("RSA-SHA256").update(`${head}.${body}`).sign(sa.private_key);
   return `${head}.${body}.${b64url(sig)}`;
@@ -72,6 +72,18 @@ var ToolError = class extends Error {
   }
 };
 var isPermissionDenied = (e) => typeof e === "object" && e !== null && e.code === "permission-denied";
+var ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+var DENIED = "Sin permiso: el proyecto no existe, no tienes acceso o no puedes editarlo.";
+function denied(fn, message = DENIED) {
+  return async (ctx, args) => {
+    try {
+      return await fn(ctx, args);
+    } catch (e) {
+      if (isPermissionDenied(e)) throw new ToolError(403, message);
+      throw e;
+    }
+  };
+}
 var LAST_USED_EVERY_MS = 36e5;
 async function authenticate(db, header) {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? "");
@@ -84,9 +96,9 @@ async function authenticate(db, header) {
   if (!data || data.revoked === true || typeof data.uid !== "string" || data.uid === "") {
     throw new ToolError(401, "Token no v\xE1lido o revocado.");
   }
-  const now2 = Date.now();
-  if (typeof data.lastUsedAt !== "number" || now2 - data.lastUsedAt >= LAST_USED_EVERY_MS) {
-    await ref.update({ lastUsedAt: now2 }).catch(() => void 0);
+  const now3 = Date.now();
+  if (typeof data.lastUsedAt !== "number" || now3 - data.lastUsedAt >= LAST_USED_EVERY_MS) {
+    await ref.update({ lastUsedAt: now3 }).catch(() => void 0);
   }
   return { uid: data.uid, tokenHash };
 }
@@ -144,14 +156,14 @@ import { z } from "zod";
 import * as firestoreSdk from "firebase/firestore";
 import {
   FieldPath,
-  collection as collection2,
-  doc as doc2,
-  getDoc,
-  getDocs,
-  limit,
-  query,
-  updateDoc,
-  where,
+  collection as collection3,
+  doc as doc3,
+  getDoc as getDoc2,
+  getDocs as getDocs2,
+  limit as limit2,
+  query as query2,
+  updateDoc as updateDoc2,
+  where as where2,
   writeBatch
 } from "firebase/firestore";
 
@@ -459,11 +471,11 @@ var isNum = (x) => typeof x === "number" && Number.isFinite(x);
 var STYLE_STRINGS = ["fill", "stroke", "textColor"];
 var STYLE_NUMBERS = ["strokeWidth", "opacity", "fontSize"];
 var fail = (error) => ({ ok: false, error });
-function badNumberPath(x, path, depth = 0) {
-  if (typeof x === "number") return Number.isFinite(x) ? null : path;
+function badNumberPath(x, path2, depth = 0) {
+  if (typeof x === "number") return Number.isFinite(x) ? null : path2;
   if (depth > 12 || typeof x !== "object" || x === null) return null;
   for (const [k, v] of Object.entries(x)) {
-    const p = badNumberPath(v, `${path}.${k}`, depth + 1);
+    const p = badNumberPath(v, `${path2}.${k}`, depth + 1);
     if (p) return p;
   }
   return null;
@@ -966,6 +978,180 @@ function createContentRepo(load) {
   };
 }
 
+// src/server/folders.ts
+import {
+  collection as collection2,
+  deleteDoc,
+  doc as doc2,
+  getDoc,
+  getDocs,
+  limit,
+  query,
+  setDoc,
+  updateDoc,
+  where
+} from "firebase/firestore";
+
+// src/domain/folder.ts
+var MAX_FOLDER_NAME_LENGTH = 40;
+var byName = (a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" });
+function effectiveParent(f, ids) {
+  return f.parentId !== null && ids.has(f.parentId) ? f.parentId : null;
+}
+function childrenOf(folders, parentId) {
+  const ids = new Set(folders.map((f) => f.id));
+  return folders.filter((f) => effectiveParent(f, ids) === parentId).sort(byName);
+}
+function path(folders, id2) {
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  const out = [];
+  for (let cur = byId.get(id2); cur; cur = cur.parentId === null ? void 0 : byId.get(cur.parentId)) {
+    if (out.some((x) => x.id === cur.id)) return null;
+    out.unshift(cur);
+  }
+  return out.length > 0 ? out : null;
+}
+function descendants(folders, id2) {
+  const out = /* @__PURE__ */ new Set();
+  const queue = [id2];
+  while (queue.length > 0) {
+    const cur = queue.pop();
+    for (const f of folders) {
+      if (f.parentId === cur && !out.has(f.id) && f.id !== id2) {
+        out.add(f.id);
+        queue.push(f.id);
+      }
+    }
+  }
+  return out;
+}
+function canMove(folders, id2, newParent) {
+  if (!folders.some((f) => f.id === id2)) return false;
+  if (newParent === null) return true;
+  if (newParent === id2 || !folders.some((f) => f.id === newParent)) return false;
+  return !descendants(folders, id2).has(newParent);
+}
+function flatTree(folders, exclude = /* @__PURE__ */ new Set()) {
+  const out = [];
+  const walk = (parentId, depth) => {
+    for (const f of childrenOf(folders, parentId)) {
+      if (exclude.has(f.id)) continue;
+      out.push({ folder: f, depth });
+      walk(f.id, depth + 1);
+    }
+  };
+  walk(null, 0);
+  return out;
+}
+
+// src/server/folders.ts
+var now = (ctx) => (ctx.now ?? Date.now)();
+var NO_FOLDER = "La carpeta no existe.";
+async function loadFolders(ctx) {
+  const snap = await getDocs(query(collection2(ctx.db, "folders"), where("ownerId", "==", ctx.uid)));
+  return snap.docs.map((d) => {
+    const f = d.data();
+    return { ...f, id: d.id, parentId: typeof f.parentId === "string" ? f.parentId : null };
+  });
+}
+function folderTarget(folders, id2) {
+  if (id2 !== null && !folders.some((f) => f.id === id2)) throw new ToolError(404, NO_FOLDER);
+  return id2;
+}
+function folderLabel(folders, id2) {
+  return id2 && path(folders, id2)?.map((f) => f.name).join(" / ") || "Inicio";
+}
+function folderTree(folders) {
+  return flatTree(folders).map(({ folder, depth }) => ({ id: folder.id, name: folder.name, depth }));
+}
+function folderOf(folders, id2) {
+  const f = folders.find((x) => x.id === id2);
+  if (!f) throw new ToolError(404, NO_FOLDER);
+  return f;
+}
+function folderName(raw) {
+  const name = raw.trim();
+  if (name.length === 0 || name.length > MAX_FOLDER_NAME_LENGTH)
+    throw new ToolError(
+      400,
+      `El nombre de la carpeta debe tener de 1 a ${MAX_FOLDER_NAME_LENGTH} caracteres.`
+    );
+  return name;
+}
+var FOLDER_DENIED = "Sin permiso: tu cuenta no puede crear carpetas o la carpeta no es tuya.";
+var createFolder = denied(
+  async (ctx, args) => {
+    const name = folderName(args.name);
+    const folders = await loadFolders(ctx);
+    const parentId = folderTarget(folders, args.parentId ?? null);
+    const t = now(ctx);
+    const ref = doc2(collection2(ctx.db, "folders"));
+    await setDoc(ref, { ownerId: ctx.uid, name, parentId, createdAt: t, updatedAt: t });
+    return {
+      text: `Carpeta creada: ${ref.id} (\xAB${name}\xBB, en ${folderLabel(folders, parentId)}).`,
+      data: { folderId: ref.id, name, parentId }
+    };
+  },
+  FOLDER_DENIED
+);
+var updateFolder = denied(
+  async (ctx, args) => {
+    if (args.name === void 0 && args.parentId === void 0)
+      throw new ToolError(400, "Indica `name`, `parentId` o ambos.");
+    const name = args.name === void 0 ? void 0 : folderName(args.name);
+    const folders = await loadFolders(ctx);
+    const folder = folderOf(folders, args.id);
+    const patch = { updatedAt: now(ctx) };
+    if (name !== void 0) patch.name = name;
+    if (args.parentId !== void 0) {
+      const parentId2 = folderTarget(folders, args.parentId);
+      if (!canMove(folders, folder.id, parentId2))
+        throw new ToolError(400, "Una carpeta no puede ir dentro de s\xED misma ni de una de sus subcarpetas.");
+      patch.parentId = parentId2;
+    }
+    await updateDoc(doc2(ctx.db, "folders", folder.id), patch);
+    const parentId = patch.parentId === void 0 ? folder.parentId : patch.parentId;
+    return {
+      text: `Carpeta actualizada: ${folder.id} (\xAB${name ?? folder.name}\xBB, en ${folderLabel(folders, parentId)}).`,
+      data: { folderId: folder.id, name: name ?? folder.name, parentId }
+    };
+  },
+  FOLDER_DENIED
+);
+var deleteFolder = denied(async (ctx, args) => {
+  const folders = await loadFolders(ctx);
+  const folder = folderOf(folders, args.id);
+  const inside = await getDocs(
+    query(
+      collection2(ctx.db, "projects"),
+      where("ownerId", "==", ctx.uid),
+      where("folderId", "==", folder.id),
+      limit(1)
+    )
+  );
+  if (childrenOf(folders, folder.id).length > 0 || !inside.empty)
+    throw new ToolError(409, "La carpeta no est\xE1 vac\xEDa: mueve o borra antes su contenido.");
+  await deleteDoc(doc2(ctx.db, "folders", folder.id));
+  return { text: `Carpeta borrada: ${folder.id} (\xAB${folder.name}\xBB).`, data: { folderId: folder.id } };
+}, FOLDER_DENIED);
+var moveProject = denied(
+  async (ctx, args) => {
+    if (!ID_RE.test(args.id)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
+    const ref = doc2(ctx.db, "projects", args.id);
+    const project = (await getDoc(ref)).data();
+    if (!project) throw new ToolError(404, "El proyecto no existe.");
+    if (project.ownerId !== ctx.uid)
+      throw new ToolError(403, "Solo el due\xF1o puede mover un proyecto (las carpetas no se comparten).");
+    const folders = await loadFolders(ctx);
+    const folderId2 = folderTarget(folders, args.folderId);
+    await updateDoc(ref, { folderId: folderId2, updatedAt: now(ctx) });
+    return {
+      text: `Proyecto movido: ${args.id} (\xAB${project.title}\xBB) a ${folderLabel(folders, folderId2)}.`,
+      data: { id: args.id, folderId: folderId2 }
+    };
+  }
+);
+
 // src/server/note.ts
 var MAX_NOTE_TEXT = 2e5;
 var MAX_NOTE_BLOCKS = 2e3;
@@ -1020,7 +1206,7 @@ function wrap(body, fontSize, maxWidth) {
 }
 var segmenter = new Intl.Segmenter();
 var graphemes = (s) => Array.from(segmenter.segment(s), (x) => x.segment);
-function textToElements(text, now2 = Date.now()) {
+function textToElements(text, now3 = Date.now()) {
   const blocks = text.replace(/\r\n?/g, "\n").split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
   if (blocks.length > MAX_NOTE_BLOCKS)
     throw new RangeError(`Demasiados bloques de texto (m\xE1ximo ${MAX_NOTE_BLOCKS}).`);
@@ -1054,7 +1240,7 @@ function textToElements(text, now2 = Date.now()) {
       versionNonce: rand(),
       isDeleted: false,
       boundElements: null,
-      updated: now2,
+      updated: now3,
       link: null,
       locked: false,
       text: body,
@@ -1071,8 +1257,8 @@ function textToElements(text, now2 = Date.now()) {
     return el;
   });
 }
-function buildNote(text, now2) {
-  return { ...emptyNote(), elements: textToElements(text, now2) };
+function buildNote(text, now3) {
+  return { ...emptyNote(), elements: textToElements(text, now3) };
 }
 function decodeNote(data) {
   const raw = decode(data);
@@ -1100,15 +1286,15 @@ function readingOrder(elements) {
   const row = (e) => Math.round((Number(e.y) || 0) / 20);
   return elements.filter((e) => e.type === "text" && e.isDeleted !== true && typeof e.text === "string" && e.text !== "").sort((a, b) => row(a) - row(b) || (Number(a.x) || 0) - (Number(b.x) || 0));
 }
-function replaceNoteText(note, text, now2 = Date.now()) {
-  const blocks = textToElements(text, now2);
+function replaceNoteText(note, text, now3 = Date.now()) {
+  const blocks = textToElements(text, now3);
   const old = readingOrder(note.elements);
   const bump = (e, over) => ({
     ...e,
     ...over,
     version: (Number(e.version) || 1) + 1,
     versionNonce: rand(),
-    updated: now2
+    updated: now3
   });
   const changed = /* @__PURE__ */ new Map();
   const num = (v) => Number(v) || 0;
@@ -1198,8 +1384,7 @@ var MAX_TITLE = 120;
 var MAX_MERMAID = 1e5;
 var LIST_LIMIT = 200;
 var APPEND_GAP = 80;
-var ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
-var now = (ctx) => (ctx.now ?? Date.now)();
+var now2 = (ctx) => (ctx.now ?? Date.now)();
 var repos = /* @__PURE__ */ new WeakMap();
 function contentOf(ctx) {
   let repo = repos.get(ctx.db);
@@ -1209,21 +1394,10 @@ function contentOf(ctx) {
   }
   return repo;
 }
-var DENIED = "Sin permiso: el proyecto no existe, no tienes acceso o no puedes editarlo.";
-function denied(fn) {
-  return async (ctx, args) => {
-    try {
-      return await fn(ctx, args);
-    } catch (e) {
-      if (isPermissionDenied(e)) throw new ToolError(403, DENIED);
-      throw e;
-    }
-  };
-}
 async function loadProject(ctx, id2, type) {
   if (!ID_RE.test(id2)) throw new ToolError(400, "Id de proyecto no v\xE1lido.");
-  const ref = doc2(ctx.db, "projects", id2);
-  const project = (await getDoc(ref)).data();
+  const ref = doc3(ctx.db, "projects", id2);
+  const project = (await getDoc2(ref)).data();
   if (!project) throw new ToolError(404, "El proyecto no existe.");
   if (type && project.type !== type) {
     throw new ToolError(
@@ -1251,14 +1425,22 @@ function checkTitle(title2) {
     throw new ToolError(400, `El t\xEDtulo admite ${MAX_TITLE} caracteres como m\xE1ximo.`);
   return normalizeTitle(title2);
 }
-async function createProject(ctx, type, title2, data) {
-  const t = now(ctx);
-  const ref = doc2(collection2(ctx.db, "projects"));
+async function createProject(ctx, type, title2, data, folderId2) {
+  const t = now2(ctx);
+  const ref = doc3(collection3(ctx.db, "projects"));
   const batch = writeBatch(ctx.db);
   const big = byteLength(data) > DOC_CONTENT_BYTES;
   const initial = big ? encode(type === "note" ? buildNote("", t) : emptyBoard()) : data;
-  batch.set(ref, { ownerId: ctx.uid, type, title: title2, isPublic: false, createdAt: t, updatedAt: t });
-  batch.set(doc2(ref, "content", "main"), { data: initial, schemaVersion: 1, revision: 0, updatedAt: t });
+  batch.set(ref, {
+    ownerId: ctx.uid,
+    type,
+    title: title2,
+    isPublic: false,
+    ...folderId2 ? { folderId: folderId2 } : {},
+    createdAt: t,
+    updatedAt: t
+  });
+  batch.set(doc3(ref, "content", "main"), { data: initial, schemaVersion: 1, revision: 0, updatedAt: t });
   try {
     await batch.commit();
     if (big) {
@@ -1291,28 +1473,38 @@ async function boardFromMermaid(src) {
   return checked.value;
 }
 var listProjects = denied(async (ctx, args) => {
-  const col = collection2(ctx.db, "projects");
-  const [own, shared] = await Promise.all([
-    getDocs(query(col, where("ownerId", "==", ctx.uid), limit(LIST_LIMIT))),
-    getDocs(
-      query(col, where(new FieldPath("members", ctx.uid), "in", ["editor", "viewer"]), limit(LIST_LIMIT))
+  const col = collection3(ctx.db, "projects");
+  const [folders, own, shared] = await Promise.all([
+    loadFolders(ctx),
+    getDocs2(query2(col, where2("ownerId", "==", ctx.uid), limit2(LIST_LIMIT))),
+    getDocs2(
+      query2(col, where2(new FieldPath("members", ctx.uid), "in", ["editor", "viewer"]), limit2(LIST_LIMIT))
     )
   ]);
   const seen = /* @__PURE__ */ new Set();
   const projects = [...own.docs, ...shared.docs].filter((d) => !seen.has(d.id) && seen.add(d.id)).map((d) => {
     const p = d.data();
-    const role = p.ownerId === ctx.uid ? "owner" : p.members?.[ctx.uid] ?? "viewer";
+    const mine = p.ownerId === ctx.uid;
+    const role = mine ? "owner" : p.members?.[ctx.uid] ?? "viewer";
+    const folderId2 = mine && p.folderId && folders.some((f) => f.id === p.folderId) ? p.folderId : null;
     return {
       id: d.id,
       type: p.type,
       title: p.title,
       isPublic: p.isPublic === true,
       role,
+      folderId: folderId2,
       updatedAt: p.updatedAt
     };
   }).filter((p) => !args.type || p.type === args.type).sort((a, b) => b.updatedAt - a.updatedAt);
-  const text = projects.length ? projects.map((p) => `- ${p.id} \xB7 ${p.type} \xB7 ${p.title} (${p.role})`).join("\n") : "No hay proyectos.";
-  return { text, data: { projects } };
+  const tree = folderTree(folders);
+  const located = (folderId2) => folderId2 ? ` \xB7 en ${folderLabel(folders, folderId2)}` : "";
+  const text = [
+    projects.length ? projects.map((p) => `- ${p.id} \xB7 ${p.type} \xB7 ${p.title} (${p.role})${located(p.folderId)}`).join("\n") : "No hay proyectos.",
+    tree.length ? `## Carpetas
+${tree.map((f) => `${"  ".repeat(f.depth)}- ${f.id} \xB7 ${f.name}`).join("\n")}` : ""
+  ].filter(Boolean).join("\n\n");
+  return { text, data: { projects, folders: tree } };
 });
 async function loadBoard(ctx, id2) {
   const { project } = await loadProject(ctx, id2, "board");
@@ -1407,29 +1599,45 @@ ${JSON.stringify({ nodes, edges })}`,
     data: { ...json, mermaid: mermaid2 }
   };
 });
-var createNote = denied(async (ctx, args) => {
-  const title2 = checkTitle(args.title);
-  if (args.text.length > MAX_NOTE_TEXT)
-    throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como m\xE1ximo.`);
-  let data;
-  try {
-    data = encodeOrFail(buildNote(args.text, now(ctx)));
-  } catch (e) {
-    if (e instanceof RangeError) throw new ToolError(413, e.message);
-    throw e;
+async function creationFolder(ctx, folderId2) {
+  if (folderId2 === void 0) return [null, ""];
+  const folders = await loadFolders(ctx);
+  const id2 = folderTarget(folders, folderId2);
+  return [id2, ` en \xAB${folderLabel(folders, id2)}\xBB`];
+}
+var createNote = denied(
+  async (ctx, args) => {
+    const title2 = checkTitle(args.title);
+    if (args.text.length > MAX_NOTE_TEXT)
+      throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como m\xE1ximo.`);
+    let data;
+    try {
+      data = encodeOrFail(buildNote(args.text, now2(ctx)));
+    } catch (e) {
+      if (e instanceof RangeError) throw new ToolError(413, e.message);
+      throw e;
+    }
+    const [folderId2, where3] = await creationFolder(ctx, args.folderId);
+    const id2 = await createProject(ctx, "note", title2, data, folderId2);
+    return {
+      text: `Nota creada: ${id2} (\xAB${title2}\xBB)${where3}. \xC1brela en /note/${id2}.`,
+      data: { id: id2, title: title2, folderId: folderId2 }
+    };
   }
-  const id2 = await createProject(ctx, "note", title2, data);
-  return { text: `Nota creada: ${id2} (\xAB${title2}\xBB). \xC1brela en /note/${id2}.`, data: { id: id2, title: title2 } };
-});
-var createBoard = denied(async (ctx, args) => {
-  const title2 = checkTitle(args.title);
-  const board = await boardFromMermaid(args.mermaid);
-  const id2 = await createProject(ctx, "board", title2, encodeOrFail(board));
-  return {
-    text: `Diagrama creado: ${id2} (\xAB${title2}\xBB, ${board.nodes.length} nodos, ${board.edges.length} aristas). \xC1brelo en /board/${id2}.`,
-    data: { id: id2, title: title2, nodes: board.nodes.length, edges: board.edges.length }
-  };
-});
+);
+var createBoard = denied(
+  async (ctx, args) => {
+    const title2 = checkTitle(args.title);
+    const board = await boardFromMermaid(args.mermaid);
+    const data = encodeOrFail(board);
+    const [folderId2, where3] = await creationFolder(ctx, args.folderId);
+    const id2 = await createProject(ctx, "board", title2, data, folderId2);
+    return {
+      text: `Diagrama creado: ${id2} (\xAB${title2}\xBB, ${board.nodes.length} nodos, ${board.edges.length} aristas)${where3}. \xC1brelo en /board/${id2}.`,
+      data: { id: id2, title: title2, folderId: folderId2, nodes: board.nodes.length, edges: board.edges.length }
+    };
+  }
+);
 function placeBelow(base, add) {
   if (base.nodes.length === 0) return add.nodes;
   let left = Infinity;
@@ -1496,7 +1704,7 @@ var updateNote = denied(
     if (text !== void 0 && text.length > MAX_NOTE_TEXT)
       throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como m\xE1ximo.`);
     const { ref } = await loadProject(ctx, args.id, "note");
-    if (title2 !== void 0) await updateDoc(ref, { title: title2, updatedAt: now(ctx) });
+    if (title2 !== void 0) await updateDoc2(ref, { title: title2, updatedAt: now2(ctx) });
     const saved = text === void 0 ? void 0 : await saveWithRetry(
       ctx,
       args.id,
@@ -1510,7 +1718,7 @@ var updateNote = denied(
         }
         let next;
         try {
-          next = encodeOrFail(replaceNoteText(note, text, now(ctx)));
+          next = encodeOrFail(replaceNoteText(note, text, now2(ctx)));
         } catch (e) {
           if (e instanceof RangeError) throw new ToolError(413, e.message);
           throw e;
@@ -1552,13 +1760,16 @@ async function run(ctx, tool, args, fn) {
 var id = z.string().min(1).max(128).describe("Id del proyecto (de list_projects).");
 var title = z.string().min(1).max(MAX_TITLE).describe("T\xEDtulo del proyecto.");
 var mermaid = z.string().min(1).max(MAX_MERMAID).describe("Flowchart de Mermaid (flowchart/graph con LR, TD\u2026; admite subgraph).");
+var folderId = z.string().min(1).max(128);
+var folderName2 = z.string().max(MAX_FOLDER_NAME_LENGTH * 2).describe(`Nombre de la carpeta (1 a ${MAX_FOLDER_NAME_LENGTH} caracteres).`);
+var inFolder = folderId.optional().describe("Id de una carpeta tuya (de list_projects); sin \xE9l, en Inicio.");
 function createMcpServer(mcp) {
   const ctx = { db: mcp.db, uid: mcp.identity.uid };
   const server = new McpServer({ name: "dya", version: "0.1.0" });
   server.registerTool(
     "list_projects",
     {
-      description: "Lista los proyectos propios y los compartidos contigo (notas y diagramas).",
+      description: "Lista los proyectos propios y los compartidos contigo (notas y diagramas), con la carpeta de los tuyos, y tus carpetas en \xE1rbol con su id.",
       inputSchema: { type: z.enum(["note", "board"]).optional().describe("Filtra por tipo.") }
     },
     (a) => run(mcp, "list_projects", {}, () => listProjects(ctx, a))
@@ -1583,7 +1794,11 @@ function createMcpServer(mcp) {
     "create_note",
     {
       description: "Crea una nota con bloques de texto (separados por una l\xEDnea en blanco; \xAB# \xBB, \xAB## \xBB y \xAB### \xBB al inicio hacen t\xEDtulos).",
-      inputSchema: { title, text: z.string().max(MAX_NOTE_TEXT).describe("Texto de la nota.") }
+      inputSchema: {
+        title,
+        text: z.string().max(MAX_NOTE_TEXT).describe("Texto de la nota."),
+        folderId: inFolder
+      }
     },
     (a) => run(mcp, "create_note", {}, () => createNote(ctx, a))
   );
@@ -1591,7 +1806,7 @@ function createMcpServer(mcp) {
     "create_board",
     {
       description: "Crea un diagrama desde un flowchart de Mermaid y lo ordena autom\xE1ticamente.",
-      inputSchema: { title, mermaid }
+      inputSchema: { title, mermaid, folderId: inFolder }
     },
     (a) => run(mcp, "create_board", {}, () => createBoard(ctx, a))
   );
@@ -1614,6 +1829,48 @@ function createMcpServer(mcp) {
       }
     },
     (a) => run(mcp, "update_note", a, () => updateNote(ctx, a))
+  );
+  server.registerTool(
+    "create_folder",
+    {
+      description: "Crea una carpeta tuya, en Inicio o dentro de otra (`parentId`).",
+      inputSchema: {
+        name: folderName2,
+        parentId: folderId.optional().describe("Id de la carpeta padre (de list_projects); sin \xE9l, en Inicio.")
+      }
+    },
+    (a) => run(mcp, "create_folder", {}, () => createFolder(ctx, a))
+  );
+  server.registerTool(
+    "update_folder",
+    {
+      description: "Renombra una carpeta tuya (`name`) y/o la mueve (`parentId`; `null` = Inicio). No puede ir dentro de s\xED misma ni de una subcarpeta suya. Al menos uno de los dos.",
+      inputSchema: {
+        id: folderId.describe("Id de la carpeta (de list_projects)."),
+        name: folderName2.optional(),
+        parentId: folderId.nullable().optional().describe("Nueva carpeta padre; `null` = Inicio.")
+      }
+    },
+    (a) => run(mcp, "update_folder", {}, () => updateFolder(ctx, a))
+  );
+  server.registerTool(
+    "delete_folder",
+    {
+      description: "Borra una carpeta tuya si est\xE1 vac\xEDa (sin proyectos ni subcarpetas); si no, 409.",
+      inputSchema: { id: folderId.describe("Id de la carpeta (de list_projects).") }
+    },
+    (a) => run(mcp, "delete_folder", {}, () => deleteFolder(ctx, a))
+  );
+  server.registerTool(
+    "move_project",
+    {
+      description: "Mueve un proyecto tuyo a una carpeta tuya o a Inicio (`folderId: null`).",
+      inputSchema: {
+        id,
+        folderId: folderId.nullable().describe("Carpeta destino (de list_projects); `null` = Inicio.")
+      }
+    },
+    (a) => run(mcp, "move_project", a, () => moveProject(ctx, a))
   );
   return server;
 }

@@ -22,7 +22,8 @@ import { autoLayout } from '../editors/board/model/layout';
 import { parseFlowchart, toFlowchart } from '../editors/board/model/mermaid';
 import { validateBoardContent } from '../editors/board/model/validate';
 import { createContentRepo } from '../infrastructure/firebase/contentRepo';
-import { ToolError, isPermissionDenied } from './authz';
+import { ID_RE, ToolError, denied, isPermissionDenied } from './authz';
+import { folderLabel, folderTarget, folderTree, loadFolders } from './folders';
 import {
   MAX_NOTE_TEXT,
   buildNote,
@@ -52,7 +53,6 @@ export const MAX_MERMAID = 100_000;
 const LIST_LIMIT = 200;
 const APPEND_GAP = 80;
 
-const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const now = (ctx: ToolContext) => (ctx.now ?? Date.now)();
 
 // El contenido se lee y escribe con el mismo repositorio que la app (troceado a partir de 900 000 bytes, revisión
@@ -67,27 +67,14 @@ function contentOf(ctx: ToolContext): ContentRepo {
   return repo;
 }
 
-interface ProjectDoc {
+export interface ProjectDoc {
   ownerId: string;
+  folderId?: string | null;
   isPublic?: boolean;
   members?: Record<string, string>;
   type: ProjectType;
   title: string;
   updatedAt: number;
-}
-
-const DENIED = 'Sin permiso: el proyecto no existe, no tienes acceso o no puedes editarlo.';
-
-/** Envuelve una herramienta: lo que las reglas de Firestore rechazan sale como 403. */
-function denied<A>(fn: (ctx: ToolContext, args: A) => Promise<ToolResult>) {
-  return async (ctx: ToolContext, args: A): Promise<ToolResult> => {
-    try {
-      return await fn(ctx, args);
-    } catch (e) {
-      if (isPermissionDenied(e)) throw new ToolError(403, DENIED);
-      throw e;
-    }
-  };
 }
 
 async function loadProject(
@@ -136,6 +123,7 @@ async function createProject(
   type: ProjectType,
   title: string,
   data: string,
+  folderId: string | null,
 ): Promise<string> {
   const t = now(ctx);
   const ref = doc(collection(ctx.db, 'projects'));
@@ -144,7 +132,15 @@ async function createProject(
   // continuación con `save` (troceado), como hace la app al guardar.
   const big = byteLength(data) > DOC_CONTENT_BYTES;
   const initial = big ? encode(type === 'note' ? buildNote('', t) : emptyBoard()) : data;
-  batch.set(ref, { ownerId: ctx.uid, type, title, isPublic: false, createdAt: t, updatedAt: t });
+  batch.set(ref, {
+    ownerId: ctx.uid,
+    type,
+    title,
+    isPublic: false,
+    ...(folderId ? { folderId } : {}),
+    createdAt: t,
+    updatedAt: t,
+  });
   batch.set(doc(ref, 'content', 'main'), { data: initial, schemaVersion: 1, revision: 0, updatedAt: t });
   try {
     await batch.commit();
@@ -184,7 +180,8 @@ async function boardFromMermaid(src: string): Promise<BoardContent> {
 
 export const listProjects = denied(async (ctx: ToolContext, args: { type?: ProjectType }) => {
   const col = collection(ctx.db, 'projects');
-  const [own, shared] = await Promise.all([
+  const [folders, own, shared] = await Promise.all([
+    loadFolders(ctx),
     getDocs(query(col, where('ownerId', '==', ctx.uid), limit(LIST_LIMIT))),
     getDocs(
       query(col, where(new FieldPath('members', ctx.uid), 'in', ['editor', 'viewer']), limit(LIST_LIMIT)),
@@ -195,22 +192,36 @@ export const listProjects = denied(async (ctx: ToolContext, args: { type?: Proje
     .filter((d) => !seen.has(d.id) && seen.add(d.id))
     .map((d) => {
       const p = d.data() as ProjectDoc;
-      const role = p.ownerId === ctx.uid ? 'owner' : (p.members?.[ctx.uid] ?? 'viewer');
+      const mine = p.ownerId === ctx.uid;
+      const role = mine ? 'owner' : (p.members?.[ctx.uid] ?? 'viewer');
+      // Una carpeta que ya no existe cuenta como Inicio (como en el panel); las de otra persona no se ven.
+      const folderId = mine && p.folderId && folders.some((f) => f.id === p.folderId) ? p.folderId : null;
       return {
         id: d.id,
         type: p.type,
         title: p.title,
         isPublic: p.isPublic === true,
         role,
+        folderId,
         updatedAt: p.updatedAt,
       };
     })
     .filter((p) => !args.type || p.type === args.type)
     .sort((a, b) => b.updatedAt - a.updatedAt);
-  const text = projects.length
-    ? projects.map((p) => `- ${p.id} · ${p.type} · ${p.title} (${p.role})`).join('\n')
-    : 'No hay proyectos.';
-  return { text, data: { projects } };
+  // El agente solo recibe el texto: los ids de las carpetas van en él (también las vacías).
+  const tree = folderTree(folders);
+  const located = (folderId: string | null) => (folderId ? ` · en ${folderLabel(folders, folderId)}` : '');
+  const text = [
+    projects.length
+      ? projects.map((p) => `- ${p.id} · ${p.type} · ${p.title} (${p.role})${located(p.folderId)}`).join('\n')
+      : 'No hay proyectos.',
+    tree.length
+      ? `## Carpetas\n${tree.map((f) => `${'  '.repeat(f.depth)}- ${f.id} · ${f.name}`).join('\n')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  return { text, data: { projects, folders: tree } };
 });
 
 /** Proyecto board → contenido validado. Las reglas rechazan lo que no puedes leer (`permission-denied`). */
@@ -306,30 +317,51 @@ export const readBoard = denied(async (ctx: ToolContext, args: { id: string }) =
   };
 });
 
-export const createNote = denied(async (ctx: ToolContext, args: { title: string; text: string }) => {
-  const title = checkTitle(args.title);
-  if (args.text.length > MAX_NOTE_TEXT)
-    throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como máximo.`);
-  let data: string;
-  try {
-    data = encodeOrFail(buildNote(args.text, now(ctx)));
-  } catch (e) {
-    if (e instanceof RangeError) throw new ToolError(413, e.message);
-    throw e;
-  }
-  const id = await createProject(ctx, 'note', title, data);
-  return { text: `Nota creada: ${id} («${title}»). Ábrela en /note/${id}.`, data: { id, title } };
-});
+/** Carpeta en la que nace un proyecto (propia y existente: 404 si no) y su ruta para el mensaje; sin ella, Inicio. */
+async function creationFolder(
+  ctx: ToolContext,
+  folderId: string | undefined,
+): Promise<[string | null, string]> {
+  if (folderId === undefined) return [null, ''];
+  const folders = await loadFolders(ctx);
+  const id = folderTarget(folders, folderId);
+  return [id, ` en «${folderLabel(folders, id)}»`];
+}
 
-export const createBoard = denied(async (ctx: ToolContext, args: { title: string; mermaid: string }) => {
-  const title = checkTitle(args.title);
-  const board = await boardFromMermaid(args.mermaid);
-  const id = await createProject(ctx, 'board', title, encodeOrFail(board));
-  return {
-    text: `Diagrama creado: ${id} («${title}», ${board.nodes.length} nodos, ${board.edges.length} aristas). Ábrelo en /board/${id}.`,
-    data: { id, title, nodes: board.nodes.length, edges: board.edges.length },
-  };
-});
+export const createNote = denied(
+  async (ctx: ToolContext, args: { title: string; text: string; folderId?: string }) => {
+    const title = checkTitle(args.title);
+    if (args.text.length > MAX_NOTE_TEXT)
+      throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como máximo.`);
+    let data: string;
+    try {
+      data = encodeOrFail(buildNote(args.text, now(ctx)));
+    } catch (e) {
+      if (e instanceof RangeError) throw new ToolError(413, e.message);
+      throw e;
+    }
+    const [folderId, where] = await creationFolder(ctx, args.folderId);
+    const id = await createProject(ctx, 'note', title, data, folderId);
+    return {
+      text: `Nota creada: ${id} («${title}»)${where}. Ábrela en /note/${id}.`,
+      data: { id, title, folderId },
+    };
+  },
+);
+
+export const createBoard = denied(
+  async (ctx: ToolContext, args: { title: string; mermaid: string; folderId?: string }) => {
+    const title = checkTitle(args.title);
+    const board = await boardFromMermaid(args.mermaid);
+    const data = encodeOrFail(board);
+    const [folderId, where] = await creationFolder(ctx, args.folderId);
+    const id = await createProject(ctx, 'board', title, data, folderId);
+    return {
+      text: `Diagrama creado: ${id} («${title}», ${board.nodes.length} nodos, ${board.edges.length} aristas)${where}. Ábrelo en /board/${id}.`,
+      data: { id, title, folderId, nodes: board.nodes.length, edges: board.edges.length },
+    };
+  },
+);
 
 /** Coloca los nodos de primer nivel de `add` bajo `base`, alineados a su izquierda. Los hijos van relativos: no se tocan. */
 function placeBelow(base: BoardContent, add: BoardContent): BoardNode[] {
