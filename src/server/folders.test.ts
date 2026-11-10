@@ -103,6 +103,7 @@ describe.skipIf(!EMULATOR)('carpetas por MCP · emulador', () => {
 
     // En Inicio y con destino `null`, la escritura solo cambiaría `updatedAt`, que la regla de editor admite.
     const shared = await seedProject(db, { ownerId: uniq('duena'), members: { [ctx.uid]: 'editor' } });
+    await db.collection('projects').doc(shared).update({ folderId: null });
     const before = await project(shared);
     expect(await status(moveProject(ctx, { id: shared, folderId: null }))).toBe(403);
     expect(await project(shared)).toEqual(before);
