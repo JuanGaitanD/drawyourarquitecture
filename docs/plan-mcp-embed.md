@@ -43,6 +43,10 @@ emparejamiento por posición no tiene dónde decir «aquí va un diagrama»; mez
   se mueven, y con ellos su contenido.
   - Si el bloque `after` está dentro de un marco → 400 «el bloque está dentro de un marco»: el embed quedaría
     encima del resto del marco. No se escribe nada.
+  - Guardas finales, sin escribir nada si fallan (400, «usa otro bloque o sin `after`»): (a) el rectángulo del
+    embed no puede cortar ningún elemento vivo que no se movió (p. ej. un marco o una forma que cruzan la línea);
+    (b) la secuencia de ids de `readingOrder` tiene que ser la misma antes y después (unidades con decisiones
+    distintas pueden cambiar de fila). En una nota de bloques apilados —lo normal— no saltan nunca.
   - ponytail: desplazamiento por `y`; una nota con columnas en paralelo baja también la otra columna, y una flecha
     que va de arriba a abajo no se estira: queda suelta de su destino hasta que se edita en la app. Mover también
     esas flechas si molesta.
@@ -76,15 +80,20 @@ emparejamiento por posición no tiene dónde decir «aquí va un diagrama»; mez
    orden de lectura no cambia, también con dos textos en la misma fila de 20 a distinta `y` (100 y 109).
 3b. Unidades: una forma que cruza la línea y su etiqueta (debajo) no se mueven; una forma debajo baja con su
    etiqueta; un marco que cruza la línea conserva a sus hijos; `after` dentro de un marco → error.
+3d. Guardas: con `after` fuera de un marco que cruza la línea y con una forma que la cruza, el embed los cortaría →
+   error; un marco que empieza arriba con un texto hijo por debajo de un texto suelto (el suelto bajaría y
+   cambiaría el orden) → error.
 3c. Duplicado: un enlace de producción con ese id → error; uno de otro dominio, no.
 3. `after` por prefijo; 0 o varias coincidencias → error.
 
 `src/server/embed.excalidraw.test.ts` (jsdom, Excalidraw real como `editors/note/merge.test.ts`): el resultado pasa
-por `restoreElements` y `mergeNoteContent` y conserva el embed (con índice válido y orden después del resto) y los
-desplazamientos.
+por dos recorridos independientes: (1) `restoreElements` como al abrir la nota, y (2) `mergeNoteContent` del
+resultado **sin restaurar** contra la escena anterior, como recibe el cambio una pestaña abierta. Los dos conservan el
+embed (índice válido, después del resto) y los desplazamientos.
 
 `src/server/tools.test.ts` (emulador): dos `embed_board` simultáneos sobre la misma nota y diagrama → exactamente uno
-incrusta, el otro 409, y la nota tiene un solo embed; dueño incrusta y `read_note` lo lista en `embeds` con su Mermaid; editor de la
+incrusta, el otro 409, la nota tiene un solo embed, lo de debajo bajó 460 px una sola vez (una sola subida de
+`version`) y la revisión final es la inicial + 1; dueño incrusta y `read_note` lo lista en `embeds` con su Mermaid; editor de la
 nota puede; viewer de la nota → 403; diagrama ajeno sin acceso → 403 y la nota intacta; ya incrustado → 409.
 
 `e2e.test.ts`: lista exacta de herramientas y auditoría de `embed_board`.
