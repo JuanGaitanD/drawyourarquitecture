@@ -27,7 +27,7 @@ hay que desplegar las reglas.
 | `create_folder` (nueva) | `name`, `parentId?` | Crea la carpeta; sin `parentId`, en Inicio. |
 | `update_folder` (nueva) | `id`, `name?`, `parentId?` (`null` = Inicio) | Renombra y/o mueve una carpeta (al menos uno). Mover sin ciclos (`canMove`). El nombre solo se valida si llega `name`: mover escribe solo `parentId` y `updatedAt`, así un nombre anterior de más de 40 se conserva (como la regla). |
 | `delete_folder` (nueva) | `id` | Borra la carpeta si está vacía (sin subcarpetas en la lista cargada y `projects where ownerId == uid && folderId == id limit 1` vacío; igualdades, sin índice compuesto); si no, 409 «La carpeta no está vacía». |
-| `move_project` (nueva) | `id`, `folderId` (`null` = Inicio) | Mueve un proyecto propio a una carpeta propia o a Inicio. |
+| `move_project` (nueva) | `id`, `folderId` (`null` = Inicio) | Mueve un proyecto propio a una carpeta propia o a Inicio. Lee el proyecto y exige `ownerId == uid` (403) antes de escribir: si ya está en Inicio y se manda `null`, la escritura solo cambia `updatedAt` y la rama de editor de las reglas la dejaría pasar. |
 | `create_note` / `create_board` (cambian) | `folderId?` | El proyecto nace en esa carpeta (en el mismo batch de creación; la regla ya admite `folderId`). |
 
 Se descarta una herramienta `list_folders` aparte: `list_projects` ya devuelve el árbol (una llamada en vez de dos).
@@ -76,7 +76,8 @@ datos de `owner-test`), una por cosa que puede romperse:
 1. `create_folder` en Inicio y dentro de otra; nombre vacío/41 caracteres → 400; padre inexistente → 404.
 2. `list_projects` devuelve las carpetas en árbol y la ruta del proyecto.
 3. `create_note` y `create_board` con `folderId` nacen dentro; con carpeta inexistente → 404 y no crean nada.
-4. `move_project` a una carpeta y a Inicio (`null`); proyecto compartido conmigo (editor) → 403.
+4. `move_project` a una carpeta y a Inicio (`null`); proyecto compartido conmigo (editor), en Inicio, con destino
+   `null` → 403 y documento intacto.
 5. `update_folder`: renombrar, mover, ciclo (a sí misma y a un descendiente) → 400; carpeta de otra persona → 404
    (cubre también la inexistente). Carpeta sembrada con nombre de 45: moverla funciona y conserva el nombre;
    renombrarla a 41 → 400.
@@ -84,9 +85,11 @@ datos de `owner-test`), una por cosa que puede romperse:
    `update_folder`, `move_project`, `create_note` y `create_board` dan 404 y no crean ni cambian nada (es la
    comprobación que las reglas no hacen: `validFolderRef` solo mira tipo y longitud).
 8. Auditoría: en `e2e.test.ts` (pasa por `run`), `create_folder` y `update_note` dejan su entrada en `mcpAudit`.
-6. `delete_folder`: con proyecto o subcarpeta → 409; vacía → la borra.
+6. `delete_folder`: con proyecto o subcarpeta → 409; vacía → la borra; ajena o inexistente → 404 (la ajena sigue).
 
-`e2e.test.ts`: actualizar la lista exacta de herramientas (`toEqual`), obligatorio. Reglas: `tests/rules/mcp.test.ts` admite las
+`e2e.test.ts`: actualizar la lista exacta de herramientas (`toEqual`), obligatorio; y por MCP real: carpetas
+anidadas, una vacía, `create_note` con `folderId` (queda en Firestore) y el texto de `list_projects` con los ids de
+las carpetas (también la vacía) y la ruta del proyecto. Reglas: `tests/rules/mcp.test.ts` admite las
 herramientas nuevas y `update_note` en `mcpAudit`.
 
 ## Documentación
