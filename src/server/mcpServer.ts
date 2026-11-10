@@ -8,14 +8,18 @@ import {
   MAX_TITLE,
   createBoard,
   createNote,
+  embedBoard,
   listProjects,
   readBoard,
   readNote,
   updateBoard,
+  updateNote,
   type ToolContext,
   type ToolResult,
 } from './tools';
 import { MAX_NOTE_TEXT } from './note';
+import { createFolder, deleteFolder, moveProject, updateFolder } from './folders';
+import { MAX_FOLDER_NAME_LENGTH } from '../domain/folder';
 
 export interface McpContext {
   db: ToolContext['db'];
@@ -54,6 +58,14 @@ const mermaid = z
   .min(1)
   .max(MAX_MERMAID)
   .describe('Flowchart de Mermaid (flowchart/graph con LR, TD…; admite subgraph).');
+const folderId = z.string().min(1).max(128);
+const folderName = z
+  .string()
+  .max(MAX_FOLDER_NAME_LENGTH * 2)
+  .describe(`Nombre de la carpeta (1 a ${MAX_FOLDER_NAME_LENGTH} caracteres).`);
+const inFolder = folderId
+  .optional()
+  .describe('Id de una carpeta tuya (de list_projects); sin él, en Inicio.');
 
 /** Un servidor por petición (transporte sin estado): las herramientas quedan ligadas al uid autenticado. */
 export function createMcpServer(mcp: McpContext): McpServer {
@@ -63,7 +75,8 @@ export function createMcpServer(mcp: McpContext): McpServer {
   server.registerTool(
     'list_projects',
     {
-      description: 'Lista los proyectos propios y los compartidos contigo (notas y diagramas).',
+      description:
+        'Lista los proyectos propios y los compartidos contigo (notas y diagramas), con la carpeta de los tuyos, y tus carpetas en árbol con su id.',
       inputSchema: { type: z.enum(['note', 'board']).optional().describe('Filtra por tipo.') },
     },
     (a) => run(mcp, 'list_projects', {}, () => listProjects(ctx, a)),
@@ -90,7 +103,11 @@ export function createMcpServer(mcp: McpContext): McpServer {
     {
       description:
         'Crea una nota con bloques de texto (separados por una línea en blanco; «# », «## » y «### » al inicio hacen títulos).',
-      inputSchema: { title, text: z.string().max(MAX_NOTE_TEXT).describe('Texto de la nota.') },
+      inputSchema: {
+        title,
+        text: z.string().max(MAX_NOTE_TEXT).describe('Texto de la nota.'),
+        folderId: inFolder,
+      },
     },
     (a) => run(mcp, 'create_note', {}, () => createNote(ctx, a)),
   );
@@ -98,7 +115,7 @@ export function createMcpServer(mcp: McpContext): McpServer {
     'create_board',
     {
       description: 'Crea un diagrama desde un flowchart de Mermaid y lo ordena automáticamente.',
-      inputSchema: { title, mermaid },
+      inputSchema: { title, mermaid, folderId: inFolder },
     },
     (a) => run(mcp, 'create_board', {}, () => createBoard(ctx, a)),
   );
@@ -110,6 +127,89 @@ export function createMcpServer(mcp: McpContext): McpServer {
       inputSchema: { id, mermaid },
     },
     (a) => run(mcp, 'update_board', a, () => updateBoard(ctx, a)),
+  );
+  server.registerTool(
+    'update_note',
+    {
+      description:
+        'Edita una nota existente: `title` la renombra (solo el dueño) y `text` reemplaza su texto (mismo formato que create_note) conservando imágenes, diagramas incrustados y la posición y el estilo de los bloques. Los bloques se emparejan en orden de lectura con los de read_note: lo igual no se toca, lo distinto se edita en su sitio, lo de más va debajo y lo que falta se borra. Al menos uno de los dos.',
+      inputSchema: {
+        id,
+        title: title.optional(),
+        text: z
+          .string()
+          .max(MAX_NOTE_TEXT)
+          .optional()
+          .describe('Texto completo nuevo de la nota (parte de lo que devuelve read_note).'),
+      },
+    },
+    (a) => run(mcp, 'update_note', a, () => updateNote(ctx, a)),
+  );
+  server.registerTool(
+    'embed_board',
+    {
+      description:
+        'Incrusta un diagrama existente en una nota, como «Insertar diagrama» de la app. Sin `after`, al final; con `after`, debajo del único bloque de texto que empieza por ese texto (tal como lo muestra read_note) y lo de debajo baja para dejarle sitio. Hace falta poder editar la nota (dueño o editor) y leer el diagrama.',
+      inputSchema: {
+        id: id.describe('Id de la nota (de list_projects).'),
+        boardId: id.describe('Id del diagrama que se incrusta (de list_projects).'),
+        after: z
+          .string()
+          .min(1)
+          .max(2000)
+          .optional()
+          .describe(
+            'Inicio del texto del bloque tras el que va el diagrama; debe identificar un solo bloque.',
+          ),
+      },
+    },
+    (a) => run(mcp, 'embed_board', a, () => embedBoard(ctx, a)),
+  );
+  // Las de carpetas no pasan `id` a `run`: la auditoría guarda ids de proyecto, no de carpeta.
+  server.registerTool(
+    'create_folder',
+    {
+      description: 'Crea una carpeta tuya, en Inicio o dentro de otra (`parentId`).',
+      inputSchema: {
+        name: folderName,
+        parentId: folderId
+          .optional()
+          .describe('Id de la carpeta padre (de list_projects); sin él, en Inicio.'),
+      },
+    },
+    (a) => run(mcp, 'create_folder', {}, () => createFolder(ctx, a)),
+  );
+  server.registerTool(
+    'update_folder',
+    {
+      description:
+        'Renombra una carpeta tuya (`name`) y/o la mueve (`parentId`; `null` = Inicio). No puede ir dentro de sí misma ni de una subcarpeta suya. Al menos uno de los dos.',
+      inputSchema: {
+        id: folderId.describe('Id de la carpeta (de list_projects).'),
+        name: folderName.optional(),
+        parentId: folderId.nullable().optional().describe('Nueva carpeta padre; `null` = Inicio.'),
+      },
+    },
+    (a) => run(mcp, 'update_folder', {}, () => updateFolder(ctx, a)),
+  );
+  server.registerTool(
+    'delete_folder',
+    {
+      description: 'Borra una carpeta tuya si está vacía (sin proyectos ni subcarpetas); si no, 409.',
+      inputSchema: { id: folderId.describe('Id de la carpeta (de list_projects).') },
+    },
+    (a) => run(mcp, 'delete_folder', {}, () => deleteFolder(ctx, a)),
+  );
+  server.registerTool(
+    'move_project',
+    {
+      description: 'Mueve un proyecto tuyo a una carpeta tuya o a Inicio (`folderId: null`).',
+      inputSchema: {
+        id,
+        folderId: folderId.nullable().describe('Carpeta destino (de list_projects); `null` = Inicio.'),
+      },
+    },
+    (a) => run(mcp, 'move_project', a, () => moveProject(ctx, a)),
   );
   return server;
 }

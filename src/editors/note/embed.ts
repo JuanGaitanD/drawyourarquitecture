@@ -9,7 +9,7 @@ export const MAX_EMBED_DEPTH = 1;
 const BOARD_PATH = /^\/embed\/board\/([\w-]+)\/?$/;
 
 /** Orígenes de producción: una nota guarda el enlace absoluto, así que los de un dominio anterior siguen siendo nuestros. */
-const SITE_ORIGINS = ['https://dya.juandgaitan.com', 'https://drawyourarchitecture.vercel.app'];
+export const SITE_ORIGINS = ['https://dya.juandgaitan.com', 'https://drawyourarchitecture.vercel.app'];
 
 export const boardEmbedLink = (boardId: string, origin: string): string => `${origin}/embed/board/${boardId}`;
 

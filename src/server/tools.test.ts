@@ -4,16 +4,18 @@ import { decode } from '../domain/codec';
 import { validateBoardContent } from '../editors/board/model/validate';
 import { getAdminAuth, getAdminDb } from './admin';
 import { ToolError, authenticate } from './authz';
-import { buildNote, decodeNote, encodeNote, noteText } from './note';
+import { EMBED_SHIFT, buildNote, decodeNote, encodeNote, noteEmbeds, noteText } from './note';
 import { EMULATOR, OWNER, loadRules, seedProject, seedToken, uniq, userCtx } from './testkit';
 import { closeUserDbs } from './userDb';
 import {
+  embedBoard,
   createBoard,
   createNote,
   listProjects,
   readBoard,
   readNote,
   updateBoard,
+  updateNote,
   type ToolContext,
 } from './tools';
 
@@ -312,11 +314,125 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
     });
   });
 
+  describe('update_note', () => {
+    const content = async (id: string) =>
+      decodeNote(
+        (await db.collection('projects').doc(id).collection('content').doc('main').get()).data()?.data,
+      );
+    const title = async (id: string) => (await db.collection('projects').doc(id).get()).data()?.title;
+
+    it('título, texto o ambos; conserva imágenes y diagramas incrustados; revisión +1', async () => {
+      const base = buildNote('# Semana del 9/10/2026\n\n- [ ] Pendiente');
+      const extras = [
+        { id: 'img', type: 'image', isDeleted: false, fileId: 'img-1', x: 0, y: 400, index: 'a5' },
+        {
+          id: 'emb',
+          type: 'embeddable',
+          isDeleted: false,
+          link: 'https://x.test/embed/board/b1',
+          index: 'a6',
+        },
+      ];
+      const id = await seedProject(db, {
+        ownerId: OWNER,
+        type: 'note',
+        title: 'Semana del 9/10/2026',
+        data: encodeNote({
+          ...base,
+          elements: [...base.elements, ...extras],
+          files: { 'img-1': { mimeType: 'image/png', created: 1 } },
+        }),
+      });
+      const owner = await as(OWNER);
+
+      await updateNote(owner, { id, title: 'Semana del 9/11/2026' });
+      expect(await title(id)).toBe('Semana del 9/11/2026');
+
+      const r = await updateNote(owner, { id, text: 'Semana del 9/11/2026\n\n- [x] Pendiente' });
+      expect((r.data as { revision: number }).revision).toBe(1);
+      const after = await content(id);
+      expect(noteText(after.elements)).toBe('Semana del 9/11/2026\n\n- [x] Pendiente');
+      expect(after.elements.filter((e) => e.type !== 'text')).toEqual(extras);
+      expect(after.files).toEqual({ 'img-1': { mimeType: 'image/png', created: 1 } });
+      expect(after.elements[0]).toMatchObject({ id: base.elements[0].id, fontSize: 36 });
+
+      await updateNote(owner, { id, title: 'Ambos', text: 'Nuevo' });
+      expect(await title(id)).toBe('Ambos');
+      expect(noteText((await content(id)).elements)).toBe('Nuevo');
+    });
+
+    it('sin título ni texto 400; id inexistente o ajeno 403; un board 400', async () => {
+      const id = await seedProject(db, { ownerId: OWNER, type: 'note' });
+      const owner = await as(OWNER);
+      expect(await status(updateNote(owner, { id }))).toBe(400);
+      expect(await status(updateNote(owner, { id, title: 'x'.repeat(121) }))).toBe(400);
+      expect(await status(updateNote(owner, { id: 'no-existe', text: 'x' }))).toBe(403);
+      expect(await status(updateNote(await as(STRANGER), { id, text: 'x' }))).toBe(403);
+      const board = await seedProject(db, { ownerId: OWNER, type: 'board' });
+      expect(await status(updateNote(owner, { id: board, text: 'x' }))).toBe(400);
+      expect(await status(updateNote(owner, { id: board, title: 'x' }))).toBe(400);
+      expect(await title(board)).toBe('Proyecto de prueba');
+    });
+
+    it('permisos: editor cambia el texto pero no el título; viewer y público ajeno reciben 403', async () => {
+      const id = await seedProject(db, {
+        ownerId: OWNER,
+        type: 'note',
+        isPublic: true,
+        members: { [EDITOR]: 'editor', [VIEWER]: 'viewer' },
+      });
+      expect(await status(updateNote(await as(EDITOR), { id, text: 'del editor' }))).toBe(0);
+      expect(noteText((await content(id)).elements)).toBe('del editor');
+      expect(await status(updateNote(await as(EDITOR), { id, title: 'no' }))).toBe(403);
+      expect(await status(updateNote(await as(VIEWER), { id, text: 'x' }))).toBe(403);
+      expect(await status(updateNote(await as(VIEWER), { id, title: 'x' }))).toBe(403);
+      expect(await status(updateNote(await as(STRANGER), { id, text: 'x' }))).toBe(403);
+      expect(await title(id)).toBe('Proyecto de prueba');
+      expect(noteText((await content(id)).elements)).toBe('del editor');
+    });
+  });
+
+  describe('update_note · troceado y concurrencia', () => {
+    it('edita una nota troceada (> 900 000 bytes): recompone, conserva el resto y sube una revisión', async () => {
+      const owner = await as(OWNER);
+      // 2000 bloques de ~90 caracteres: ≈ 1,3 MB codificados → troceado.
+      const blocks = Array.from({ length: 2000 }, (_, i) => `Bloque ${i} ${'x'.repeat(80)}`);
+      const id = (
+        (await createNote(owner, { title: 'grande', text: blocks.join('\n\n') })).data as { id: string }
+      ).id;
+      const main = db.collection('projects').doc(id).collection('content').doc('main');
+      const before = (await main.get()).data() as { chunks?: number; revision: number };
+      expect(before.chunks).toBeGreaterThanOrEqual(2);
+
+      blocks[0] = 'Primero corregido';
+      const r = await updateNote(owner, { id, text: blocks.join('\n\n') });
+      expect((r.data as { revision: number }).revision).toBe(before.revision + 1);
+      const read = (await readNote(owner, { id })).data as { text: string; total: number };
+      expect(read.text.startsWith('Primero corregido\n\nBloque 1 ')).toBe(true);
+      expect(read.total).toBe(2000);
+    });
+
+    it('dos ediciones simultáneas se serializan: revisión +2, sin error', async () => {
+      const id = await seedProject(db, { ownerId: OWNER, type: 'note' });
+      await Promise.all([
+        updateNote(await as(OWNER), { id, text: 'Uno' }),
+        updateNote(await as(OWNER), { id, text: 'Dos' }),
+      ]);
+      const main = (
+        await db.collection('projects').doc(id).collection('content').doc('main').get()
+      ).data() as { revision: number; data: string };
+      expect(main.revision).toBe(2);
+      expect(['Uno', 'Dos']).toContain(noteText(decodeNote(main.data).elements));
+    });
+  });
+
   describe('contenido troceado (> 900 000 bytes)', () => {
     // 1 500 líneas `a-->b` = 3 000 nodos y 1 500 aristas: ≈ 1,2 MB codificados, y el Mermaid cabe en el tope de 100 000.
     const bigMermaid = (tag: string, n: number) =>
       'flowchart LR\n' +
-      Array.from({ length: n }, (_, i) => `${tag}${i}[Nodo ${tag}${i}]-->${tag}x${i}[Otro ${tag}${i}]`).join('\n');
+      Array.from({ length: n }, (_, i) => `${tag}${i}[Nodo ${tag}${i}]-->${tag}x${i}[Otro ${tag}${i}]`).join(
+        '\n',
+      );
 
     it('create_board, read_board y update_board admiten un board troceado y la revisión sube de uno en uno', async () => {
       const owner = await as(OWNER);
@@ -348,10 +464,76 @@ describe.skipIf(!EMULATOR)('herramientas MCP · emulador', () => {
           id: string;
         }
       ).id;
-      await db.collection('projects').doc(id).update({ members: { [VIEWER]: 'viewer' } });
+      await db
+        .collection('projects')
+        .doc(id)
+        .update({ members: { [VIEWER]: 'viewer' } });
       const viewer = await as(VIEWER);
       expect(((await readBoard(viewer, { id })).data as { nodes: unknown[] }).nodes).toHaveLength(3000);
       expect(await status(updateBoard(viewer, { id, mermaid: 'flowchart LR\nA-->B' }))).toBe(403);
+    });
+  });
+
+  describe('embed_board', () => {
+    const content = async (id: string) =>
+      (await db.collection('projects').doc(id).collection('content').doc('main').get()).data() as {
+        revision: number;
+        data: string;
+      };
+
+    it('el dueño incrusta y read_note lo lista con su Mermaid; el editor de la nota también puede', async () => {
+      const note = await seedProject(db, { ownerId: OWNER, type: 'note', members: { [EDITOR]: 'editor' } });
+      const board = await seedProject(db, { ownerId: OWNER, title: 'Arquitectura' });
+      // El editor de la nota tiene que poder leer el diagrama que incrusta.
+      const other = await seedProject(db, {
+        ownerId: OWNER,
+        title: 'Flujo',
+        members: { [EDITOR]: 'viewer' },
+      });
+      const r = await embedBoard(await as(OWNER), { id: note, boardId: board, after: 'Hola' });
+      expect(r.text).toContain('«Arquitectura»');
+      const read = (await readNote(await as(OWNER), { id: note })).data as {
+        embeds: { boardId: string; mermaid?: string }[];
+      };
+      expect(read.embeds).toEqual([expect.objectContaining({ boardId: board, mermaid: expect.any(String) })]);
+      await embedBoard(await as(EDITOR), { id: note, boardId: other });
+      expect(noteEmbeds(decodeNote((await content(note)).data).elements)).toEqual([board, other]);
+    });
+
+    it('viewer de la nota → 403; diagrama que no puedes leer → 403 con la nota intacta; ya incrustado → 409', async () => {
+      const note = await seedProject(db, { ownerId: OWNER, type: 'note', members: { [VIEWER]: 'viewer' } });
+      const board = await seedProject(db, { ownerId: OWNER, members: { [VIEWER]: 'viewer' } });
+      expect(await status(embedBoard(await as(VIEWER), { id: note, boardId: board }))).toBe(403);
+
+      const foreign = await seedProject(db, { ownerId: STRANGER });
+      const before = await content(note);
+      expect(await status(embedBoard(await as(OWNER), { id: note, boardId: foreign }))).toBe(403);
+      expect(await content(note)).toEqual(before);
+
+      await embedBoard(await as(OWNER), { id: note, boardId: board });
+      expect(await status(embedBoard(await as(OWNER), { id: note, boardId: board, after: 'Hola' }))).toBe(
+        409,
+      );
+      expect(await status(embedBoard(await as(OWNER), { id: note, boardId: 'x/y' }))).toBe(400);
+    });
+
+    it('dos llamadas a la vez: una incrusta y la otra da 409; lo de debajo baja una sola vez y la revisión sube 1', async () => {
+      const note = await seedProject(db, { ownerId: OWNER, type: 'note' });
+      const board = await seedProject(db, { ownerId: OWNER });
+      const before = decodeNote((await content(note)).data).elements.find((e) => e.text === 'mundo')!;
+      const results = await Promise.all(
+        [0, 1].map(async () =>
+          status(embedBoard(await as(OWNER), { id: note, boardId: board, after: 'Hola' })),
+        ),
+      );
+      expect(results.sort()).toEqual([0, 409]);
+      const after = await content(note);
+      const els = decodeNote(after.data).elements;
+      expect(noteEmbeds(els)).toEqual([board]);
+      const mundo = els.find((e) => e.text === 'mundo')!;
+      expect(mundo.y).toBe((before.y as number) + EMBED_SHIFT);
+      expect(mundo.version).toBe((before.version as number) + 1);
+      expect(after.revision).toBe(1);
     });
   });
 });

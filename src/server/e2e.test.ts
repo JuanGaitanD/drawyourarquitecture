@@ -55,6 +55,8 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
     child?.kill();
   });
 
+  // Primera llamada a Firestore desde el proceso hijo: Admin busca antes credenciales de GCE y, sin red de Google,
+  // espera su timeout (unos 5 s). Margen para ese arranque en frío.
   it('sin token o con token revocado: 401 (con WWW-Authenticate)', async () => {
     const raw = await fetch(url, {
       method: 'POST',
@@ -68,7 +70,7 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
     await expect(connect(token)).rejects.toThrow(/401/);
     await expect(connect('dya_inventado')).rejects.toThrow(/401/);
     expect((await fetch(url, { method: 'GET' })).status).toBe(405);
-  });
+  }, 20_000);
 
   it('con token: lista las herramientas, crea un board desde Mermaid, lo lee y lo amplía', async () => {
     const { token } = await seedToken(db, await seedAllowedUser(db));
@@ -77,11 +79,17 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
       const tools = (await client.listTools()).tools.map((t) => t.name).sort();
       expect(tools).toEqual([
         'create_board',
+        'create_folder',
         'create_note',
+        'delete_folder',
+        'embed_board',
         'list_projects',
+        'move_project',
         'read_board',
         'read_note',
         'update_board',
+        'update_folder',
+        'update_note',
       ]);
 
       const created = await call(client, 'create_board', {
@@ -108,6 +116,58 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
       const note = await call(client, 'create_note', { title: 'Nota E2E', text: '# Hola\n\nUn párrafo' });
       const noteId = /Nota creada: (\S+)/.exec(note.text)?.[1] as string;
       expect((await call(client, 'read_note', { id: noteId })).text).toContain('Un párrafo');
+
+      const edited = await call(client, 'update_note', {
+        id: noteId,
+        title: 'Nota editada',
+        text: 'Hola\n\nOtro párrafo',
+      });
+      expect(edited).toMatchObject({ isError: false });
+      const reread = (await call(client, 'read_note', { id: noteId })).text;
+      expect(reread).toContain('# Nota editada');
+      expect(reread).toContain('Otro párrafo');
+      expect(reread).not.toContain('Un párrafo');
+      expect((await call(client, 'update_note', { id: noteId })).text).toMatch(/^400/);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('carpetas: crea anidadas, crea y mueve proyectos dentro, y list_projects da los ids y la ruta', async () => {
+    const { token } = await seedToken(db, await seedAllowedUser(db));
+    const client = await connect(token);
+    const idOf = (re: RegExp, text: string) => re.exec(text)?.[1] as string;
+    try {
+      const top = idOf(
+        /Carpeta creada: (\S+)/,
+        (await call(client, 'create_folder', { name: 'WigiLabs' })).text,
+      );
+      const sub = idOf(
+        /Carpeta creada: (\S+)/,
+        (await call(client, 'create_folder', { name: 'Aplicativo PMO', parentId: top })).text,
+      );
+      const empty = idOf(
+        /Carpeta creada: (\S+)/,
+        (await call(client, 'create_folder', { name: 'Vacía' })).text,
+      );
+      const note = await call(client, 'create_note', { title: 'Nota', text: 'x', folderId: sub });
+      expect(note.text).toContain('en «WigiLabs / Aplicativo PMO»');
+      const noteId = idOf(/Nota creada: (\S+)/, note.text);
+      expect((await db.collection('projects').doc(noteId).get()).data()).toMatchObject({ folderId: sub });
+
+      const board = await call(client, 'create_board', { title: 'Diagrama', mermaid: 'flowchart LR\n  A' });
+      const boardId = idOf(/Diagrama creado: (\S+)/, board.text);
+      expect((await call(client, 'move_project', { id: boardId, folderId: sub })).isError).toBe(false);
+      expect(
+        (await call(client, 'update_folder', { id: empty, parentId: null, name: 'Vacía 2' })).isError,
+      ).toBe(false);
+
+      const listed = (await call(client, 'list_projects', {})).text;
+      expect(listed).toContain(`${noteId} · note · Nota (owner) · en WigiLabs / Aplicativo PMO`);
+      expect(listed).toContain(`${boardId} · board · Diagrama (owner) · en WigiLabs / Aplicativo PMO`);
+      expect(listed).toContain(`- ${empty} · Vacía 2\n- ${top} · WigiLabs\n  - ${sub} · Aplicativo PMO`);
+      expect((await call(client, 'delete_folder', { id: sub })).text).toMatch(/^409/);
+      expect((await call(client, 'delete_folder', { id: empty })).isError).toBe(false);
     } finally {
       await client.close();
     }
@@ -116,11 +176,15 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
   it('audita cada herramienta en mcpAudit, con el uid y el hash del token', async () => {
     const { token, hash } = await seedToken(db, OWNER);
     const client = await connect(token);
+    let id: string | undefined;
     try {
       const created = await call(client, 'create_note', { title: 'Auditada', text: 'x' });
-      const id = /Nota creada: (\S+)/.exec(created.text)?.[1] as string;
+      id = /Nota creada: (\S+)/.exec(created.text)?.[1] as string;
       await call(client, 'read_note', { id });
       await call(client, 'read_board', { id: 'no-existe' });
+      await call(client, 'update_note', { id, text: 'y' });
+      await call(client, 'create_folder', { name: 'Auditada' });
+      await call(client, 'embed_board', { id, boardId: 'no-existe' });
     } finally {
       await client.close();
     }
@@ -132,6 +196,10 @@ describe.skipIf(!EMULATOR)('servidor MCP · extremo a extremo', () => {
     expect(byTool('create_note')[0]).toMatchObject({ uid: OWNER, ok: true });
     expect(byTool('read_note')[0]).toMatchObject({ ok: true });
     expect(byTool('read_board')[0]).toMatchObject({ ok: false, projectId: 'no-existe' });
+    expect(byTool('update_note')[0]).toMatchObject({ ok: true, projectId: id });
+    expect(byTool('create_folder')[0]).toMatchObject({ ok: true });
+    expect(byTool('create_folder')[0]).not.toHaveProperty('projectId');
+    expect(byTool('embed_board')[0]).toMatchObject({ ok: false, projectId: id });
     expect(rows.every((r) => r.expireAt.toMillis() > Date.now())).toBe(true);
   });
 

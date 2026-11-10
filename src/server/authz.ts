@@ -24,6 +24,23 @@ export class ToolError extends Error {
 export const isPermissionDenied = (e: unknown): boolean =>
   typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'permission-denied';
 
+/** Ids de documento (proyectos y carpetas) que se aceptan: sin `/` ni nada que cambie la ruta. */
+export const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+const DENIED = 'Sin permiso: el proyecto no existe, no tienes acceso o no puedes editarlo.';
+
+/** Envuelve una herramienta: lo que las reglas de Firestore rechazan sale como 403 con `message`. */
+export function denied<C, A, R>(fn: (ctx: C, args: A) => Promise<R>, message = DENIED) {
+  return async (ctx: C, args: A): Promise<R> => {
+    try {
+      return await fn(ctx, args);
+    } catch (e) {
+      if (isPermissionDenied(e)) throw new ToolError(403, message);
+      throw e;
+    }
+  };
+}
+
 export interface Identity {
   uid: string;
   /** sha256 del token: id de `mcpTokens`, clave del límite de tasa y de la auditoría. */

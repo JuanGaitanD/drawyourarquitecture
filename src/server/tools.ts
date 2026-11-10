@@ -7,6 +7,7 @@ import {
   getDocs,
   limit,
   query,
+  updateDoc,
   where,
   writeBatch,
   type DocumentReference,
@@ -21,8 +22,20 @@ import { autoLayout } from '../editors/board/model/layout';
 import { parseFlowchart, toFlowchart } from '../editors/board/model/mermaid';
 import { validateBoardContent } from '../editors/board/model/validate';
 import { createContentRepo } from '../infrastructure/firebase/contentRepo';
-import { ToolError, isPermissionDenied } from './authz';
-import { MAX_NOTE_TEXT, buildNote, decodeNote, noteEmbeds, noteImages, noteSummary, noteText } from './note';
+import { ID_RE, ToolError, denied, isPermissionDenied } from './authz';
+import { folderLabel, folderTarget, folderTree, loadFolders } from './folders';
+import {
+  MAX_NOTE_TEXT,
+  buildNote,
+  decodeNote,
+  embedInNote,
+  hasBoardEmbed,
+  noteEmbeds,
+  noteImages,
+  noteSummary,
+  noteText,
+  replaceNoteText,
+} from './note';
 
 // Una función por herramienta. Reciben el Firestore del SDK web ya autenticado como la persona: los permisos los
 // deciden las reglas y `permission-denied` se traduce a 403 (`denied`). Devuelven `{ text, data? }`.
@@ -42,7 +55,6 @@ export const MAX_MERMAID = 100_000;
 const LIST_LIMIT = 200;
 const APPEND_GAP = 80;
 
-const ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const now = (ctx: ToolContext) => (ctx.now ?? Date.now)();
 
 // El contenido se lee y escribe con el mismo repositorio que la app (troceado a partir de 900 000 bytes, revisión
@@ -57,27 +69,14 @@ function contentOf(ctx: ToolContext): ContentRepo {
   return repo;
 }
 
-interface ProjectDoc {
+export interface ProjectDoc {
   ownerId: string;
+  folderId?: string | null;
   isPublic?: boolean;
   members?: Record<string, string>;
   type: ProjectType;
   title: string;
   updatedAt: number;
-}
-
-const DENIED = 'Sin permiso: el proyecto no existe, no tienes acceso o no puedes editarlo.';
-
-/** Envuelve una herramienta: lo que las reglas de Firestore rechazan sale como 403. */
-function denied<A>(fn: (ctx: ToolContext, args: A) => Promise<ToolResult>) {
-  return async (ctx: ToolContext, args: A): Promise<ToolResult> => {
-    try {
-      return await fn(ctx, args);
-    } catch (e) {
-      if (isPermissionDenied(e)) throw new ToolError(403, DENIED);
-      throw e;
-    }
-  };
 }
 
 async function loadProject(
@@ -126,6 +125,7 @@ async function createProject(
   type: ProjectType,
   title: string,
   data: string,
+  folderId: string | null,
 ): Promise<string> {
   const t = now(ctx);
   const ref = doc(collection(ctx.db, 'projects'));
@@ -134,7 +134,15 @@ async function createProject(
   // continuación con `save` (troceado), como hace la app al guardar.
   const big = byteLength(data) > DOC_CONTENT_BYTES;
   const initial = big ? encode(type === 'note' ? buildNote('', t) : emptyBoard()) : data;
-  batch.set(ref, { ownerId: ctx.uid, type, title, isPublic: false, createdAt: t, updatedAt: t });
+  batch.set(ref, {
+    ownerId: ctx.uid,
+    type,
+    title,
+    isPublic: false,
+    ...(folderId ? { folderId } : {}),
+    createdAt: t,
+    updatedAt: t,
+  });
   batch.set(doc(ref, 'content', 'main'), { data: initial, schemaVersion: 1, revision: 0, updatedAt: t });
   try {
     await batch.commit();
@@ -174,7 +182,8 @@ async function boardFromMermaid(src: string): Promise<BoardContent> {
 
 export const listProjects = denied(async (ctx: ToolContext, args: { type?: ProjectType }) => {
   const col = collection(ctx.db, 'projects');
-  const [own, shared] = await Promise.all([
+  const [folders, own, shared] = await Promise.all([
+    loadFolders(ctx),
     getDocs(query(col, where('ownerId', '==', ctx.uid), limit(LIST_LIMIT))),
     getDocs(
       query(col, where(new FieldPath('members', ctx.uid), 'in', ['editor', 'viewer']), limit(LIST_LIMIT)),
@@ -185,22 +194,36 @@ export const listProjects = denied(async (ctx: ToolContext, args: { type?: Proje
     .filter((d) => !seen.has(d.id) && seen.add(d.id))
     .map((d) => {
       const p = d.data() as ProjectDoc;
-      const role = p.ownerId === ctx.uid ? 'owner' : (p.members?.[ctx.uid] ?? 'viewer');
+      const mine = p.ownerId === ctx.uid;
+      const role = mine ? 'owner' : (p.members?.[ctx.uid] ?? 'viewer');
+      // Una carpeta que ya no existe cuenta como Inicio (como en el panel); las de otra persona no se ven.
+      const folderId = mine && p.folderId && folders.some((f) => f.id === p.folderId) ? p.folderId : null;
       return {
         id: d.id,
         type: p.type,
         title: p.title,
         isPublic: p.isPublic === true,
         role,
+        folderId,
         updatedAt: p.updatedAt,
       };
     })
     .filter((p) => !args.type || p.type === args.type)
     .sort((a, b) => b.updatedAt - a.updatedAt);
-  const text = projects.length
-    ? projects.map((p) => `- ${p.id} · ${p.type} · ${p.title} (${p.role})`).join('\n')
-    : 'No hay proyectos.';
-  return { text, data: { projects } };
+  // El agente solo recibe el texto: los ids de las carpetas van en él (también las vacías).
+  const tree = folderTree(folders);
+  const located = (folderId: string | null) => (folderId ? ` · en ${folderLabel(folders, folderId)}` : '');
+  const text = [
+    projects.length
+      ? projects.map((p) => `- ${p.id} · ${p.type} · ${p.title} (${p.role})${located(p.folderId)}`).join('\n')
+      : 'No hay proyectos.',
+    tree.length
+      ? `## Carpetas\n${tree.map((f) => `${'  '.repeat(f.depth)}- ${f.id} · ${f.name}`).join('\n')}`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  return { text, data: { projects, folders: tree } };
 });
 
 /** Proyecto board → contenido validado. Las reglas rechazan lo que no puedes leer (`permission-denied`). */
@@ -296,30 +319,51 @@ export const readBoard = denied(async (ctx: ToolContext, args: { id: string }) =
   };
 });
 
-export const createNote = denied(async (ctx: ToolContext, args: { title: string; text: string }) => {
-  const title = checkTitle(args.title);
-  if (args.text.length > MAX_NOTE_TEXT)
-    throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como máximo.`);
-  let data: string;
-  try {
-    data = encodeOrFail(buildNote(args.text, now(ctx)));
-  } catch (e) {
-    if (e instanceof RangeError) throw new ToolError(413, e.message);
-    throw e;
-  }
-  const id = await createProject(ctx, 'note', title, data);
-  return { text: `Nota creada: ${id} («${title}»). Ábrela en /note/${id}.`, data: { id, title } };
-});
+/** Carpeta en la que nace un proyecto (propia y existente: 404 si no) y su ruta para el mensaje; sin ella, Inicio. */
+async function creationFolder(
+  ctx: ToolContext,
+  folderId: string | undefined,
+): Promise<[string | null, string]> {
+  if (folderId === undefined) return [null, ''];
+  const folders = await loadFolders(ctx);
+  const id = folderTarget(folders, folderId);
+  return [id, ` en «${folderLabel(folders, id)}»`];
+}
 
-export const createBoard = denied(async (ctx: ToolContext, args: { title: string; mermaid: string }) => {
-  const title = checkTitle(args.title);
-  const board = await boardFromMermaid(args.mermaid);
-  const id = await createProject(ctx, 'board', title, encodeOrFail(board));
-  return {
-    text: `Diagrama creado: ${id} («${title}», ${board.nodes.length} nodos, ${board.edges.length} aristas). Ábrelo en /board/${id}.`,
-    data: { id, title, nodes: board.nodes.length, edges: board.edges.length },
-  };
-});
+export const createNote = denied(
+  async (ctx: ToolContext, args: { title: string; text: string; folderId?: string }) => {
+    const title = checkTitle(args.title);
+    if (args.text.length > MAX_NOTE_TEXT)
+      throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como máximo.`);
+    let data: string;
+    try {
+      data = encodeOrFail(buildNote(args.text, now(ctx)));
+    } catch (e) {
+      if (e instanceof RangeError) throw new ToolError(413, e.message);
+      throw e;
+    }
+    const [folderId, where] = await creationFolder(ctx, args.folderId);
+    const id = await createProject(ctx, 'note', title, data, folderId);
+    return {
+      text: `Nota creada: ${id} («${title}»)${where}. Ábrela en /note/${id}.`,
+      data: { id, title, folderId },
+    };
+  },
+);
+
+export const createBoard = denied(
+  async (ctx: ToolContext, args: { title: string; mermaid: string; folderId?: string }) => {
+    const title = checkTitle(args.title);
+    const board = await boardFromMermaid(args.mermaid);
+    const data = encodeOrFail(board);
+    const [folderId, where] = await creationFolder(ctx, args.folderId);
+    const id = await createProject(ctx, 'board', title, data, folderId);
+    return {
+      text: `Diagrama creado: ${id} («${title}», ${board.nodes.length} nodos, ${board.edges.length} aristas)${where}. Ábrelo en /board/${id}.`,
+      data: { id, title, folderId, nodes: board.nodes.length, edges: board.edges.length },
+    };
+  },
+);
 
 /** Coloca los nodos de primer nivel de `add` bajo `base`, alineados a su izquierda. Los hijos van relativos: no se tocan. */
 function placeBelow(base: BoardContent, add: BoardContent): BoardNode[] {
@@ -343,35 +387,153 @@ function placeBelow(base: BoardContent, add: BoardContent): BoardNode[] {
 
 const MAX_CONFLICT_RETRIES = 5;
 
-export const updateBoard = denied(async (ctx: ToolContext, args: { id: string; mermaid: string }) => {
-  if (!ID_RE.test(args.id)) throw new ToolError(400, 'Id de proyecto no válido.');
-  const incoming = await boardFromMermaid(args.mermaid);
-
-  // Leer → ampliar → `save` con la revisión leída. Si otra escritura se coló, `save` devuelve conflicto y se
-  // vuelve a leer. Quien solo puede leer (viewer) llega al commit y las reglas lo rechazan: 403 (`denied`).
+/**
+ * Leer → transformar (`step`) → `save` con la revisión leída. Si otra escritura se coló, `save` devuelve conflicto y
+ * se vuelve a leer. Quien solo puede leer (viewer) llega al commit y las reglas lo rechazan: 403 (`denied`).
+ */
+async function saveWithRetry<T>(
+  ctx: ToolContext,
+  id: string,
+  step: () => Promise<{ read: number; data: string; out: T }>,
+  busy: string,
+): Promise<{ revision: number; out: T }> {
   for (let attempt = 1; attempt <= MAX_CONFLICT_RETRIES; attempt++) {
-    const { revision: read, board: base } = await loadBoard(ctx, args.id);
-    const merged = validateBoardContent({
-      ...base,
-      nodes: [...base.nodes, ...placeBelow(base, incoming)],
-      edges: [...base.edges, ...incoming.edges],
-    });
-    if (!merged.ok) throw new ToolError(400, `El resultado no es válido: ${merged.error}`);
-    const next: BoardContent = merged.value;
+    const { read, data, out } = await step();
     let saved;
     try {
-      saved = await contentOf(ctx).save(args.id, encodeOrFail(next), read);
+      saved = await contentOf(ctx).save(id, data, read);
     } catch (e) {
       // El SDK web es optimista: si otra escritura se coló entre la lectura y el commit, la regla
       // `revision == anterior + 1` falla y sale `permission-denied`. Cambió la revisión = conflicto; si no, 403.
-      if (!isPermissionDenied(e) || (await contentOf(ctx).load(args.id))?.revision === read) throw e;
+      if (!isPermissionDenied(e) || (await contentOf(ctx).load(id))?.revision === read) throw e;
       continue;
     }
     if ('conflict' in saved) continue;
-    return {
-      text: `Diagrama ampliado: revisión ${saved.revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
-      data: { id: args.id, revision: saved.revision, nodes: next.nodes.length, edges: next.edges.length },
-    };
+    return { revision: saved.revision, out };
   }
-  throw new ToolError(409, 'El diagrama cambia sin parar: reintenta en unos segundos.');
+  throw new ToolError(409, `${busy} cambia sin parar: reintenta en unos segundos.`);
+}
+
+export const updateBoard = denied(async (ctx: ToolContext, args: { id: string; mermaid: string }) => {
+  if (!ID_RE.test(args.id)) throw new ToolError(400, 'Id de proyecto no válido.');
+  const incoming = await boardFromMermaid(args.mermaid);
+  const { revision, out: next } = await saveWithRetry(
+    ctx,
+    args.id,
+    async () => {
+      const { revision: read, board: base } = await loadBoard(ctx, args.id);
+      const merged = validateBoardContent({
+        ...base,
+        nodes: [...base.nodes, ...placeBelow(base, incoming)],
+        edges: [...base.edges, ...incoming.edges],
+      });
+      if (!merged.ok) throw new ToolError(400, `El resultado no es válido: ${merged.error}`);
+      return { read, data: encodeOrFail(merged.value), out: merged.value };
+    },
+    'El diagrama',
+  );
+  return {
+    text: `Diagrama ampliado: revisión ${revision}, ${next.nodes.length} nodos, ${next.edges.length} aristas.`,
+    data: { id: args.id, revision, nodes: next.nodes.length, edges: next.edges.length },
+  };
 });
+
+/**
+ * Edita una nota: `title` renombra el proyecto (las reglas: solo el dueño) y `text` reemplaza el texto conservando
+ * imágenes, diagramas incrustados y la posición y el estilo de los textos (`replaceNoteText`). El título va primero:
+ * si las reglas lo rechazan no se toca el texto. No es atómico: un 409 en el texto deja el título ya cambiado.
+ */
+export const updateNote = denied(
+  async (ctx: ToolContext, args: { id: string; title?: string; text?: string }) => {
+    const { text } = args;
+    if (args.title === undefined && text === undefined)
+      throw new ToolError(400, 'Indica `title`, `text` o ambos.');
+    const title = args.title === undefined ? undefined : checkTitle(args.title);
+    if (text !== undefined && text.length > MAX_NOTE_TEXT)
+      throw new ToolError(413, `El texto admite ${MAX_NOTE_TEXT} caracteres como máximo.`);
+    const { ref } = await loadProject(ctx, args.id, 'note');
+    if (title !== undefined) await updateDoc(ref, { title, updatedAt: now(ctx) });
+    const saved =
+      text === undefined
+        ? undefined
+        : await saveWithRetry(
+            ctx,
+            args.id,
+            async () => {
+              const { data, revision: read } = await loadContent(ctx, args.id);
+              let note;
+              try {
+                note = decodeNote(data);
+              } catch (e) {
+                throw new ToolError(400, e instanceof Error ? e.message : 'La nota está dañada.');
+              }
+              let next: string;
+              try {
+                next = encodeOrFail(replaceNoteText(note, text, now(ctx)));
+              } catch (e) {
+                if (e instanceof RangeError) throw new ToolError(413, e.message);
+                throw e;
+              }
+              return { read, data: next, out: undefined };
+            },
+            'La nota',
+          );
+    const done = [
+      title !== undefined ? `título «${title}»` : '',
+      saved ? `texto (revisión ${saved.revision})` : '',
+    ]
+      .filter(Boolean)
+      .join(' y ');
+    return {
+      text: `Nota actualizada: ${done}.`,
+      data: {
+        id: args.id,
+        ...(title !== undefined ? { title } : {}),
+        ...(saved ? { revision: saved.revision } : {}),
+      },
+    };
+  },
+);
+
+/**
+ * Incrusta un diagrama en una nota (el mismo elemento que «Insertar diagrama» de la app): al final o debajo del bloque
+ * que empieza por `after`. El diagrama se lee como la persona (si no puede leerlo, las reglas dan 403) y el contenido
+ * se guarda como en `update_note` (un viewer de la nota llega al commit y las reglas lo rechazan: 403). El duplicado
+ * se comprueba en cada intento, tras releer: dos llamadas a la vez no lo incrustan dos veces.
+ */
+export const embedBoard = denied(
+  async (ctx: ToolContext, args: { id: string; boardId: string; after?: string }) => {
+    if (!ID_RE.test(args.boardId)) throw new ToolError(400, 'Id de diagrama no válido.');
+    const { project: board } = await loadProject(ctx, args.boardId, 'board');
+    await loadProject(ctx, args.id, 'note');
+    const { revision } = await saveWithRetry(
+      ctx,
+      args.id,
+      async () => {
+        const { data, revision: read } = await loadContent(ctx, args.id);
+        let note;
+        try {
+          note = decodeNote(data);
+        } catch (e) {
+          throw new ToolError(400, e instanceof Error ? e.message : 'La nota está dañada.');
+        }
+        if (hasBoardEmbed(note, args.boardId))
+          throw new ToolError(409, 'Ese diagrama ya está incrustado en la nota.');
+        let next;
+        try {
+          next = embedInNote(note, args.boardId, args.after, now(ctx));
+        } catch (e) {
+          if (e instanceof RangeError) throw new ToolError(400, e.message);
+          throw e;
+        }
+        return { read, data: encodeOrFail(next), out: undefined };
+      },
+      'La nota',
+    );
+    const where = args.after === undefined ? 'al final' : `debajo de «${args.after.trim()}»`;
+    return {
+      text: `Diagrama «${board.title}» (${args.boardId}) incrustado en la nota ${where} (revisión ${revision}).`,
+      data: { id: args.id, boardId: args.boardId, revision },
+    };
+  },
+);
