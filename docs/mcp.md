@@ -1,6 +1,6 @@
 # Servidor MCP
 
-DYA (Draw your Architecture) expone un servidor [MCP](https://modelcontextprotocol.io) para que un agente (Claude Code, Cursor, etc.) trabaje con tus notas y diagramas: lista proyectos, lee notas y boards, crea notas y boards nuevos, edita el título y el texto de una nota, amplía un board desde Mermaid y organiza tus carpetas.
+DYA (Draw your Architecture) expone un servidor [MCP](https://modelcontextprotocol.io) para que un agente (Claude Code, Cursor, etc.) trabaje con tus notas y diagramas: lista proyectos, lee notas y boards, crea notas y boards nuevos, edita el título y el texto de una nota, amplía un board desde Mermaid, incrusta diagramas en notas y organiza tus carpetas.
 
 - Endpoint: `https://dya.juandgaitan.com/api/mcp` (función de Vercel, Node).
 - Transporte: Streamable HTTP **sin estado** del SDK oficial (`@modelcontextprotocol/sdk`), solo `POST` y respuestas JSON (sin sesiones ni SSE).
@@ -53,6 +53,7 @@ Otros clientes con configuración JSON:
 | `update_note`   | `id`, `title?`, `text?` (al menos uno) | **Edita** una nota existente. `title` la renombra (solo el dueño: las reglas no dejan al editor tocar el título). `text` reemplaza el texto (mismo formato que `create_note`) y **conserva** imágenes, diagramas incrustados, formas y la posición y el estilo de cada texto (ver «`update_note`: cómo se reemplaza el texto»). Transacción con `revision + 1`. |
 | `update_board`  | `id`, `mermaid`                           | **Amplía** el board: añade lo nuevo **debajo** de lo existente y conserva lo que hay (posiciones, estilos, frames, stickies e imágenes). No hay modo de sustitución. Transacción con `revision + 1`. |
 
+| `embed_board`   | `id` (nota), `boardId`, `after?`          | **Incrusta** un diagrama existente en la nota, con el mismo elemento que «Insertar diagrama» de la app (`read_note` lo lista en `embeds`). Sin `after`, al final; con `after`, debajo del único bloque de texto que empieza por ese texto y lo de debajo baja para dejarle sitio (ver «`embed_board`»). Hace falta poder editar la nota (dueño o editor) y leer el diagrama. |
 | `create_folder` | `name`, `parentId?`                       | Carpeta nueva en Inicio o dentro de `parentId`. Nombre recortado de 1 a 40 caracteres (no se recorta en silencio: si no cabe, 400). |
 | `update_folder` | `id`, `name?`, `parentId?` (`null` = Inicio; al menos uno) | Renombra y/o mueve una carpeta. No puede ir dentro de sí misma ni de una subcarpeta suya (400). Mover sin `name` conserva un nombre anterior de más de 40. |
 | `delete_folder` | `id`                                      | Borra la carpeta solo si está vacía (sin proyectos tuyos ni subcarpetas); si no, 409. |
@@ -61,6 +62,15 @@ Otros clientes con configuración JSON:
 ### Carpetas
 
 El mismo modelo que el panel (`folders/{id}` y `folderId` en el proyecto; ver `AGENTS.md` › Carpetas). Las reglas dan cada carpeta solo a su dueño, pero no comprueban que un destino exista ni sea tuyo, ni los ciclos, ni que una carpeta esté vacía: lo comprueba el servidor (`src/server/folders.ts`) contra tus carpetas, como el panel en el cliente. Un `folderId`/`parentId` que no es una carpeta tuya da 404 (ajena e inexistente no se distinguen) y no crea ni mueve nada. Leer y después escribir no es atómico: dos clientes a la vez pueden dejar algo colgando de una carpeta borrada (cuelga de Inicio), el mismo límite que el panel. `create_note` y `create_board` con `folderId` escriben la carpeta en el mismo batch que el proyecto.
+
+### `embed_board`: dónde va el diagrama
+
+- El elemento es un `embeddable` de 640 × 400 con el enlace `https://dya.juandgaitan.com/embed/board/<id>` (`newEmbeddable` y `boardEmbedLink` de `editors/note/embed.ts`), con un índice fraccionario después del resto.
+- Sin `after`: debajo de todo, alineado con el texto más a la izquierda.
+- Con `after`: se busca entre los textos vivos el **único** que empieza por `after` (tal como lo muestra `read_note`, sin «# »). Ninguno o varios → 400. El diagrama va debajo de ese bloque (si es la etiqueta de una forma o de una flecha, debajo de las dos) y lo que hay por debajo baja **460 px** (el alto del embed más tres filas de 20, para no cambiar el orden de lectura), por unidades: un marco con sus hijos, una forma con su etiqueta. El bloque elegido no se mueve.
+- No se escribe nada (400, «usa otro bloque o sin `after`») si el bloque está dentro de un marco, si el embed taparía algo que no se movió (cajas con giro y con los puntos de las flechas) o si el orden de lectura cambiaría. En una nota de bloques apilados no pasa.
+- Ya incrustado (un enlace de producción con ese id) → 409. Se comprueba en cada reintento: dos llamadas a la vez no lo incrustan dos veces.
+- Límites: una columna en paralelo también baja; una flecha que va de arriba a abajo no se estira (queda suelta de su destino hasta que se edita en la app); una curva que se sale de sus puntos puede quedar tapada.
 
 ### `update_note`: cómo se reemplaza el texto
 
@@ -88,8 +98,8 @@ Si el board o la nota están abiertos en el editor mientras un agente escribe, e
 | 403    | Resultado de la herramienta (`isError`, texto `403: …`): una regla de Firestore rechazó la operación (`permission-denied`): el proyecto no existe o no es tuyo, no puedes editarlo, o tu cuenta no puede crear proyectos. **Un proyecto inexistente y uno ajeno son indistinguibles** (las reglas no los separan). |
 | 404    | El proyecto existe pero no tiene contenido; o la carpeta (`id`, `folderId`, `parentId`) no es una carpeta tuya. |
 | 429    | Respuesta HTTP: más de 60 peticiones en el minuto para ese token (`Retry-After`, en segundos, hasta la siguiente ventana). |
-| 400    | Id mal formado, tipo equivocado (nota vs. board), Mermaid no válido (con la línea), contenido que no pasa `validateBoardContent`, nombre de carpeta vacío o de más de 40, o mover una carpeta dentro de sí misma. |
-| 409    | `update_board` / `update_note`: la revisión cambió cinco veces seguidas mientras se guardaba (otra escritura en curso); reintenta. `delete_folder`: la carpeta no está vacía. |
+| 400    | Id mal formado, tipo equivocado (nota vs. board), Mermaid no válido (con la línea), contenido que no pasa `validateBoardContent`, nombre de carpeta vacío o de más de 40, mover una carpeta dentro de sí misma, o `after` de `embed_board` que no identifica un solo bloque o no deja sitio limpio. |
+| 409    | `update_board` / `update_note`: la revisión cambió cinco veces seguidas mientras se guardaba (otra escritura en curso); reintenta. `delete_folder`: la carpeta no está vacía. `embed_board`: el diagrama ya está incrustado. |
 | 413    | Texto, Mermaid o contenido por encima de los límites (8 MiB codificado). |
 | 405    | Cualquier método distinto de `POST`. |
 
