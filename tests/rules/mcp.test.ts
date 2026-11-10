@@ -233,7 +233,14 @@ describe('mcpAudit', () => {
     await assertSucceeds(addDoc(audits(asStranger()), entry()));
     const { projectId: _omit, ...sinProyecto } = entry();
     await assertSucceeds(addDoc(audits(asStranger()), sinProyecto));
-    for (const tool of ['update_note', 'create_folder', 'update_folder', 'delete_folder', 'move_project'])
+    for (const tool of [
+      'update_note',
+      'create_folder',
+      'update_folder',
+      'delete_folder',
+      'move_project',
+      'embed_board',
+    ])
       await assertSucceeds(addDoc(audits(asStranger()), entry({ tool })));
     await assertFails(addDoc(audits(asStranger()), entry({ uid: OWNER })));
     await assertFails(addDoc(audits(asOwner()), entry()));
