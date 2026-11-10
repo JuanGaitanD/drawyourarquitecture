@@ -307,7 +307,11 @@ export const EMBED_SHIFT = EMBED_SIZE.height + 60;
 type El = Record<string, unknown>;
 const num = (v: unknown) => Number(v) || 0;
 
-/** Caja en la escena: con los puntos de las flechas y líneas, y girada si tiene `angle` (giro sobre su centro). */
+/**
+ * Caja en la escena: con los puntos de las flechas y líneas, y girada si tiene `angle` (giro sobre su centro).
+ * ponytail: una flecha o línea curva puede salirse un poco de sus puntos; calcular los extremos de la Bézier si eso
+ * llega a tapar algo.
+ */
 function bbox(e: El): { x: number; y: number; w: number; h: number } {
   let x = num(e.x);
   let y = num(e.y);
