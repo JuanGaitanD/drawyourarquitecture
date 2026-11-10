@@ -16,15 +16,16 @@ mismas reglas que el panel. Rama `feat/mcp-carpetas`, sobre `feat/mcp-update-not
   - borrar solo si no tiene proyectos propios (`ownerId == uid && folderId == id`) ni subcarpetas.
 - Las carpetas no se comparten: un proyecto compartido conmigo no se puede mover (las reglas dan 403 al no dueño).
 
-**Las reglas de Firestore no cambian** y no hay que desplegarlas.
+**Las reglas de carpetas y proyectos no cambian.** Sí cambia una línea de `mcpAudit` (ver «Auditoría») y por eso
+hay que desplegar las reglas.
 
 ## Herramientas
 
 | Herramienta | Argumentos | Qué hace |
 |---|---|---|
-| `list_projects` (cambia) | `type?` | Añade `folderId` a cada proyecto propio y, en `data.folders`, las carpetas propias en orden de árbol (`flatTree`) con `id`, `name` y `depth`. En el texto, cada proyecto lleva su ruta tras el título («WigiLabs / Aplicativo PMO») y las carpetas van al final sangradas por profundidad. Una lectura más (`folders where ownerId == uid`). |
+| `list_projects` (cambia) | `type?` | Añade `folderId` a cada proyecto propio y, en `data.folders`, las carpetas propias en orden de árbol (`flatTree`) con `id`, `name` y `depth`. En el texto, cada proyecto lleva su ruta tras el título («WigiLabs / Aplicativo PMO») y las carpetas van al final sangradas por profundidad **con su id** (el agente solo recibe el texto: `run` no devuelve `data`). Las carpetas salen aunque no haya proyectos. Una lectura más (`folders where ownerId == uid`). |
 | `create_folder` (nueva) | `name`, `parentId?` | Crea la carpeta; sin `parentId`, en Inicio. |
-| `update_folder` (nueva) | `id`, `name?`, `parentId?` (`null` = Inicio) | Renombra y/o mueve una carpeta (al menos uno). Mover sin ciclos (`canMove`). |
+| `update_folder` (nueva) | `id`, `name?`, `parentId?` (`null` = Inicio) | Renombra y/o mueve una carpeta (al menos uno). Mover sin ciclos (`canMove`). El nombre solo se valida si llega `name`: mover escribe solo `parentId` y `updatedAt`, así un nombre anterior de más de 40 se conserva (como la regla). |
 | `delete_folder` (nueva) | `id` | Borra la carpeta si está vacía (sin subcarpetas en la lista cargada y `projects where ownerId == uid && folderId == id limit 1` vacío; igualdades, sin índice compuesto); si no, 409 «La carpeta no está vacía». |
 | `move_project` (nueva) | `id`, `folderId` (`null` = Inicio) | Mueve un proyecto propio a una carpeta propia o a Inicio. |
 | `create_note` / `create_board` (cambian) | `folderId?` | El proyecto nace en esa carpeta (en el mismo batch de creación; la regla ya admite `folderId`). |
@@ -47,6 +48,12 @@ Se descarta una herramienta `list_folders` aparte: `list_projects` ya devuelve e
 ### Auditoría
 
 Las herramientas de carpetas pasan `{}` a `run` y no devuelven `data.id` (no es un proyecto); `move_project` sí.
+
+La regla de `mcpAudit` limita `tool` a una lista fija que hoy **no incluye `update_note`** (en producción su
+auditoría se rechaza y `recordAudit` solo lo registra en el log). Se amplía la lista con `update_note`,
+`create_folder`, `update_folder`, `delete_folder` y `move_project`, con su prueba en `tests/rules/mcp.test.ts`, y se
+despliegan las reglas. `e2e.test.ts` («audita cada herramienta») comprueba con llamadas MCP reales que quedan las
+entradas de `update_note` y de una herramienta de carpetas.
 
 ## Código
 
@@ -71,11 +78,16 @@ datos de `owner-test`), una por cosa que puede romperse:
 3. `create_note` y `create_board` con `folderId` nacen dentro; con carpeta inexistente → 404 y no crean nada.
 4. `move_project` a una carpeta y a Inicio (`null`); proyecto compartido conmigo (editor) → 403.
 5. `update_folder`: renombrar, mover, ciclo (a sí misma y a un descendiente) → 400; carpeta de otra persona → 404
-   (cubre también la inexistente).
+   (cubre también la inexistente). Carpeta sembrada con nombre de 45: moverla funciona y conserva el nombre;
+   renombrarla a 41 → 400.
+7. **Destino ajeno**: con una carpeta sembrada de otra persona como `parentId`/`folderId`, `create_folder`,
+   `update_folder`, `move_project`, `create_note` y `create_board` dan 404 y no crean ni cambian nada (es la
+   comprobación que las reglas no hacen: `validFolderRef` solo mira tipo y longitud).
+8. Auditoría: en `e2e.test.ts` (pasa por `run`), `create_folder` y `update_note` dejan su entrada en `mcpAudit`.
 6. `delete_folder`: con proyecto o subcarpeta → 409; vacía → la borra.
 
-`e2e.test.ts`: actualizar la lista exacta de herramientas (`toEqual`), obligatorio. Reglas: sin cambios,
-sin pruebas nuevas de reglas.
+`e2e.test.ts`: actualizar la lista exacta de herramientas (`toEqual`), obligatorio. Reglas: `tests/rules/mcp.test.ts` admite las
+herramientas nuevas y `update_note` en `mcpAudit`.
 
 ## Documentación
 
@@ -86,7 +98,8 @@ carpeta indicada»).
 ## Despliegue y prueba real
 
 1. Comprobar cuentas: `vercel whoami` (debe ser `juangaitand`, ámbito `juangaitands-projects`) y `firebase login:list`
-   / proyecto `drawyourarchitecture`; si no coinciden, parar y avisar. No hay reglas que desplegar.
+   / proyecto `drawyourarchitecture`; si no coinciden, parar y avisar. Desplegar las reglas de Firestore (`pnpm rules:render`, comprobar
+   `grep -c "== 'owner-test'" firestore.rules` = 0, `firebase deploy --only firestore:rules`).
 2. Desplegar la rama a producción como la vez anterior (CLI de Vercel, sin merge a `main`).
 3. Prueba con el MCP de producción: `create_folder` «WigiLabs», `create_folder` «Aplicativo PMO» con `parentId`,
    `move_project` de `I4oZ0KH9u9q0a8MYfGPn` y `vyivhmlsnxj3TPbJfevp`, y `list_projects` para comprobar las rutas.
