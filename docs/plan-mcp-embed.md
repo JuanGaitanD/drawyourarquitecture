@@ -34,16 +34,24 @@ emparejamiento por posición no tiene dónde decir «aquí va un diagrama»; mez
     su izquierda.
 - Sin `after`: debajo de todo, alineado con el texto más a la izquierda (lo mismo que `update_note` con bloques
   nuevos).
-- Hueco: con `after`, todo elemento vivo cuyo borde superior quede en o por debajo del punto de inserción baja
-  `400 + 2 × 24` px (alto del embed más el espacio entre bloques), con su `version` subida para que el editor abierto
-  lo fusione. Lo que cruza la línea (empieza arriba y acaba abajo, p. ej. un marco grande) no se mueve. Así no se
-  solapa nada y el orden de lectura se conserva. ponytail: desplazamiento por la coordenada `y`; una nota con
-  columnas en paralelo baja también la otra columna, y una flecha que va de arriba a abajo no se estira: queda
-  suelta de su destino hasta que se edita en la app. Mover también esas flechas si molesta.
+- Hueco: con `after`, lo que queda por debajo del punto de inserción baja **460 px** (alto del embed, 400, más
+  tres filas de 20: múltiplo de 20 para que `readingOrder`, que agrupa por `round(y / 20)`, conserve el orden), con su
+  `version` subida para que el editor abierto lo fusione. Se decide **por unidad**, no por elemento: la raíz de un
+  elemento es su marco (`frameId`) si existe; si no, su contenedor (`containerId`, etiquetas); si no, él mismo (se
+  sigue `containerId` y después `frameId`). Un elemento baja si el borde superior de su raíz está en o por debajo de
+  la línea; así una etiqueta baja con su forma y los hijos con su marco. Un marco o una forma que cruzan la línea no
+  se mueven, y con ellos su contenido.
+  - Si el bloque `after` está dentro de un marco → 400 «el bloque está dentro de un marco»: el embed quedaría
+    encima del resto del marco. No se escribe nada.
+  - ponytail: desplazamiento por `y`; una nota con columnas en paralelo baja también la otra columna, y una flecha
+    que va de arriba a abajo no se estira: queda suelta de su destino hasta que se edita en la app. Mover también
+    esas flechas si molesta.
 - Índice fraccionario después del mayor existente y pie de la nota: un helper `appendAt(note)` →
   `{ left, bottom, nextIndex }` sacado de `replaceNoteText` y usado por las dos funciones.
-- Ya incrustado (`noteEmbeds(note.elements).includes(boardId)`) → 409 «ya está incrustado» antes de guardar: repetir
-  la llamada no duplica.
+- Ya incrustado → 409 «ya está incrustado», comprobado **dentro** del paso de `saveWithRetry` (tras releer en cada
+  reintento: dos llamadas simultáneas no lo insertan ni desplazan dos veces). Se reconoce con la misma política que la
+  UI: un `embeddable` vivo cuyo enlace da ese id con `parseBoardLink(link, SITE_ORIGINS[0])` (orígenes de
+  producción); un enlace de otro dominio no cuenta.
 - Respuesta: `Diagrama «título» (boardId) incrustado en la nota (revisión N)` + «debajo de «…»» o «al final».
 
 ## Auditoría
@@ -64,11 +72,19 @@ emparejamiento por posición no tiene dónde decir «aquí va un diagrama»; mez
 
 `src/server/note.test.ts` (puras):
 1. Sin `after`: el embed queda debajo de todo y `noteEmbeds` lo reconoce.
-2. Con `after`: queda debajo del bloque; los bloques de debajo bajan 448 px y suben `version`; los de arriba no se
-   tocan; el orden de lectura del texto no cambia.
+2. Con `after`: queda debajo del bloque; lo de debajo baja 460 px y sube `version`; lo de arriba no se toca; el
+   orden de lectura no cambia, también con dos textos en la misma fila de 20 a distinta `y` (100 y 109).
+3b. Unidades: una forma que cruza la línea y su etiqueta (debajo) no se mueven; una forma debajo baja con su
+   etiqueta; un marco que cruza la línea conserva a sus hijos; `after` dentro de un marco → error.
+3c. Duplicado: un enlace de producción con ese id → error; uno de otro dominio, no.
 3. `after` por prefijo; 0 o varias coincidencias → error.
 
-`src/server/tools.test.ts` (emulador): dueño incrusta y `read_note` lo lista en `embeds` con su Mermaid; editor de la
+`src/server/embed.excalidraw.test.ts` (jsdom, Excalidraw real como `editors/note/merge.test.ts`): el resultado pasa
+por `restoreElements` y `mergeNoteContent` y conserva el embed (con índice válido y orden después del resto) y los
+desplazamientos.
+
+`src/server/tools.test.ts` (emulador): dos `embed_board` simultáneos sobre la misma nota y diagrama → exactamente uno
+incrusta, el otro 409, y la nota tiene un solo embed; dueño incrusta y `read_note` lo lista en `embeds` con su Mermaid; editor de la
 nota puede; viewer de la nota → 403; diagrama ajeno sin acceso → 403 y la nota intacta; ya incrustado → 409.
 
 `e2e.test.ts`: lista exacta de herramientas y auditoría de `embed_board`.
