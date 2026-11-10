@@ -352,7 +352,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(['uid', 'tokenHash', 'tool', 'ok', 'at', 'expireAt'])
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.tokenHash is string
-        && request.resource.data.tool in ['list_projects', 'read_note', 'read_board', 'create_note', 'create_board', 'update_board']
+        && request.resource.data.tool in ['list_projects', 'read_note', 'read_board', 'create_note', 'create_board', 'update_board',
+          'update_note', 'create_folder', 'update_folder', 'delete_folder', 'move_project']
         && (!('projectId' in request.resource.data) || (request.resource.data.projectId is string && request.resource.data.projectId.size() <= 128))
         && request.resource.data.ok is bool
         && request.resource.data.at is number
