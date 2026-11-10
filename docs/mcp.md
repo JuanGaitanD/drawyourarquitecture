@@ -1,6 +1,6 @@
 # Servidor MCP
 
-DYA (Draw your Architecture) expone un servidor [MCP](https://modelcontextprotocol.io) para que un agente (Claude Code, Cursor, etc.) trabaje con tus notas y diagramas: lista proyectos, lee notas y boards, crea notas y boards nuevos, edita el título y el texto de una nota y amplía un board desde Mermaid.
+DYA (Draw your Architecture) expone un servidor [MCP](https://modelcontextprotocol.io) para que un agente (Claude Code, Cursor, etc.) trabaje con tus notas y diagramas: lista proyectos, lee notas y boards, crea notas y boards nuevos, edita el título y el texto de una nota, amplía un board desde Mermaid y organiza tus carpetas.
 
 - Endpoint: `https://dya.juandgaitan.com/api/mcp` (función de Vercel, Node).
 - Transporte: Streamable HTTP **sin estado** del SDK oficial (`@modelcontextprotocol/sdk`), solo `POST` y respuestas JSON (sin sesiones ni SSE).
@@ -45,13 +45,22 @@ Otros clientes con configuración JSON:
 
 | Herramienta     | Argumentos                                | Qué hace                                                                                                                                    |
 | --------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_projects` | `type?` (`note` \| `board`)               | Proyectos propios y compartidos contigo (hasta 200 de cada grupo), con su rol (`owner`, `editor`, `viewer`).                                |
+| `list_projects` | `type?` (`note` \| `board`)               | Proyectos propios y compartidos contigo (hasta 200 de cada grupo), con su rol (`owner`, `editor`, `viewer`) y, en los tuyos, la carpeta («· en WigiLabs / Aplicativo PMO»). Al final, `## Carpetas`: tus carpetas en árbol (sangradas por profundidad) con su id, también las vacías. |
 | `read_note`     | `id`                                      | Texto de la nota en orden de lectura (por filas, de izquierda a derecha), un resumen de elementos, la lista de **imágenes** (`fileId`, `mimeType`) y de **diagramas incrustados** (`boardId`, con título y Mermaid si puedes leerlos; si no, solo el `boardId`; hasta 10). |
 | `read_board`    | `id`                                      | Mermaid del diagrama (`toFlowchart`) y JSON compacto de nodos y aristas. El Mermaid pierde stickies, textos, iconos y estilos.              |
-| `create_note`   | `title`, `text`                           | Nota nueva. El texto se divide en bloques por línea en blanco; cada bloque es un elemento `text` de Excalidraw. `#`, `##`, `###` = títulos. |
-| `create_board`  | `title`, `mermaid`                        | Diagrama nuevo desde un flowchart de Mermaid, ordenado con dagre (el mismo `parseFlowchart` + `autoLayout` de la app).                      |
+| `create_note`   | `title`, `text`, `folderId?`              | Nota nueva. El texto se divide en bloques por línea en blanco; cada bloque es un elemento `text` de Excalidraw. `#`, `##`, `###` = títulos. |
+| `create_board`  | `title`, `mermaid`, `folderId?`           | Diagrama nuevo desde un flowchart de Mermaid, ordenado con dagre (el mismo `parseFlowchart` + `autoLayout` de la app).                      |
 | `update_note`   | `id`, `title?`, `text?` (al menos uno) | **Edita** una nota existente. `title` la renombra (solo el dueño: las reglas no dejan al editor tocar el título). `text` reemplaza el texto (mismo formato que `create_note`) y **conserva** imágenes, diagramas incrustados, formas y la posición y el estilo de cada texto (ver «`update_note`: cómo se reemplaza el texto»). Transacción con `revision + 1`. |
 | `update_board`  | `id`, `mermaid`                           | **Amplía** el board: añade lo nuevo **debajo** de lo existente y conserva lo que hay (posiciones, estilos, frames, stickies e imágenes). No hay modo de sustitución. Transacción con `revision + 1`. |
+
+| `create_folder` | `name`, `parentId?`                       | Carpeta nueva en Inicio o dentro de `parentId`. Nombre recortado de 1 a 40 caracteres (no se recorta en silencio: si no cabe, 400). |
+| `update_folder` | `id`, `name?`, `parentId?` (`null` = Inicio; al menos uno) | Renombra y/o mueve una carpeta. No puede ir dentro de sí misma ni de una subcarpeta suya (400). Mover sin `name` conserva un nombre anterior de más de 40. |
+| `delete_folder` | `id`                                      | Borra la carpeta solo si está vacía (sin proyectos tuyos ni subcarpetas); si no, 409. |
+| `move_project`  | `id`, `folderId` (`null` = Inicio)        | Mueve un proyecto **tuyo** a una carpeta tuya o a Inicio. Un proyecto compartido contigo da 403: las carpetas no se comparten. |
+
+### Carpetas
+
+El mismo modelo que el panel (`folders/{id}` y `folderId` en el proyecto; ver `AGENTS.md` › Carpetas). Las reglas dan cada carpeta solo a su dueño, pero no comprueban que un destino exista ni sea tuyo, ni los ciclos, ni que una carpeta esté vacía: lo comprueba el servidor (`src/server/folders.ts`) contra tus carpetas, como el panel en el cliente. Un `folderId`/`parentId` que no es una carpeta tuya da 404 (ajena e inexistente no se distinguen) y no crea ni mueve nada. Leer y después escribir no es atómico: dos clientes a la vez pueden dejar algo colgando de una carpeta borrada (cuelga de Inicio), el mismo límite que el panel. `create_note` y `create_board` con `folderId` escriben la carpeta en el mismo batch que el proyecto.
 
 ### `update_note`: cómo se reemplaza el texto
 
@@ -77,10 +86,10 @@ Si el board o la nota están abiertos en el editor mientras un agente escribe, e
 | ------ | ------------------------------------------------------------------------------------------------------------ |
 | 401    | Respuesta HTTP: sin `Authorization`, token con formato inválido, inexistente o revocado (`WWW-Authenticate: Bearer`). |
 | 403    | Resultado de la herramienta (`isError`, texto `403: …`): una regla de Firestore rechazó la operación (`permission-denied`): el proyecto no existe o no es tuyo, no puedes editarlo, o tu cuenta no puede crear proyectos. **Un proyecto inexistente y uno ajeno son indistinguibles** (las reglas no los separan). |
-| 404    | El proyecto existe pero no tiene contenido. |
+| 404    | El proyecto existe pero no tiene contenido; o la carpeta (`id`, `folderId`, `parentId`) no es una carpeta tuya. |
 | 429    | Respuesta HTTP: más de 60 peticiones en el minuto para ese token (`Retry-After`, en segundos, hasta la siguiente ventana). |
-| 400    | Id mal formado, tipo equivocado (nota vs. board), Mermaid no válido (con la línea) o contenido que no pasa `validateBoardContent`. |
-| 409    | `update_board` / `update_note`: la revisión cambió cinco veces seguidas mientras se guardaba (otra escritura en curso); reintenta. |
+| 400    | Id mal formado, tipo equivocado (nota vs. board), Mermaid no válido (con la línea), contenido que no pasa `validateBoardContent`, nombre de carpeta vacío o de más de 40, o mover una carpeta dentro de sí misma. |
+| 409    | `update_board` / `update_note`: la revisión cambió cinco veces seguidas mientras se guardaba (otra escritura en curso); reintenta. `delete_folder`: la carpeta no está vacía. |
 | 413    | Texto, Mermaid o contenido por encima de los límites (8 MiB codificado). |
 | 405    | Cualquier método distinto de `POST`. |
 
@@ -90,7 +99,7 @@ Si el board o la nota están abiertos en el editor mientras un agente escribe, e
 - **El contenido se lee y se escribe con el mismo repositorio que la app** (`createContentRepo`, `src/infrastructure/firebase/contentRepo.ts`) sobre el Firestore autenticado de la persona: no hay lectura ni escritura propias de `content/main`. Hasta 900 000 bytes es `{ data, schemaVersion, revision, updatedAt }`; por encima, `{ schemaVersion, revision, updatedAt, chunks: n }` (sin `data`, 2 ≤ n ≤ 12) y los trozos en `content/main/chunks/{i}`, en la misma transacción que la revisión (tope 8 MiB). `read_*` recompone los trozos; `update_board` guarda con `save` y la revisión leída; `create_*` con más de 900 000 bytes crean el proyecto con un contenido vacío (las reglas exigen `data` al crear `content/main`) y lo amplían a continuación con `save`. Test contra el emulador: crear, leer y ampliar un board de ≈ 1,2 MB (`tools.test.ts`, «contenido troceado»).
 - **Quién puede crear proyectos** (regla `canCreate()`): el dueño (`OWNER_UID` renderizado en las reglas) o una cuenta con **correo verificado** (`email_verified`) que esté en `allowedEmails/{correo en minúsculas}`. Se gestiona en Ajustes por correo (solo el dueño). El proyecto se crea siempre con `ownerId` = uid del token.
 - **Límite de tasa**: `rateLimits/{sha256 del token}` = `{uid, window, count}`; ventana fija de 1 min (`window` = minuto desde el epoch), 60 peticiones. La escribe el usuario autenticado y las reglas solo admiten empezar en 1, subir de uno en uno hasta 60 dentro de la ventana o abrir una ventana posterior (no se puede bajar ni reiniciar). Ventana fija: en el cambio de minuto cabe una ráfaga de hasta 2 × 60.
-- **Auditoría**: cada llamada a una herramienta crea `mcpAudit/{id}` = `{uid, tokenHash, tool, projectId?, ok, at, expireAt}` (sin argumentos ni contenido). Solo se crea (no se edita ni se borra) y cada persona lee solo las suyas. `expireAt` es un `Timestamp` a 30 días: **hay que activar la política TTL de Firestore sobre el campo `expireAt` de la colección `mcpAudit`** (consola: Firestore → Datos → TTL, o `gcloud firestore fields ttls update expireAt --collection-group=mcpAudit --enable-ttl`). Sin esa política las entradas no caducan.
+- **Auditoría**: cada llamada a una herramienta crea `mcpAudit/{id}` = `{uid, tokenHash, tool, projectId?, ok, at, expireAt}` (sin argumentos ni contenido; las herramientas de carpetas no guardan `projectId`, salvo `move_project`). Las reglas solo admiten los nombres de herramienta conocidos: al añadir una, hay que ampliar la lista de `tool` en `firestore.rules.tpl` y desplegar las reglas (`update_note` estuvo sin auditar hasta la rama `feat/mcp-carpetas`). Solo se crea (no se edita ni se borra) y cada persona lee solo las suyas. `expireAt` es un `Timestamp` a 30 días: **hay que activar la política TTL de Firestore sobre el campo `expireAt` de la colección `mcpAudit`** (consola: Firestore → Datos → TTL, o `gcloud firestore fields ttls update expireAt --collection-group=mcpAudit --enable-ttl`). Sin esa política las entradas no caducan.
 - **El endpoint nunca registra la cabecera `Authorization`** ni el token: solo `console.error` de errores inesperados (el objeto de error, sin la petición). Revisado en `api/` y `src/server/`.
 - El token solo se guarda como `sha256`; el valor en claro no existe en ningún sitio tras mostrarse. Un token revocado se rechaza en la siguiente petición. `lastUsedAt` lo escribe solo el servidor (Admin) y como mucho una vez por hora, para que cada llamada no cueste una escritura.
 - Las reglas de `mcpTokens` dejan a cada persona crear, listar y revocar **solo los suyos** (campos cerrados y `revoked == false` al crear; la única actualización del cliente es `revoked` de `false` a `true`: no puede escribir `lastUsedAt` ni reactivar). `allowedEmails` solo la escribe el dueño.
