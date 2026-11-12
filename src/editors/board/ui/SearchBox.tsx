@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useReactFlow } from '@xyflow/react';
 import { ChevronDown, ChevronUp, Search, X } from 'lucide-react';
-import { IconButton } from '@/ui';
+import { IconButton, Input } from '@/ui';
 import { selectOnly } from '../model/ops';
 import { useBoard, useBoardStore } from '../store/BoardStoreProvider';
 import { motionDuration } from './actions';
@@ -102,22 +102,25 @@ function SearchField({ onClose }: { onClose: () => void }) {
 
   return (
     <div role="search" className={`${chrome.bar} ${styles.box} ${styles.open}`}>
-      <Search size={16} className={styles.glyph} aria-hidden="true" />
-      <input
-        ref={input}
-        type="search"
-        className={styles.input}
-        placeholder="Buscar texto…"
-        aria-label="Buscar en el diagrama"
-        autoComplete="off"
-        spellCheck={false}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setIndex(-1);
-        }}
-        onKeyDown={onKeyDown}
-      />
+      <span className={styles.field}>
+        <Search size={16} className={styles.glyph} aria-hidden="true" />
+        <Input
+          ref={input}
+          type="search"
+          size="sm"
+          className={styles.input}
+          placeholder="Buscar texto…"
+          aria-label="Buscar en el diagrama"
+          autoComplete="off"
+          spellCheck={false}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIndex(-1);
+          }}
+          onKeyDown={onKeyDown}
+        />
+      </span>
       <span className={styles.status} role="status" aria-live="polite">
         {status}
       </span>

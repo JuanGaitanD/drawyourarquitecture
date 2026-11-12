@@ -1,6 +1,6 @@
 import { Copy } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
-import { Button, Dialog, DialogContent, useToast } from '@/ui';
+import { Button, Dialog, DialogContent, Textarea, useToast } from '@/ui';
 import type { BoardContent } from '../model/board';
 import { toFlowchart, type MermaidDirection } from '../model/mermaid';
 import styles from './BoardMenu.module.css';
@@ -72,7 +72,7 @@ export function MermaidExportDialog({ open, onOpenChange, getContent }: MermaidE
               ))}
             </div>
           </div>
-          <textarea
+          <Textarea
             ref={area}
             id={`${id}-out`}
             className={styles.textarea}

@@ -13,25 +13,13 @@
   font-size: var(--text-xs);
 }
 
-.textarea {
-  width: 100%;
+/* El aspecto lo da Textarea (ui/Field); aquí solo el alto y el fondo de código. */
+.textarea.textarea {
   min-height: 14rem;
   padding: var(--space-3);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
   background: var(--surface-sunken);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
   line-height: 1.55;
-  resize: vertical;
   tab-size: 2;
-}
-.textarea::placeholder {
-  color: var(--text-faint);
-}
-.textarea[aria-invalid='true'] {
-  border-color: var(--danger);
 }
 
 .error {

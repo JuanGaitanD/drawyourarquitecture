@@ -1,6 +1,6 @@
 import { TriangleAlert } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
-import { Button, Dialog, DialogContent } from '@/ui';
+import { Button, Dialog, DialogContent, Textarea } from '@/ui';
 import type { BoardContent } from '../model/board';
 import { autoLayout } from '../model/layout';
 import { parseFlowchart } from '../model/mermaid';
@@ -95,7 +95,7 @@ export function MermaidImportDialog({ open, onOpenChange, hasContent, onApply }:
           <label className={styles.label} htmlFor={`${id}-src`}>
             Código Mermaid
           </label>
-          <textarea
+          <Textarea
             ref={area}
             id={`${id}-src`}
             className={styles.textarea}

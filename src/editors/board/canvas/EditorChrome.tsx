@@ -5,7 +5,7 @@ import type { SaveStatus } from '@/application/saveQueue';
 import { PresenceAvatars } from '@/app/invite/PresenceAvatars';
 import { SharePanel } from '@/app/invite/SharePanel';
 import { ThemeToggle, UserMenu } from '@/app/shell/Shell';
-import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
+import { Button, IconButton, Input, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
 import styles from './editor.module.css';
 
 /** Título editable: Enter o salir del campo confirma, Esc lo devuelve. */
@@ -130,7 +130,9 @@ export function ShareButton({ id, isPublic, onChange }: ShareProps) {
         </p>
         {isPublic ? (
           <div className={styles.shareRow}>
-            <input
+            <Input
+              size="sm"
+              mono
               className={styles.shareUrl}
               value={url}
               readOnly

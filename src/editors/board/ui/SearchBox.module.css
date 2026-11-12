@@ -5,28 +5,27 @@
 
 .open {
   gap: var(--space-1);
-  padding-left: var(--space-3);
   animation: rise var(--duration) var(--ease);
 }
 
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
 .glyph {
-  flex: none;
+  position: absolute;
+  left: var(--space-2);
   color: var(--text-faint);
+  pointer-events: none;
 }
 
-.input {
+/* El aspecto lo da Input (ui/Field); aquí el ancho y el hueco del icono. */
+.field .input {
   width: 11rem;
-  height: var(--control-h-sm);
-  padding: 0 var(--space-1);
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font-size: var(--text-sm);
+  padding-left: 2rem;
 }
-.input::placeholder {
-  color: var(--text-faint);
-}
-/* El foco lo marca el contorno global de :focus-visible; se quita solo la cruz nativa del input search. */
+/* El foco lo marca el anillo global de :focus-visible; se quita solo la cruz nativa del input search. */
 .input::-webkit-search-cancel-button {
   display: none;
 }
