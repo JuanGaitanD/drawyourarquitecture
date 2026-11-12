@@ -1,7 +1,7 @@
 import { ArrowLeft, Check, CloudOff, Copy, Globe, Library, LoaderCircle, Share2, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import type { SaveStatus } from '@/application/saveQueue';
-import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
+import { Button, IconButton, Input, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
 import { PresenceAvatars } from '@/app/invite/PresenceAvatars';
 import { SharePanel } from '@/app/invite/SharePanel';
 import type { CanvasUi } from './NoteCanvas';
@@ -72,7 +72,9 @@ export function TopBar(p: TopBarProps) {
         {p.tooLarge ? <TriangleAlert size={14} aria-hidden="true" /> : <StatusIcon status={p.status} />}
         <span className={styles.statusText}>{s.label}</span>
       </span>
-      <PresenceAvatars projectId={p.projectId} />
+      <span className={styles.presence}>
+        <PresenceAvatars projectId={p.projectId} />
+      </span>
       {p.library ? (
         <IconButton
           label="Biblioteca"
@@ -141,7 +143,10 @@ function SharePopover({
         </div>
         {isPublic ? (
           <div className={styles.shareLink}>
-            <input
+            <Input
+              size="sm"
+              mono
+              className={styles.shareUrl}
               readOnly
               value={url}
               aria-label="Enlace público de la nota"

@@ -18,6 +18,21 @@
   font-family: var(--font-sans);
 }
 
+/* Excalidraw tematizado por sus variables CSS (la vía documentada), sin tocar su DOM: el verde del
+   sistema reemplaza su violeta y su interfaz usa la tipografía del producto. El texto del dibujo no
+   cambia. Se repite con .theme--dark para ganar a los valores oscuros de la librería; los nuestros ya
+   cambian con data-theme. */
+.root :global(.excalidraw),
+.root :global(.excalidraw.theme--dark) {
+  --ui-font: var(--font-sans);
+  --color-primary: var(--accent);
+  --color-primary-darker: var(--accent-hover);
+  --color-primary-darkest: var(--accent-edge);
+  --color-primary-hover: var(--accent-hover);
+  --color-primary-light: var(--accent-soft);
+  --color-primary-light-darker: color-mix(in oklab, var(--accent-soft), var(--accent) 15%);
+}
+
 /* El disparador por defecto de la Biblioteca se sustituye por un botón de nuestra barra (TopBar). */
 .root :global(.default-sidebar-trigger) {
   display: none;

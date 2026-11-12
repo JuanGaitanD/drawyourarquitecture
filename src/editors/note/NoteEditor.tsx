@@ -1,4 +1,4 @@
-import { FileX2, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, FileX2, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
 import { PageFallback } from '@/app/PageFallback';
@@ -33,6 +33,7 @@ export function NoteEditor({ id, origin }: NoteEditorProps) {
         text="Puede que se haya borrado o que no tengas acceso con esta cuenta."
         action={
           <Link href={backPath(origin)} className={styles.link}>
+            <ArrowLeft size={14} aria-hidden="true" />
             Volver al panel
           </Link>
         }
@@ -92,6 +93,7 @@ function Loaded({
         text="No se puede abrir y por eso no se guardará nada encima."
         action={
           <Link href={backPath(origin)} className={styles.link}>
+            <ArrowLeft size={14} aria-hidden="true" />
             Volver al panel
           </Link>
         }

@@ -28,7 +28,7 @@
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-strong);
-  border-left-width: 4px;
+  border-left-width: 3px;
   border-radius: var(--radius-md);
   background: var(--surface-raised);
   color: var(--text);
@@ -63,6 +63,8 @@
 }
 
 .problem {
+  composes: registro from global;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -72,14 +74,11 @@
   padding: var(--space-6) var(--space-5);
   text-align: center;
 }
+/* Icono suelto, sin círculo: el marco de registro ya enmarca la pantalla. */
 .problemIcon {
   display: inline-grid;
   place-items: center;
-  width: 3.5rem;
-  height: 3.5rem;
-  border-radius: var(--radius-full);
-  background: var(--surface-sunken);
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 .problemTitle {
   font-size: var(--text-xl);
@@ -92,9 +91,19 @@
   color: var(--text-muted);
   text-wrap: balance;
 }
+/* Acción en texto: sin subrayado; peso y flecha como señal, fondo tenue al pasar y enfocar. */
 .link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
   color: var(--text-link);
-  font-weight: 500;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+.link:hover,
+.link:focus-visible {
+  background: var(--accent-soft);
 }
