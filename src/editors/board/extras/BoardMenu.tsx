@@ -216,7 +216,7 @@ export function BoardMenu({ title, viewportRef, getViewport, onContentChanged }:
             icon={<Workflow size={16} />}
             aria-label="Menú del diagrama"
           >
-            Diagrama
+            <span className="sr-only-narrow">Diagrama</span>
             <ChevronDown size={14} aria-hidden="true" />
           </Button>
         </DropdownMenuTrigger>

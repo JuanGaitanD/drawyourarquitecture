@@ -33,7 +33,7 @@
   min-height: var(--control-h-sm);
   padding: 0 var(--space-2);
   border: 1px solid transparent;
-  border-radius: calc(var(--radius-sm) - 2px);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   font-size: var(--text-sm);
@@ -51,7 +51,6 @@
   background: var(--surface-raised);
   border-color: var(--border-strong);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
 }
 .toggle {
   flex: none;

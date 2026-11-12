@@ -5,7 +5,7 @@
   --xy-minimap-background-color: var(--surface-raised);
   --xy-minimap-mask-background-color: rgb(var(--shadow-color) / 0.12);
   --xy-minimap-mask-stroke-color: var(--selection);
-  --xy-minimap-node-background-color: var(--border-strong);
+  --xy-minimap-node-background-color: var(--text-faint);
   --xy-controls-button-background-color: var(--surface-raised);
   --xy-controls-button-background-color-hover: var(--surface-hover);
   --xy-controls-button-color: var(--text-muted);
@@ -22,11 +22,12 @@
   z-index: -1 !important;
 }
 .flow :global(.react-flow__attribution) {
-  color: var(--text-faint);
-  font-size: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
 }
 .flow :global(.react-flow__attribution a) {
   color: inherit;
+  text-decoration: none;
 }
 .flow :global(.react-flow__controls) {
   border-radius: var(--radius-md);
@@ -55,6 +56,12 @@
   box-shadow: var(--shadow-md);
   overflow: hidden;
 }
+/* A 390 px el minimapa taparía la barra de acciones. */
+@media (max-width: 640px) {
+  .flow :global(.react-flow__minimap) {
+    display: none;
+  }
+}
 .flow :global(.react-flow__edge.selected .react-flow__edge-path),
 .flow :global(.react-flow__edge:focus-visible .react-flow__edge-path) {
   stroke: var(--selection);
@@ -77,7 +84,7 @@
   margin-top: var(--space-2);
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface-raised);
   box-shadow: var(--shadow-md);
   color: var(--text);

@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleAlert, CloudOff, Link2, LoaderCircle, Check, Copy, Globe2 } from 'lucide-react';
+import { ArrowLeft, CircleAlert, CloudOff, Link2, LoaderCircle, Check, Copy, Globe2, RotateCw } from 'lucide-react';
 import { useState } from 'react';
 import { useLocation } from 'wouter';
 import type { SaveStatus } from '@/application/saveQueue';
@@ -64,9 +64,10 @@ export function SaveBadge({ status, onRetry }: { status: SaveStatus; onRetry: ()
   return (
     <span className={styles.status} data-status={status} role="status" aria-live="polite">
       {s.icon}
-      <span>{s.text}</span>
+      <span className={styles.statusText}>{s.text}</span>
       {status === 'error' ? (
         <button type="button" className={styles.link} onClick={onRetry}>
+          <RotateCw size={14} aria-hidden="true" />
           Reintentar
         </button>
       ) : null}
@@ -116,7 +117,7 @@ export function ShareButton({ id, isPublic, onChange }: ShareProps) {
     <Popover>
       <PopoverTrigger asChild>
         <Button size="sm" variant="secondary" icon={isPublic ? <Globe2 size={16} /> : <Link2 size={16} />}>
-          Compartir
+          <span className="sr-only-narrow">Compartir</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className={styles.share}>
