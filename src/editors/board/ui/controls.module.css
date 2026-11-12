@@ -42,10 +42,12 @@
     background-color var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease);
 }
-.seg:hover,
-.toggle:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+@media (hover: hover) {
+  .seg:hover,
+  .toggle:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
 }
 .seg[aria-pressed='true'] {
   background: var(--surface-raised);
@@ -85,8 +87,10 @@
 .color[aria-pressed='true'] {
   border-color: var(--selection);
 }
-.color:hover:not([aria-pressed='true']) {
-  border-color: var(--border-strong);
+@media (hover: hover) {
+  .color:hover:not([aria-pressed='true']) {
+    border-color: var(--border-strong);
+  }
 }
 .chip {
   width: 1.25rem;

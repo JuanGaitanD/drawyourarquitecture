@@ -24,8 +24,10 @@
     background-color var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease);
 }
-.tab:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .tab:hover {
+    color: var(--text);
+  }
 }
 .tab[aria-selected='true'] {
   background: var(--surface-raised);

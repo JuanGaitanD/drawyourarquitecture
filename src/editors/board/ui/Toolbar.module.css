@@ -7,6 +7,9 @@
   overflow-y: auto;
   scrollbar-width: none;
 }
+.toolbar::-webkit-scrollbar {
+  display: none;
+}
 
 .picker {
   padding: var(--space-2);

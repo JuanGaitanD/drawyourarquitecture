@@ -17,14 +17,23 @@
   list-style: none;
   transition: border-color var(--duration-fast) var(--ease);
 }
-.card:hover {
-  border-color: var(--border-strong);
+@media (hover: hover) {
+  .card:hover {
+    border-color: var(--border-strong);
+  }
 }
 /* El foco del enlace se pinta en toda la tarjeta (el enlace la ocupa entera). */
 .card:has(.surface:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--focus-gap);
+}
+@supports not selector(:has(*)) {
+  .card:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--focus-gap);
+  }
 }
 .surface[draggable='true'] {
   cursor: grab;
@@ -53,6 +62,11 @@
 }
 
 /* Lámina: la vista previa es un esbozo decorativo del tipo, enmarcado por marcas de registro. */
+@supports not (aspect-ratio: 1) {
+  .preview {
+    min-height: 8rem;
+  }
+}
 .preview {
   position: relative;
   display: grid;
@@ -148,8 +162,15 @@
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease);
 }
-.card:hover .menu,
-.card:focus-within .menu,
+.card:focus-within .menu {
+  opacity: 1;
+}
+@media (hover: hover) {
+  .card:hover .menu {
+    opacity: 1;
+  }
+}
+/* Aparte: en navegadores sin :has() un selector inválido en la lista descartaría también las reglas de arriba. */
 .menu:has([data-state='open']) {
   opacity: 1;
 }

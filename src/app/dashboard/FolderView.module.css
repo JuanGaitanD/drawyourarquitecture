@@ -33,9 +33,11 @@
     border-color var(--duration-fast) var(--ease),
     background-color var(--duration-fast) var(--ease);
 }
-.chip:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .chip:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-hover);
+  }
 }
 /* Arrastrar y soltar: el destino que vale se resalta con los tokens de selección; el origen se atenúa. */
 .chip[data-drop='over'] {
@@ -54,6 +56,14 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--focus-gap);
+}
+/* Sin :has() (Firefox < 121, Safari < 15.4) el anillo sale con el foco dentro del chip. */
+@supports not selector(:has(*)) {
+  .chip:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--focus-gap);
+  }
 }
 .chipLink {
   display: inline-flex;
@@ -113,10 +123,12 @@
   font-weight: 600;
   cursor: pointer;
 }
-.newChip:hover {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+@media (hover: hover) {
+  .newChip:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
 }
 
 /* Migas y cabecera de una carpeta. */
@@ -156,9 +168,11 @@
   color: var(--text-muted);
   text-decoration: none;
 }
-.crumbLink:hover {
-  background: var(--accent-soft);
-  color: var(--text);
+@media (hover: hover) {
+  .crumbLink:hover {
+    background: var(--accent-soft);
+    color: var(--text);
+  }
 }
 .crumbCurrent {
   color: var(--text);
@@ -255,10 +269,12 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
-.option:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .option:hover {
+    background: var(--surface-hover);
+  }
 }
-.option:has(.radio:checked) {
+.option[data-checked] {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
@@ -267,6 +283,13 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: -4px;
   box-shadow: inset 0 0 0 2px var(--focus-gap);
+}
+@supports not selector(:has(*)) {
+  .option:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -4px;
+    box-shadow: inset 0 0 0 2px var(--focus-gap);
+  }
 }
 .radio {
   position: absolute;

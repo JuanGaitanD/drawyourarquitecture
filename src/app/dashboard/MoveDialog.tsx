@@ -114,7 +114,7 @@ function Option({
   children: string;
 }) {
   return (
-    <label className={styles.option} style={{ paddingInlineStart: `calc(var(--space-3) + ${depth} * var(--space-5))` }}>
+    <label className={styles.option} data-checked={checked || undefined} style={{ paddingInlineStart: `calc(var(--space-3) + ${depth} * var(--space-5))` }}>
       <input type="radio" name="destino" className={styles.radio} checked={checked} onChange={onSelect} />
       <span aria-hidden="true" className={styles.optionIcon}>
         {icon}

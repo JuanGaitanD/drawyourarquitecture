@@ -45,15 +45,17 @@
   cursor: pointer;
   transition:
     background-color var(--duration-fast) var(--ease),
-    translate var(--duration-fast) var(--ease);
+    transform var(--duration-fast) var(--ease);
 }
-.card:hover:not(:disabled) {
-  background-color: var(--surface-hover);
+@media (hover: hover) {
+  .card:hover:not(:disabled) {
+    background-color: var(--surface-hover);
+  }
 }
 .card:active:not(:disabled) {
   border-bottom-width: 1px;
   background-color: var(--surface-active);
-  translate: 0 calc(var(--edge) - 1px);
+  transform: translateY(calc(var(--edge) - 1px));
 }
 /* Mientras se crea otro tipo: hundida y sin color de acción, sin bajar la opacidad. */
 .card:disabled {
@@ -105,9 +107,11 @@
     background-color var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease);
 }
-.card:hover:not(:disabled) .plus {
-  background: var(--tone);
-  color: var(--surface);
+@media (hover: hover) {
+  .card:hover:not(:disabled) .plus {
+    background: var(--tone);
+    color: var(--surface);
+  }
 }
 
 .spinner {

@@ -79,9 +79,11 @@
   color: var(--text-muted);
   cursor: pointer;
 }
-.clear:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+@media (hover: hover) {
+  .clear:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
 }
 
 .grid {
@@ -93,6 +95,12 @@
   list-style: none;
 }
 
+/* Sin aspect-ratio (Safari < 15) la caja no colapsa: lleva un alto mínimo. */
+@supports not (aspect-ratio: 1) {
+  .skeleton {
+    min-height: 11rem;
+  }
+}
 .skeleton {
   aspect-ratio: 16 / 12;
   border: 1px solid var(--border);

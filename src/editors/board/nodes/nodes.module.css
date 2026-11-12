@@ -194,15 +194,21 @@
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease);
 }
-.node:hover .handle,
 .selected .handle,
 :global(.board-tool-connector) .handle,
-:global(.react-flow__handle.connectingto),
-:global(.react-flow__handle.connectionindicator):hover {
+:global(.react-flow__handle.connectingto) {
   opacity: 1;
 }
-.handle:hover {
-  background: var(--selection);
+@media (hover: hover) {
+  .node:hover .handle,
+  :global(.react-flow__handle.connectionindicator):hover {
+    opacity: 1;
+  }
+}
+@media (hover: hover) {
+  .handle:hover {
+    background: var(--selection);
+  }
 }
 .handle:focus-visible {
   opacity: 1;
@@ -210,10 +216,15 @@
   outline-offset: 2px;
 }
 
-.handleOff,
-.node .handleOff:hover {
+.handleOff {
   opacity: 0;
   pointer-events: none;
+}
+@media (hover: hover) {
+  .node .handleOff:hover {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 .resizeLine {
@@ -245,9 +256,11 @@
   cursor: pointer;
   pointer-events: auto;
 }
-.lock:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+@media (hover: hover) {
+  .lock:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
 }
 .lock:focus-visible {
   outline: 2px solid var(--focus-ring);

@@ -6,3 +6,6 @@
   overflow-x: auto;
   scrollbar-width: none;
 }
+.bar::-webkit-scrollbar {
+  display: none; /* Safari y Chrome < 121 no conocen scrollbar-width */
+}

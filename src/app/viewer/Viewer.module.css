@@ -61,8 +61,10 @@
   font-weight: 500;
   text-decoration: none;
 }
-.edit:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .edit:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .canvas {
@@ -124,7 +126,11 @@
   font-weight: 600;
   transition: background-color var(--duration-fast) var(--ease);
 }
-.link:hover,
 .link:focus-visible {
   background: var(--accent-soft);
+}
+@media (hover: hover) {
+  .link:hover {
+    background: var(--accent-soft);
+  }
 }

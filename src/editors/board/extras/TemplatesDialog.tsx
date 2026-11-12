@@ -94,7 +94,7 @@ export function TemplatesDialog({ open, onOpenChange, hasContent, onApply }: Tem
           {TEMPLATES.map((t) => {
             const content = previews.get(t.id);
             return (
-              <label key={t.id} className={styles.card}>
+              <label key={t.id} className={styles.card} data-checked={selected === t.id || undefined}>
                 <input
                   className={styles.radio}
                   type="radio"

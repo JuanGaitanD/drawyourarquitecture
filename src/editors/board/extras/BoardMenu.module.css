@@ -64,8 +64,10 @@
   font-weight: 500;
   cursor: pointer;
 }
-.segment:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .segment:hover {
+    color: var(--text);
+  }
 }
 .segment[aria-pressed='true'] {
   background: var(--surface-raised);
@@ -96,10 +98,12 @@
     border-color var(--duration-fast) var(--ease),
     background-color var(--duration-fast) var(--ease);
 }
-.card:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .card:hover {
+    background: var(--surface-hover);
+  }
 }
-.card:has(input:checked) {
+.card[data-checked] {
   border-color: var(--selection);
   background: var(--accent-soft);
   box-shadow: 0 0 0 1px var(--selection);
@@ -108,6 +112,13 @@
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
   box-shadow: 0 0 0 2px var(--focus-gap);
+}
+@supports not selector(:has(*)) {
+  .card:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--focus-gap);
+  }
 }
 .radio {
   position: absolute;
