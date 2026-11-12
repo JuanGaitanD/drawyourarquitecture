@@ -168,6 +168,18 @@ describe('SharePanel · compartir con personas', () => {
     expect(screen.getByText(`${location.origin}/invite/tok1`)).toBeTruthy();
   });
 
+  it('un correo largo de miembro conserva su texto completo en `title` y el rol queda aparte', async () => {
+    const largo = 'maria.fernanda.rodriguez-castellanos@universidad-nacional-de-colombia.edu.co';
+    world.members = { guest: 'editor' };
+    world.joins = { guest: { name: largo, token: 'x' } };
+    setup();
+    const nombre = await screen.findByText(largo);
+    expect(nombre.getAttribute('title')).toBe(largo);
+    // El rol no va dentro del texto que se recorta con elipsis.
+    expect(nombre.textContent).not.toMatch(/Editor/);
+    expect(screen.getByText(/· Editor/)).toBeTruthy();
+  });
+
   it('Revocar invitación la cierra y la quita de la lista, sin sacar a nadie', async () => {
     world.invites = [{ token: 'tokA', projectId: 'p1', role: 'editor', createdBy: 'owner', expiresAt: 9e12 }];
     world.members = { guest: 'editor' };

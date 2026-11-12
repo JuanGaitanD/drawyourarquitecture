@@ -2,6 +2,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* El panel se ajusta al ancho del popover en vez de crecer con su contenido: en el popover del diagrama su
+     contenedor alinea a `flex-start` y el contenido más largo (correo, texto) lo ensanchaba más allá del borde. */
+  align-self: stretch;
+  min-width: 0;
   margin-top: var(--space-3);
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
@@ -40,11 +44,31 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  min-width: 0;
 }
+/* Invitación: el texto salta de línea (no se pierde «han entrado N personas») y las acciones no se encogen. */
 .name {
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+.item > :global(button) {
+  flex: none;
+}
+/* Miembro: el correo (largo) se acorta con elipsis y el rol queda siempre visible. */
+.member {
+  display: flex;
+  flex: 1;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.who {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role {
+  flex: none;
   white-space: nowrap;
 }

@@ -225,8 +225,11 @@ export function SharePanel({ projectId }: { projectId: string }) {
         <ul className={styles.list} aria-label="Miembros">
           {members.map(([id, r]) => (
             <li key={id} className={styles.item}>
-              <span className={styles.name}>
-                {joins[id]?.name ?? id.slice(0, 8)} <span className={styles.muted}>· {ROLE_LABEL[r]}</span>
+              <span className={styles.member}>
+                <span className={styles.who} title={joins[id]?.name ?? id}>
+                  {joins[id]?.name ?? id.slice(0, 8)}
+                </span>
+                <span className={`${styles.muted} ${styles.role}`}>· {ROLE_LABEL[r]}</span>
               </span>
               <IconButton
                 label={`Quitar a ${joins[id]?.name ?? id}`}
