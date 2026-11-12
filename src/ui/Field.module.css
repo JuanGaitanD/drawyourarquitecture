@@ -80,6 +80,10 @@ textarea.sm {
   .select::picker(select) {
     appearance: base-select;
   }
+  /* base-select vuelve flex al control: sin esto el valor queda pegado arriba. */
+  .select {
+    align-items: center;
+  }
   .select::picker-icon {
     display: none;
   }
