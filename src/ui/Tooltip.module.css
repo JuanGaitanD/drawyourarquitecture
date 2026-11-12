@@ -9,7 +9,6 @@
   color: var(--text-inverse);
   font-size: var(--text-xs);
   font-weight: 500;
-  box-shadow: var(--shadow-md);
   animation: fade-in var(--duration-fast) var(--ease);
 }
 
