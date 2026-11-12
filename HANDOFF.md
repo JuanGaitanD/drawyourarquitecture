@@ -33,6 +33,30 @@ Gates de la rama (`d28d9b8`): lint, typecheck, build, `pnpm test` con emulador 5
 
 Sigue: mezclar #3 y #4 en `main` cuando Juan lo pida; D30.
 
+**Rediseño visual (rama `design/disenojg`, 2026-11-12, sin push ni PR):** nuevo sistema visual «mesa de dibujo técnico» sobre `origin/main` (`1a317ec`). Solo presentación: lógica, datos, rutas, reglas y MCP no cambian. Detalle en la sección «Sistema visual» más abajo.
+
+## Sistema visual (diseñoJG, 2026-11-12)
+
+**Dirección.** Producto: pensar un sistema, dejarlo dibujado y compartirlo; el lienzo manda y el cromo se mira de reojo. Mundo: la mesa de dibujo técnico (tapete de corte, láminas con marcas de registro, cajetín). Se descartaron el SaaS blanco con gris azulado y azul de framework (el aspecto anterior) y su opuesto, el «blueprint» azul. Alternativa nombrada y no elegida: «Papel vegetal y grafito» (monocroma; el primario grafito no deja un paso más oscuro para el canto y se confundiría con el trazo negro de los dibujos).
+
+**Qué cambió** (commits atómicos por capa; `git log --oneline origin/main..HEAD`):
+- **Tokens** (`ui/tokens.css`): paleta de grafito cálido y verde de tapete (OKLCH 172) en claro y oscuro, radios 4/6/10, una sola sombra `--shadow-float`, escala 12–40 px, tokens nuevos (ver `AGENTS.md` › Estilos). `index.html`: `theme-color` claro y oscuro.
+- **Dependencia nueva, justificada:** `@fontsource/ibm-plex-sans` 5.3.0 (OFL 1.1), fuente autoalojada: tres `woff2` latinos de ~24 kB fuera del JS inicial (el bundle inicial sigue en ~73 kB gzip, tope 250). Alternativa sin dependencia: copiar los `.woff2` a `public/fonts/` con su `@font-face`.
+- **Botón con cuerpo**, salida plana en barras densas (`data-densidad="compacta"`), foco con anillo doble global, deshabilitado sin opacidad.
+- **Campos del sistema** (`ui/Input`, `Textarea`, `Select`, con `ui/Select.test.tsx`): buscador y diálogos del panel, Ajustes (el correo gana `placeholder="nombre@dominio.com"`), Compartir (el rol de la invitación pasa a `Select`), URL de enlaces, diálogos Mermaid y buscador del diagrama.
+- **Panel**: tarjetas como láminas (esbozo por tipo con marcas de registro y cajetín), «Nuevo» como botón con cuerpo en una columna bajo 640 px, chips y tabs de 4 px, vacíos y errores sin icono en círculo.
+- **Acceso**: lámina con cajetín (marca | nombre) y un momento focal: los conectores del dibujo se trazan una vez (600 ms, escalonados 120 ms); con `prefers-reduced-motion: reduce` el dibujo aparece completo.
+- **Editores y visor**: cabecera del diagrama sin desborde a 390 px (botones solo icono, nombres accesibles intactos; minimapa oculto), barra de la nota compacta bajo 640 px, Excalidraw tematizado por sus variables, atribución de React Flow sin subrayado, acciones en texto sin subrayado, enlace «Saltar al contenido» en el `Shell`.
+- **Texto nuevo** (únicas adiciones): «Saltar al contenido», el placeholder del correo y «Draw your Architecture» como celda del cajetín del acceso.
+
+**Cómo verificar.** `pnpm lint && pnpm typecheck && pnpm test && pnpm build`; con emuladores (`pnpm emulators`) `pnpm test:rules` y `pnpm test:e2e` (vaciar Auth antes si corrieron las pruebas de `src/server`). Para mirarlo: `VITE_USE_EMULATORS=1 pnpm dev --port 5181 --strictPort`, siempre con emuladores (el `.env.local` apunta a producción). Revisar acceso, panel, Ajustes, editores, Compartir (select con flechas), tema oscuro, Tab con el anillo visible sobre el botón primario y `prefers-reduced-motion`.
+
+**Pendiente y límites.**
+- Excalidraw 0.18.1 coloca la barra de la nota (`renderTopRightUI`) en su propia fila: por debajo de ~900 px la fila desborda y la barra queda recortada por la derecha (ya ocurría antes; no se parchea su DOM). La pantalla objetivo sigue siendo laptop. Las pistas internas de Excalidraw (p. ej. «Para mover el lienzo…», 1,98:1) no se tocan.
+- El texto de los nodos del diagrama usa colores persistidos literales (`#111827` por defecto), que no cambian con el tema: el auditor lo marca como «gris de framework» y, en oscuro, como bajo contraste sobre el lienzo. Es contenido del usuario.
+- No vistas con datos reales en esta pasada: invitación (`/invite/:token`), incrustado, visor público de una nota, diálogos Plantillas y Mermaid, confirmación de borrado, avisos y la lista de tokens con datos (se revisaron por el CSS compartido y el código, no con capturas).
+- `forced-colors` y lector de pantalla no se probaron.
+
 ## Colaboración en tiempo real
 
 ### Reglas y compartir
