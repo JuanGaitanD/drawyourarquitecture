@@ -15,6 +15,7 @@ const emulatorProject = process.env.FIRESTORE_EMULATOR_HOST
 // el arranque los descargara enteros (Excalidraw ≈ 1,5 MB gzip en la pantalla de acceso).
 export default defineConfig({
   plugins: [react()],
+  build: { target: ['chrome90', 'edge90', 'firefox90', 'safari14.1'] },
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
