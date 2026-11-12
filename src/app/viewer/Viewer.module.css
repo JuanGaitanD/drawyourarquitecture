@@ -33,7 +33,7 @@
   align-items: center;
   gap: var(--space-1);
   padding: 0 var(--space-2);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   background: var(--surface-sunken);
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -82,6 +82,8 @@
 }
 
 .message {
+  composes: registro from global;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -91,17 +93,16 @@
   padding: var(--space-6) var(--space-5);
   text-align: center;
 }
+.message:global(.registro)::after {
+  inset: var(--space-4);
+}
+/* Icono suelto, sin círculo: el marco de registro ya enmarca el mensaje. */
 .icon {
   display: grid;
   place-items: center;
-  width: 3rem;
-  height: 3rem;
-  border-radius: var(--radius-full);
-  background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--text-faint);
 }
 .error .icon {
-  background: var(--danger-soft);
   color: var(--danger);
 }
 .title {
@@ -118,6 +119,12 @@
 }
 .link {
   margin-top: var(--space-2);
+  padding: 2px 4px;
   border-radius: var(--radius-sm);
-  font-weight: 500;
+  font-weight: 600;
+  transition: background-color var(--duration-fast) var(--ease);
+}
+.link:hover,
+.link:focus-visible {
+  background: var(--accent-soft);
 }
