@@ -33,17 +33,19 @@
     background-color var(--duration-fast) var(--ease),
     border-color var(--duration-fast) var(--ease),
     color var(--duration-fast) var(--ease),
-    translate var(--duration-fast) var(--ease);
+    transform var(--duration-fast) var(--ease);
 }
-.button:hover:not(:disabled) {
-  background-color: var(--face-hover);
+@media (hover: hover) {
+  .button:hover:not(:disabled) {
+    background-color: var(--face-hover);
+  }
 }
 /* Pulsado: la cara cubre el canto y baja su altura; el alto total no cambia. */
 .button:active:not(:disabled) {
   border-bottom-width: 1px;
   border-bottom-color: var(--side);
   background-color: var(--face-active);
-  translate: 0 calc(var(--edge) - 1px);
+  transform: translateY(calc(var(--edge) - 1px));
 }
 
 .md {
@@ -93,16 +95,18 @@
 .ghost {
   --face: transparent;
   --face-hover: var(--accent-soft);
-  --face-active: color-mix(in oklab, var(--accent-soft), var(--accent) 15%);
+  --face-active: var(--accent-soft-active);
   --side: transparent;
   --edge-color: transparent;
   border-bottom-width: 1px;
 }
-.ghost:hover:not(:disabled) {
-  color: var(--accent);
+@media (hover: hover) {
+  .ghost:hover:not(:disabled) {
+    color: var(--accent);
+  }
 }
 .ghost:active:not(:disabled) {
-  translate: none;
+  transform: none;
   color: var(--accent);
 }
 
@@ -142,7 +146,7 @@
   border-bottom-color: var(--side);
 }
 :global([data-densidad='compacta']) .button:active:not(:disabled) {
-  translate: none;
+  transform: none;
 }
 :global([data-densidad='compacta']) .button:disabled:not(.loading) {
   border-width: 1px;

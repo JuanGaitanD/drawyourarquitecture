@@ -21,11 +21,11 @@
   color: var(--text);
   font-weight: 500;
   text-decoration: none;
-  translate: 0 -200%;
-  transition: translate var(--duration-fast) var(--ease);
+  transform: translateY(-200%);
+  transition: transform var(--duration-fast) var(--ease);
 }
 .skip:focus-visible {
-  translate: 0 0;
+  transform: none;
 }
 
 .header {
@@ -86,8 +86,10 @@
   object-fit: cover;
   box-shadow: 0 0 0 1px var(--border);
 }
-.avatarButton:hover .avatar {
-  box-shadow: 0 0 0 2px var(--accent);
+@media (hover: hover) {
+  .avatarButton:hover .avatar {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
 }
 
 .main:focus {

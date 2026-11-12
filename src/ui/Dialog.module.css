@@ -15,6 +15,7 @@
   flex-direction: column;
   gap: var(--space-3);
   width: calc(100vw - 2rem);
+  max-height: calc(100vh - 2rem);
   max-height: calc(100dvh - 2rem);
   padding: var(--space-5);
   border: 1px solid var(--border);
@@ -58,9 +59,11 @@
   color: var(--text-muted);
   cursor: pointer;
 }
-.close:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+@media (hover: hover) {
+  .close:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
 }
 .description {
   color: var(--text-muted);

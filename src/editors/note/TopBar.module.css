@@ -45,8 +45,10 @@
   text-overflow: ellipsis;
   transition: border-color var(--duration-fast) var(--ease);
 }
-.title:hover {
-  border-color: var(--border);
+@media (hover: hover) {
+  .title:hover {
+    border-color: var(--border);
+  }
 }
 
 .status {

@@ -25,9 +25,11 @@
   display: inline-flex;
 }
 
-.ghost:hover:not(:disabled) {
-  background: var(--surface-hover);
-  color: var(--text);
+@media (hover: hover) {
+  .ghost:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
 }
 .ghost:active:not(:disabled) {
   background: var(--surface-active);
@@ -38,8 +40,10 @@
   border-color: var(--border-strong);
   color: var(--text);
 }
-.solid:hover:not(:disabled) {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .solid:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
 }
 
 .button[aria-pressed='true'] {

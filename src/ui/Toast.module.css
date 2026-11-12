@@ -74,8 +74,10 @@
   font-weight: 600;
   cursor: pointer;
 }
-.action:hover {
-  background: var(--surface-hover);
+@media (hover: hover) {
+  .action:hover {
+    background: var(--surface-hover);
+  }
 }
 
 .close {
@@ -90,9 +92,11 @@
   color: var(--text-muted);
   cursor: pointer;
 }
-.close:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+@media (hover: hover) {
+  .close:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
 }
 
 @keyframes slide-in {

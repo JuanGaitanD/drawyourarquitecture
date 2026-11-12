@@ -37,6 +37,7 @@
   --accent-active: #045b48;
   --accent-edge: #024334;
   --accent-soft: #dbf1e9;
+  --accent-soft-active: #bedcd1; /* = color-mix(in oklab, accent-soft, accent 15%), sin depender de color-mix */
   --on-accent: #f9fdfb;
   --selection: #136a55;
   --selection-soft: rgb(19 106 85 / 0.14);
@@ -83,6 +84,7 @@
   --accent-active: #9ae3cb;
   --accent-edge: #48907b;
   --accent-soft: #12352b;
+  --accent-soft-active: #1f4a3d; /* = color-mix(in oklab, accent-soft, accent 15%) */
   --on-accent: #061a14;
   --selection: #71d0b3;
   --selection-soft: rgb(113 208 179 / 0.2);

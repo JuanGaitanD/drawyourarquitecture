@@ -3,6 +3,7 @@
   --note-header-h: calc(var(--control-h-sm) + var(--space-2) + 1px);
   position: relative;
   width: 100%;
+  height: 100vh; /* respaldo: sin unidades dinámicas (Safari < 15.4, Chrome < 108, Firefox < 101) */
   height: 100dvh;
   overflow: hidden;
 }
@@ -78,6 +79,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-3);
+  min-height: 100vh;
   min-height: 100dvh;
   padding: var(--space-6) var(--space-5);
   text-align: center;
@@ -111,7 +113,11 @@
   text-decoration: none;
   transition: background-color var(--duration-fast) var(--ease);
 }
-.link:hover,
 .link:focus-visible {
   background: var(--accent-soft);
+}
+@media (hover: hover) {
+  .link:hover {
+    background: var(--accent-soft);
+  }
 }

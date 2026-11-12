@@ -18,8 +18,10 @@
   color: var(--text-faint);
   opacity: 1;
 }
-.field:hover:not(:disabled, [readonly]) {
-  border-color: var(--text-faint);
+@media (hover: hover) {
+  .field:hover:not(:disabled, [readonly]) {
+    border-color: var(--text-faint);
+  }
 }
 .field[readonly] {
   background: var(--surface-sunken);
@@ -70,7 +72,7 @@ textarea.sm {
   position: absolute;
   top: 50%;
   right: var(--space-2);
-  translate: 0 -50%;
+  transform: translateY(-50%);
   color: var(--text-muted);
   pointer-events: none;
 }

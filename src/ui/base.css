@@ -50,9 +50,40 @@ a {
   box-shadow: 0 0 0 2px var(--focus-gap);
 }
 
+/* Sin :focus-visible (Safari < 15.4) el mismo anillo sale con cualquier foco: más ruido, pero nunca sin anillo.
+   Los navegadores que sí lo conocen no aplican esta regla. */
+@supports not selector(:focus-visible) {
+  :focus {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--focus-gap);
+  }
+}
+
 @media (forced-colors: active) {
   :focus-visible {
     outline-color: Highlight;
+  }
+}
+@supports not selector(:focus-visible) {
+  @media (forced-colors: active) {
+    :focus {
+      outline-color: Highlight;
+    }
+  }
+}
+
+/* forced-colors (Windows «alto contraste»): los fondos y sombras que marcan «activo» se pierden. Los estados activos
+   (pestaña, herramienta o conmutador pulsado, interruptor, opción elegida) se invierten con los colores del
+   sistema; `!important` porque deben ganar a los fondos de cada componente, que el modo forzado descartaría. */
+@media (forced-colors: active) {
+  [aria-pressed='true'],
+  [aria-selected='true'],
+  [aria-checked='true'],
+  [data-checked] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
   }
 }
 

@@ -48,7 +48,7 @@
   --color-primary-darkest: var(--accent-edge);
   --color-primary-hover: var(--accent-hover);
   --color-primary-light: var(--accent-soft);
-  --color-primary-light-darker: color-mix(in oklab, var(--accent-soft), var(--accent) 15%);
+  --color-primary-light-darker: var(--accent-soft-active);
   --color-surface-primary-container: var(--accent-soft);
   --color-on-primary-container: var(--accent);
   --color-brand-hover: var(--accent-hover);
