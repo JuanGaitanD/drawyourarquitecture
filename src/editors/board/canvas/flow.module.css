@@ -2,7 +2,7 @@
 .flow {
   --xy-background-color: var(--surface-app);
   --xy-background-pattern-color: var(--border-strong);
-  --xy-minimap-background-color: var(--surface-raised);
+  --xy-minimap-background-color: var(--surface-sunken);
   --xy-minimap-mask-background-color: rgb(var(--shadow-color) / 0.12);
   --xy-minimap-mask-stroke-color: var(--selection);
   --xy-minimap-node-background-color: var(--text-faint);
