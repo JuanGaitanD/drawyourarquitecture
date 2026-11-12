@@ -22,3 +22,6 @@ export {
 export { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from './Popover';
 export { ToastProvider, useToast, type ToastOptions } from './Toast';
 export { ThemeProvider, useTheme, resolveTheme, type ResolvedTheme, type ThemePreference } from './theme';
+export { Input, type InputProps } from './Input';
+export { Textarea, type TextareaProps } from './Textarea';
+export { Select, type SelectProps } from './Select';
