@@ -26,6 +26,7 @@
     "test": "vitest run",
     "test:rules": "node scripts/test-rules.mjs",
     "og:render": "node scripts/render-og.mjs",
+    "favicon:render": "node scripts/render-favicon.mjs",
     "rules:render": "node scripts/render-rules.mjs",
     "emulators": "node scripts/render-rules.mjs --emulator && firebase emulators:start --project demo-dya",
     "test:e2e": "playwright test"
