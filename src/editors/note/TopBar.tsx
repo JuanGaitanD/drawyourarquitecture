@@ -50,7 +50,7 @@ export function TopBar(p: TopBarProps) {
   };
 
   return (
-    <div className={styles.bar} data-densidad="compacta">
+    <div className={`${styles.bar} ${p.library?.docked ? styles.docked : ''}`} data-densidad="compacta">
       <IconButton label="Volver al panel" size="sm" icon={<ArrowLeft size={16} />} onClick={p.onBack} />
       <input
         className={styles.title}

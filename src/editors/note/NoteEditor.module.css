@@ -1,4 +1,6 @@
 .page {
+  /* Alto de la fila de la barra cuando va acoplada encima del lienzo (≤ 1100 px, ver NoteCanvasInner). */
+  --note-header-h: calc(var(--control-h-sm) + var(--space-2) + 1px);
   position: relative;
   width: 100%;
   height: 100dvh;
@@ -20,6 +22,12 @@
 }
 .banners:empty {
   display: none;
+}
+/* Con la barra acoplada (misma consulta que `DOCK_QUERY`), la fila de herramientas de Excalidraw baja su alto. */
+@media (max-width: 1100px) {
+  .banners {
+    top: calc(4.75rem + var(--note-header-h));
+  }
 }
 
 .banner {

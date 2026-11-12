@@ -13,6 +13,24 @@
   font-size: var(--text-sm);
 }
 
+/* Acoplada: fila propia a todo el ancho encima del lienzo (ver `docked` en NoteCanvas). Plana: ya no flota. */
+.docked {
+  width: 100%;
+  min-height: var(--note-header-h, 3rem);
+  padding: var(--space-1) var(--space-2);
+  border-width: 0 0 1px;
+  border-radius: 0;
+  box-shadow: none;
+}
+.docked .title {
+  flex: 1;
+  width: auto;
+}
+/* El título ocupa lo que sobra, pero los botones de la derecha no se encogen nunca. */
+.docked > :not(.title) {
+  flex: none;
+}
+
 .title {
   width: 9.5rem;
   min-width: 0;
@@ -62,7 +80,9 @@
     display: none;
   }
 }
-@media (max-width: 1100px) {
+/* Hasta 1280 px el estado va solo con icono: con avatares y «Sin conexión · borrador local» la barra flotante sumaría
+   ≈ 540 px y no cabría junto a las herramientas de Excalidraw. */
+@media (max-width: 1280px) {
   .statusText {
     position: absolute;
     width: 1px;

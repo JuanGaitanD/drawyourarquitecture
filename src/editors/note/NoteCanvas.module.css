@@ -1,13 +1,31 @@
 .root {
   position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   min-height: 0;
 }
 
+/* Fila propia para la barra de la nota en ventanas estrechas (ver `docked` en NoteCanvasInner): en flujo, encima
+   del lienzo, así que no pisa las herramientas de Excalidraw ni depende de su rejilla. */
+.dock {
+  flex: none;
+  z-index: var(--z-canvas-ui);
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-sans);
+}
+
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
 /* Excalidraw llena a su contenedor; sin altura propia no se vería nada. */
-.root > :global(.excalidraw-container),
-.root > :global(.excalidraw) {
+.canvas > :global(.excalidraw-container),
+.canvas > :global(.excalidraw) {
   height: 100%;
 }
 

@@ -24,6 +24,11 @@ export interface NoteHandle {
 export interface CanvasUi {
   libraryOpen: boolean;
   toggleLibrary: () => void;
+  /**
+   * La barra va en una fila propia encima del lienzo (ventana estrecha) en vez de flotar en la esquina de
+   * Excalidraw, cuya fila superior no la deja caber en ventanas estrechas (ver `DOCK_QUERY` en NoteCanvasInner).
+   */
+  docked: boolean;
 }
 
 export interface NoteCanvasProps {

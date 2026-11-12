@@ -22,7 +22,7 @@ import { indexedDbPendingStore } from '@/application/pendingFiles';
 import { fileStore } from '@/app/services';
 import type { PendingFile } from '@/application/pendingFiles';
 import { createUploadQueue, type UploadQueue } from '@/application/uploadQueue';
-import { useTheme, useToast } from '@/ui';
+import { useMediaQuery, useTheme, useToast } from '@/ui';
 import { BoardEmbed } from './BoardEmbed';
 import {
   buildNoteContent,
@@ -57,6 +57,13 @@ import styles from './NoteCanvas.module.css';
 const CHANGE_THROTTLE_MS = 150;
 const REJECTION_TEXT = 'Solo se admiten PNG, JPEG, GIF y WebP (hasta 4 MiB tras optimizar).';
 
+/**
+ * Por debajo de este ancho la barra de la nota no cabe en la fila superior de Excalidraw (menú + herramientas
+ * ≈ 550 px + barra con avatares ≈ 370 px + márgenes ≈ 1050 px): sale a una fila propia encima del lienzo.
+ * Debe coincidir con el `@media` de `NoteEditor.module.css` que baja los avisos.
+ */
+const DOCK_QUERY = '(max-width: 1100px)';
+
 type SceneState = { viewBackgroundColor?: string; openSidebar?: { name: string } | null };
 type Scene = { elements: readonly unknown[]; appState: SceneState };
 
@@ -75,6 +82,7 @@ export default function NoteCanvasInner({
   const [insertOpen, setInsertOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const toggleLibrary = useCallback(() => api?.toggleSidebar({ name: 'default' }), [api]);
+  const docked = useMediaQuery(DOCK_QUERY) && !!topRight;
   const onPointerUpdate = useNoteCursors(projectId, api);
 
   // Estado del puente con Excalidraw. Vive en refs: no pinta nada y no debe re-renderizar el lienzo.
@@ -458,48 +466,57 @@ export default function NoteCanvasInner({
 
   return (
     <div className={styles.root}>
-      <Excalidraw
-        excalidrawAPI={setApi}
-        initialData={initialData}
-        onChange={handleChange as ExcalidrawProps['onChange']}
-        onPointerUpdate={onPointerUpdate}
-        theme={resolved}
-        langCode="es-ES"
-        viewModeEnabled={readonly}
-        validateEmbeddable={(link) => validateEmbeddable(link, location.origin)}
-        renderEmbeddable={(el) => {
-          const id = parseBoardLink(el.link, location.origin);
-          return id ? <BoardEmbed boardId={id} readonly={readonly} /> : null;
-        }}
-        onLinkOpen={onLinkOpen}
-        onLibraryChange={writeLibrary}
-        renderTopRightUI={
-          !topRight
-            ? undefined
-            : () => (
-                <div className={styles.topRight}>
-                  {typeof topRight === 'function' ? topRight({ libraryOpen, toggleLibrary }) : topRight}
-                </div>
-              )
-        }
-        UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
-      >
-        {readonly ? null : (
-          <MainMenu>
-            <MainMenu.Item icon={<LayoutDashboard size={16} />} onSelect={() => setInsertOpen(true)}>
-              Insertar diagrama
-            </MainMenu.Item>
-            <MainMenu.Separator />
-            <MainMenu.DefaultItems.SaveAsImage />
-            <MainMenu.DefaultItems.Export />
-            <MainMenu.DefaultItems.SearchMenu />
-            <MainMenu.DefaultItems.Help />
-            <MainMenu.Separator />
-            <MainMenu.DefaultItems.ChangeCanvasBackground />
-            <MainMenu.DefaultItems.ClearCanvas />
-          </MainMenu>
-        )}
-      </Excalidraw>
+      {docked ? (
+        <div className={styles.dock}>
+          {typeof topRight === 'function' ? topRight({ libraryOpen, toggleLibrary, docked }) : topRight}
+        </div>
+      ) : null}
+      <div className={styles.canvas}>
+        <Excalidraw
+          excalidrawAPI={setApi}
+          initialData={initialData}
+          onChange={handleChange as ExcalidrawProps['onChange']}
+          onPointerUpdate={onPointerUpdate}
+          theme={resolved}
+          langCode="es-ES"
+          viewModeEnabled={readonly}
+          validateEmbeddable={(link) => validateEmbeddable(link, location.origin)}
+          renderEmbeddable={(el) => {
+            const id = parseBoardLink(el.link, location.origin);
+            return id ? <BoardEmbed boardId={id} readonly={readonly} /> : null;
+          }}
+          onLinkOpen={onLinkOpen}
+          onLibraryChange={writeLibrary}
+          renderTopRightUI={
+            !topRight || docked
+              ? undefined
+              : () => (
+                  <div className={styles.topRight}>
+                    {typeof topRight === 'function'
+                      ? topRight({ libraryOpen, toggleLibrary, docked })
+                      : topRight}
+                  </div>
+                )
+          }
+          UIOptions={{ canvasActions: { loadScene: false, saveToActiveFile: false } }}
+        >
+          {readonly ? null : (
+            <MainMenu>
+              <MainMenu.Item icon={<LayoutDashboard size={16} />} onSelect={() => setInsertOpen(true)}>
+                Insertar diagrama
+              </MainMenu.Item>
+              <MainMenu.Separator />
+              <MainMenu.DefaultItems.SaveAsImage />
+              <MainMenu.DefaultItems.Export />
+              <MainMenu.DefaultItems.SearchMenu />
+              <MainMenu.DefaultItems.Help />
+              <MainMenu.Separator />
+              <MainMenu.DefaultItems.ChangeCanvasBackground />
+              <MainMenu.DefaultItems.ClearCanvas />
+            </MainMenu>
+          )}
+        </Excalidraw>
+      </div>
       {readonly ? null : (
         <InsertBoardDialog
           open={insertOpen}
