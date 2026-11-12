@@ -167,7 +167,7 @@ function ReadOnly({
   });
   const files = useMemo<BoardFiles>(() => ({ load: (fileId) => fileStore.load(id, fileId) }), [id]);
   return (
-    <div className={styles.root}>
+    <div className={styles.root} data-densidad="compacta">
       <header className={styles.header}>
         <BackButton to={backTo} />
         <TitleField value={title} onCommit={() => undefined} readOnly />
@@ -337,7 +337,7 @@ function Loaded({
     <BoardStoreProvider store={store}>
       <BoardFilesContext.Provider value={files}>
         <ReactFlowProvider>
-          <div className={styles.root} ref={rootRef} tabIndex={-1}>
+          <div className={styles.root} ref={rootRef} tabIndex={-1} data-densidad="compacta">
             <Shortcuts container={rootRef} />
             <header className={styles.header}>
               <BackButton to={backTo} />

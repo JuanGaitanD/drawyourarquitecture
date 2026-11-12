@@ -3,7 +3,7 @@
   place-items: center;
   flex: none;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -19,7 +19,6 @@
 .sm {
   width: var(--control-h-sm);
   height: var(--control-h-sm);
-  border-radius: var(--radius-sm);
 }
 
 .icon {
@@ -48,7 +47,11 @@
   color: var(--accent);
 }
 
+/* Deshabilitado sin bajar la opacidad: texto tenue legible y sin respuesta al cursor. */
 .button:disabled {
-  opacity: 0.45;
+  color: var(--text-faint);
   cursor: not-allowed;
+}
+.solid:disabled {
+  background: var(--surface-sunken);
 }

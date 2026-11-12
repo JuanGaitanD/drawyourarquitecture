@@ -42,7 +42,7 @@ export function Viewer({ type, id }: { type: ProjectType; id: string }) {
   const canEdit = user?.uid === project.ownerId;
   return (
     <div className={styles.viewer}>
-      <header className={styles.header}>
+      <header className={styles.header} data-densidad="compacta">
         <Link href="/" className={styles.brand} aria-label="DYA (Draw your Architecture), ir al inicio">
           <LogoMark size={24} />
         </Link>
