@@ -1,3 +1,5 @@
+/* Acceso: una lámina de plano sobre la cuadrícula de la mesa. Un solo momento vivo: el dibujo traza sus
+   conectores una vez. */
 .page {
   position: relative;
   display: grid;
@@ -5,7 +7,6 @@
   place-items: center;
   padding: var(--space-5);
   background:
-    radial-gradient(60rem 28rem at 50% -8rem, var(--accent-soft), transparent 70%),
     radial-gradient(var(--border) 1px, transparent 1.2px) 0 0 / 22px 22px,
     var(--surface-app);
 }
@@ -16,36 +17,59 @@
   right: var(--space-4);
 }
 
+/* La lámina no flota sobre un lienzo: se separa con filete, sin sombra. */
 .card {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-4);
   width: 100%;
-  max-width: 26rem;
-  padding: var(--space-6) var(--space-5) var(--space-5);
+  max-width: 30rem;
+  padding: var(--space-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
-  box-shadow: var(--shadow-lg);
 }
 
+.frame {
+  composes: registro from global;
+  position: relative;
+  padding: var(--space-6) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
 .diagram {
+  display: block;
   width: 100%;
   height: auto;
-  margin-bottom: var(--space-1);
 }
 
+/* Cajetín: dos celdas separadas por filete (marca | nombre completo). */
+.cajetin {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
 .brand {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
 }
 .title {
-  font-size: var(--text-xl);
+  font-size: var(--text-3xl);
   font-weight: 600;
   letter-spacing: -0.02em;
-  line-height: 1.15;
+  line-height: 1.1;
+}
+.expansion {
+  display: flex;
+  align-items: center;
+  padding: var(--space-3);
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 .lead {
   color: var(--text-muted);
@@ -54,7 +78,7 @@
 
 .cta {
   width: 100%;
-  min-height: 2.75rem;
+  min-height: var(--control-h-touch);
   margin-top: var(--space-2);
 }
 
@@ -62,8 +86,9 @@
   display: flex;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--warning);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
   background: var(--warning-soft);
   color: var(--text);
   font-size: var(--text-sm);
@@ -93,4 +118,31 @@
   color: var(--text-faint);
   font-size: var(--text-xs);
   text-align: center;
+}
+
+/* Momento focal (una vez): conectores trazados en 600 ms, escalonados 120 ms; puntas y nodo central
+   aparecen en 180 ms tras su conector. Con movimiento reducido no se aplica nada: el dibujo ya está
+   completo (estado final = estado normal). */
+@media (prefers-reduced-motion: no-preference) {
+  .trace {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: trazar 600ms var(--ease) forwards;
+    animation-delay: calc(var(--i, 0) * 120ms);
+  }
+  .appear {
+    opacity: 0;
+    animation: aparecer 180ms var(--ease) forwards;
+    animation-delay: var(--d, 0ms);
+  }
+}
+@keyframes trazar {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes aparecer {
+  to {
+    opacity: 1;
+  }
 }

@@ -1,4 +1,6 @@
 .page {
+  composes: registro from global;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -8,6 +10,9 @@
   padding: var(--space-6) var(--space-5);
   text-align: center;
 }
+.page:global(.registro)::after {
+  inset: var(--space-4);
+}
 .code {
   color: var(--accent);
   font-family: var(--font-mono);
@@ -16,7 +21,7 @@
   letter-spacing: 0.08em;
 }
 .title {
-  font-size: var(--text-2xl);
+  font-size: var(--text-xl);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.15;

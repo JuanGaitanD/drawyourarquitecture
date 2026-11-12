@@ -1,4 +1,5 @@
 import { FlaskConical, TriangleAlert } from 'lucide-react';
+import type { CSSProperties } from 'react';
 import { Button } from '@/ui';
 import { useAuth } from './hooks';
 import { USE_EMULATORS, isFirebaseConfigured } from './services';
@@ -30,34 +31,45 @@ function GoogleG() {
 function Diagram() {
   return (
     <svg className={styles.diagram} viewBox="0 0 320 120" fill="none" aria-hidden="true" focusable="false">
+      {/* Momento focal: los conectores se trazan una vez; las puntas y el nodo central aparecen tras su conector. */}
       <g stroke="var(--border-strong)" strokeWidth="1.5" strokeLinecap="round">
-        <path d="M86 60h42" />
-        <path d="M192 60h42" />
-        <path d="M160 36V22h60" strokeDasharray="3 4" />
+        <path className={styles.trace} style={{ '--i': 0 } as CSSProperties} pathLength="1" d="M86 60h42" />
+        <path className={styles.trace} style={{ '--i': 1 } as CSSProperties} pathLength="1" d="M192 60h42" />
+        <path
+          className={styles.appear}
+          style={{ '--d': '480ms' } as CSSProperties}
+          d="M160 36V22h60"
+          strokeDasharray="3 4"
+        />
       </g>
       <g fill="var(--accent)">
-        <path d="M128 60l-6-3.5v7zM234 60l-6-3.5v7z" />
+        <path className={styles.appear} style={{ '--d': '600ms' } as CSSProperties} d="M128 60l-6-3.5v7z" />
+        <path className={styles.appear} style={{ '--d': '720ms' } as CSSProperties} d="M234 60l-6-3.5v7z" />
       </g>
       <rect
         x="14"
         y="40"
         width="72"
         height="40"
-        rx="10"
+        rx="4"
         fill="var(--surface-raised)"
         stroke="var(--border-strong)"
         strokeWidth="1.5"
       />
-      <rect
-        x="128"
-        y="36"
-        width="64"
-        height="48"
-        rx="12"
-        fill="var(--accent-soft)"
-        stroke="var(--accent)"
-        strokeWidth="1.5"
-      />
+      <g className={styles.appear} style={{ '--d': '600ms' } as CSSProperties}>
+        <rect
+          x="128"
+          y="36"
+          width="64"
+          height="48"
+          rx="4"
+          fill="var(--accent-soft)"
+          stroke="var(--accent)"
+          strokeWidth="1.5"
+        />
+        <rect x="140" y="54" width="40" height="5" rx="2.5" fill="var(--accent)" />
+        <rect x="140" y="64" width="26" height="4" rx="2" fill="var(--accent)" opacity="0.5" />
+      </g>
       <ellipse
         cx="270"
         cy="52"
@@ -87,7 +99,7 @@ function Diagram() {
         y="12"
         width="46"
         height="20"
-        rx="6"
+        rx="4"
         fill="var(--surface-raised)"
         stroke="var(--border-strong)"
         strokeWidth="1.5"
@@ -97,8 +109,6 @@ function Diagram() {
         <rect x="26" y="66" width="22" height="4" rx="2" opacity="0.6" />
         <rect x="228" y="19" width="28" height="5" rx="2.5" />
       </g>
-      <rect x="140" y="54" width="40" height="5" rx="2.5" fill="var(--accent)" />
-      <rect x="140" y="64" width="26" height="4" rx="2" fill="var(--accent)" opacity="0.5" />
     </svg>
   );
 }
@@ -111,10 +121,15 @@ export function LoginScreen() {
         <ThemeToggle />
       </div>
       <main className={styles.card}>
-        <Diagram />
-        <div className={styles.brand}>
-          <LogoMark size={36} />
-          <h1 className={styles.title}>DYA</h1>
+        <div className={styles.frame}>
+          <Diagram />
+        </div>
+        <div className={styles.cajetin}>
+          <div className={styles.brand}>
+            <LogoMark size={32} />
+            <h1 className={styles.title}>DYA</h1>
+          </div>
+          <p className={styles.expansion}>Draw your Architecture</p>
         </div>
         <p className={styles.lead}>Draw your Architecture: notas libres y diagramas de arquitectura, en un solo lugar.</p>
 
