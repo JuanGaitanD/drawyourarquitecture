@@ -61,6 +61,9 @@ export function UserMenu() {
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className={styles.shell}>
+      <a href="#contenido" className={styles.skip}>
+        Saltar al contenido
+      </a>
       <header className={styles.header}>
         <Link href="/" className={styles.brand} aria-label="DYA (Draw your Architecture), ir al panel">
           <LogoMark />
@@ -71,7 +74,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <UserMenu />
         </div>
       </header>
-      <main className={styles.main}>{children}</main>
+      <main id="contenido" tabIndex={-1} className={styles.main}>{children}</main>
     </div>
   );
 }
