@@ -69,6 +69,7 @@
 }
 .chipLink:focus-visible {
   outline: none;
+  box-shadow: none;
 }
 .chipLink svg,
 .chip > button {

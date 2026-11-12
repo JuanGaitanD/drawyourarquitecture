@@ -109,3 +109,10 @@
     padding: 0 var(--space-3);
   }
 }
+
+/* Táctil: la marca también es un objetivo de 44 px. */
+@media (pointer: coarse) {
+  .brand {
+    min-height: var(--control-h-touch);
+  }
+}
