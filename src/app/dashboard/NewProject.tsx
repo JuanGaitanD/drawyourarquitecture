@@ -17,7 +17,7 @@ export function NewProject() {
       </h2>
       <div className={styles.grid}>
         {TYPES.map((type) => {
-          const { label, description, Icon } = TYPE_META[type];
+          const { label, description, Sketch } = TYPE_META[type];
           const busy = creating === type;
           return (
             <button
@@ -28,9 +28,7 @@ export function NewProject() {
               aria-busy={busy || undefined}
               onClick={() => void create(type)}
             >
-              <span className={styles.tile} aria-hidden="true">
-                <Icon size={22} aria-hidden />
-              </span>
+              <Sketch size={56} className={styles.sketch} />
               <span className={styles.text}>
                 <span className={styles.title}>{busy ? `Creando ${label.toLowerCase()}…` : label}</span>
                 <span className={styles.description}>{description}</span>

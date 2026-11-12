@@ -52,7 +52,7 @@ export function ProjectCard({
   const { toast } = useToast();
   const [here] = useLocation();
   const drag = useDragSource({ kind: 'project', id: project.id, from: project.folderId ?? null });
-  const { label, Icon } = TYPE_META[project.type];
+  const { label, Sketch } = TYPE_META[project.type];
   const [renaming, setRenaming] = useState(false);
   const [busy, setBusy] = useState<'duplicate' | 'delete' | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -152,16 +152,13 @@ export function ProjectCard({
   }
 
   const preview = (
-    <span className={styles.preview} aria-hidden="true">
-      <span className={styles.tile}>
-        <Icon size={26} aria-hidden />
-      </span>
+    <span className={`${styles.preview} registro`} aria-hidden="true">
+      <Sketch size={64} className={styles.sketch} />
     </span>
   );
   const meta = (
     <span className={styles.meta}>
       <span className={styles.type}>{label}</span>
-      <span aria-hidden="true">·</span>
       <time dateTime={new Date(project.updatedAt).toISOString()} title={formatAbsolute(project.updatedAt)}>
         {formatRelative(project.updatedAt, now)}
       </time>

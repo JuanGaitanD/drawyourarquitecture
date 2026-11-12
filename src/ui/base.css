@@ -82,3 +82,23 @@ a {
   white-space: nowrap;
   border: 0;
 }
+
+/* Marcas de registro: esquinas en L de una lámina de plano. Utilidad global (como .sr-only): el
+   anfitrión debe estar posicionado; el color sale de --registro-color (por defecto, --border-strong). */
+.registro::after {
+  --c: var(--registro-color, var(--border-strong));
+  content: '';
+  position: absolute;
+  inset: 6px;
+  pointer-events: none;
+  background:
+    linear-gradient(var(--c) 0 0) 0 0 / var(--registro) 1.5px,
+    linear-gradient(var(--c) 0 0) 0 0 / 1.5px var(--registro),
+    linear-gradient(var(--c) 0 0) 100% 0 / var(--registro) 1.5px,
+    linear-gradient(var(--c) 0 0) 100% 0 / 1.5px var(--registro),
+    linear-gradient(var(--c) 0 0) 0 100% / var(--registro) 1.5px,
+    linear-gradient(var(--c) 0 0) 0 100% / 1.5px var(--registro),
+    linear-gradient(var(--c) 0 0) 100% 100% / var(--registro) 1.5px,
+    linear-gradient(var(--c) 0 0) 100% 100% / 1.5px var(--registro);
+  background-repeat: no-repeat;
+}

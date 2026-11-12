@@ -12,19 +12,13 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: var(--shadow-sm);
   list-style: none;
-  transition:
-    border-color var(--duration-fast) var(--ease),
-    box-shadow var(--duration) var(--ease),
-    transform var(--duration) var(--ease);
+  transition: border-color var(--duration-fast) var(--ease);
 }
 .card:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
 }
 /* El foco del enlace se pinta en toda la tarjeta (el enlace la ocupa entera). */
 .card:has(.surface:focus-visible) {
@@ -56,53 +50,50 @@
   text-decoration: none;
 }
 
+/* Lámina: la vista previa es un esbozo decorativo del tipo, enmarcado por marcas de registro. */
 .preview {
+  position: relative;
   display: grid;
   place-items: center;
   aspect-ratio: 16 / 9;
   border-bottom: 1px solid var(--border);
-  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
   background-color: var(--surface-sunken);
   background-image: radial-gradient(var(--border-strong) 1px, transparent 1.2px);
   background-size: 14px 14px;
 }
-.tile {
-  display: grid;
-  place-items: center;
-  width: 3.25rem;
-  height: 3.25rem;
-  border: 1px solid color-mix(in srgb, var(--tone) 28%, transparent);
-  border-radius: var(--radius-md);
-  background: var(--tone-soft);
-  color: var(--tone);
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--duration) var(--ease);
-}
-.card:hover .tile {
-  transform: scale(1.06);
+.sketch {
+  color: var(--text-faint);
 }
 
+/* Cajetín: el título arriba y debajo celdas (tipo, fecha, carpeta) separadas por filete. */
 .body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
   min-width: 0;
-  padding: var(--space-3) var(--space-4) var(--space-4);
 }
 .title {
+  padding: var(--space-3) var(--space-4);
   overflow: hidden;
   font-weight: 600;
-  letter-spacing: -0.005em;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .meta {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
+  align-items: stretch;
+  border-top: 1px solid var(--border);
   color: var(--text-muted);
   font-size: var(--text-sm);
+}
+.meta > * {
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  font-variant-numeric: tabular-nums;
+}
+.meta > * + * {
+  border-left: 1px solid var(--border);
 }
 .type {
   color: var(--tone);
@@ -114,9 +105,9 @@
   gap: var(--space-1);
   position: absolute;
   top: var(--space-3);
-  left: var(--space-3);
+  left: var(--space-5);
   padding: 0 var(--space-2);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   background: var(--success-soft);
   color: var(--success);
   font-size: var(--text-xs);
@@ -125,9 +116,9 @@
 }
 
 .rename {
-  width: 100%;
+  width: calc(100% - var(--space-5));
   min-height: var(--control-h-sm);
-  margin: calc(var(--space-1) * -1) 0;
+  margin: var(--space-2) var(--space-3);
   padding: 0 var(--space-2);
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
@@ -139,9 +130,9 @@
 .busyLabel {
   position: absolute;
   top: var(--space-3);
-  left: var(--space-3);
+  left: var(--space-5);
   padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   background: var(--surface-inverse);
   color: var(--text-inverse);
   font-size: var(--text-xs);

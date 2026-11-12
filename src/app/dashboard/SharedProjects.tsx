@@ -18,21 +18,18 @@ export function SharedProjects({ projects, uid, now }: { projects: Project[]; ui
       </div>
       <ul className={dash.grid}>
         {projects.map((p) => {
-          const { label, Icon } = TYPE_META[p.type];
+          const { label, Sketch } = TYPE_META[p.type];
           const role = roleOf(p, uid) === 'viewer' ? 'Solo lectura' : 'Editor';
           return (
             <li key={p.id} className={`${styles.card} ${styles[p.type]}`}>
               <Link href={`/${p.type}/${p.id}`} state={{ from: here }} className={styles.surface}>
-                <span className={styles.preview} aria-hidden="true">
-                  <span className={styles.tile}>
-                    <Icon size={26} aria-hidden />
-                  </span>
+                <span className={`${styles.preview} registro`} aria-hidden="true">
+                  <Sketch size={64} className={styles.sketch} />
                 </span>
                 <span className={styles.body}>
                   <span className={styles.title}>{p.title}</span>
                   <span className={styles.meta}>
                     <span className={styles.type}>{label}</span>
-                    <span aria-hidden="true">·</span>
                     <time dateTime={new Date(p.updatedAt).toISOString()} title={formatAbsolute(p.updatedAt)}>
                       {formatRelative(p.updatedAt, now)}
                     </time>

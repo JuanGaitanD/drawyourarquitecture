@@ -233,7 +233,7 @@ function Message({
 }) {
   return (
     <div
-      className={`${styles.message} ${tone === 'error' ? styles.error : ''}`}
+      className={`${styles.message} ${tone === 'error' ? styles.error : 'registro'}`}
       role={tone === 'error' ? 'alert' : undefined}
     >
       <span className={styles.messageIcon}>{icon}</span>

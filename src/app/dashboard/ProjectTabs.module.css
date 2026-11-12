@@ -3,7 +3,7 @@
   gap: var(--space-1);
   padding: var(--space-1);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: var(--surface-sunken);
 }
 
@@ -29,8 +29,8 @@
 }
 .tab[aria-selected='true'] {
   background: var(--surface-raised);
+  box-shadow: 0 0 0 1px var(--border-strong);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
 }
 
 .count {
