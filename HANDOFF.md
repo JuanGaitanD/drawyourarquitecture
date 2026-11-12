@@ -33,7 +33,7 @@ Gates de la rama (`d28d9b8`): lint, typecheck, build, `pnpm test` con emulador 5
 
 Sigue: mezclar #3 y #4 en `main` cuando Juan lo pida; D30.
 
-**Rediseño visual (rama `design/disenojg`, 2026-11-12, sin push ni PR):** nuevo sistema visual «mesa de dibujo técnico» sobre `origin/main` (`1a317ec`). Solo presentación: lógica, datos, rutas, reglas y MCP no cambian. Detalle en la sección «Sistema visual» más abajo.
+**Rediseño visual (rama `design/disenojg`, 2026-11-12, integrada en `main` por avance rápido y desplegada con `vercel --prod`):** nuevo sistema visual «mesa de dibujo técnico» sobre `origin/main` (`1a317ec`). Solo presentación: lógica, datos, rutas, reglas y MCP no cambian. Detalle en la sección «Sistema visual» más abajo.
 
 ## Sistema visual (diseñoJG, 2026-11-12)
 
@@ -54,8 +54,12 @@ Sigue: mezclar #3 y #4 en `main` cuando Juan lo pida; D30.
 **Pendiente y límites.**
 - Excalidraw 0.18.1 coloca la barra de la nota (`renderTopRightUI`) en su propia fila: por debajo de ~900 px la fila desborda y la barra queda recortada por la derecha (ya ocurría antes; no se parchea su DOM). La pantalla objetivo sigue siendo laptop. Las pistas internas de Excalidraw (p. ej. «Para mover el lienzo…», 1,98:1) no se tocan.
 - El texto de los nodos del diagrama usa colores persistidos literales (`#111827` por defecto), que no cambian con el tema: el auditor lo marca como «gris de framework» y, en oscuro, como bajo contraste sobre el lienzo. Es contenido del usuario.
-- No vistas con datos reales en esta pasada: invitación (`/invite/:token`), incrustado, visor público de una nota, diálogos Plantillas y Mermaid, confirmación de borrado, avisos y la lista de tokens con datos (se revisaron por el CSS compartido y el código, no con capturas).
-- `forced-colors` y lector de pantalla no se probaron.
+- `forced-colors`, lector de pantalla, tacto real y rendimiento no se probaron; Firefox y WebKit no se miraron a 768 px.
+
+**Revisión independiente (2026-11-12, sobre `3af7d65`).** Veredicto: apto, sin bloqueantes; funcionamiento, datos, reglas, servidor MCP y build iguales que en `origin/main`. Gates de la rama: lint, typecheck y build limpios; `pnpm test` 588 pasan y 40 se omiten sin emulador, 628/628 con emulador (73/73 de `src/server`; una falló por tiempo la primera vez y pasó al repetir); reglas 142/142; e2e 18/18. Con emuladores se recorrieron pizarra (crear, dibujar, autoguardado, recarga, claro y oscuro, visor público), diagramas (nodos, aristas, deshacer, minimapa, exportar, Mermaid, Plantillas, visor público e incrustado), invitación y Compartir, en Chromium, Firefox y WebKit. La única corrección pedida se aplicó en `fix(ui): centrar el valor del select dibujado`. Quedan abiertos:
+- **P3:** el tab seleccionado del panel pierde el hueco del anillo de foco doble (`ProjectTabs.module.css`); las insignias «Público» y «Solo lectura» quedan pegadas a la marca de registro de la esquina.
+- **P3:** cinco variables de Excalidraw usadas en `NoteCanvas.module.css` (`--color-surface-primary-container`, `--color-on-primary-container`, `--color-brand-hover`, `--color-brand-active`, `--color-selection`) no están en la lista que documenta la librería: revisarlas al actualizar Excalidraw. El deslizador de opacidad sigue en su violeta.
+- **De origen (ya en `main` antes del rediseño):** en la nota, por debajo de ~1000 px, «Compartir» y «Biblioteca» quedan fuera de la pantalla; el panel Compartir se sale de su popover en cuanto hay invitaciones o miembros (contenido de ~405 px en un popover de 352); en WebKit, tras abrir un menú y pasar a oscuro, los títulos tardan 1–3 s en recuperar el contraste.
 
 ## Colaboración en tiempo real
 
