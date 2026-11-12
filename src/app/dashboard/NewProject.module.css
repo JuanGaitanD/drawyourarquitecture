@@ -2,7 +2,7 @@
   margin-bottom: var(--space-3);
   color: var(--text-muted);
   font-size: var(--text-sm);
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -76,7 +76,7 @@
 }
 .title {
   font-size: var(--text-lg);
-  font-weight: 650;
+  font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.3;
 }

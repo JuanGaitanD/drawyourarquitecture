@@ -17,7 +17,7 @@
 }
 .title {
   font-size: var(--text-2xl);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.15;
   text-wrap: balance;
