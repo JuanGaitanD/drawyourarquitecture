@@ -28,9 +28,10 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+/* El ítem con foco de teclado lleva una barra a la izquierda: se distingue del resaltado del cursor
+   sin depender de un anillo dentro de un contenedor que recorta. */
 .item:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
+  box-shadow: inset 2px 0 0 var(--focus-ring);
 }
 .danger {
   color: var(--danger);

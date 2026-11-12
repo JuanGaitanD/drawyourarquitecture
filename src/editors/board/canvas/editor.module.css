@@ -39,10 +39,6 @@
 .title:hover {
   background: var(--surface-hover);
 }
-.title:focus-visible {
-  border-color: var(--border-strong);
-  background: var(--surface);
-}
 .title::placeholder {
   color: var(--text-faint);
   font-weight: 400;

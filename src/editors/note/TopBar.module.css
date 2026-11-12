@@ -30,11 +30,6 @@
 .title:hover {
   border-color: var(--border);
 }
-.title:focus-visible {
-  border-color: var(--focus-ring);
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 0;
-}
 
 .status {
   display: inline-flex;

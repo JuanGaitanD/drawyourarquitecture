@@ -42,10 +42,18 @@ a {
   text-decoration: none;
 }
 
-/* Foco visible con token, contraste AA, nunca suprimido. */
+/* Foco visible: anillo doble. Pegado al control, un hueco del color del fondo; fuera, el anillo.
+   Se dibuja con outline y box-shadow (nunca border), así que no mueve ni redimensiona nada. */
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--focus-gap);
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
 }
 
 ::selection {
