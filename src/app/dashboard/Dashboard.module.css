@@ -56,25 +56,15 @@
   color: var(--text-faint);
   pointer-events: none;
 }
-.input {
+/* El aspecto lo da Input (ui/Field); aquí solo el hueco del icono y del botón de borrar. */
+.search .input {
   width: 16rem;
-  min-height: var(--control-h-md);
   padding: 0 var(--space-6) 0 calc(var(--space-3) + 1.5rem);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  color: var(--text);
   font-size: var(--text-sm);
   appearance: none;
 }
-.input::placeholder {
-  color: var(--text-faint);
-}
 .input::-webkit-search-cancel-button {
   display: none;
-}
-.input:hover {
-  border-color: var(--text-faint);
 }
 .clear {
   position: absolute;

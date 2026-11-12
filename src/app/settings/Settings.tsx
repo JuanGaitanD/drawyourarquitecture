@@ -14,7 +14,7 @@ import {
   removeAllowedEmail,
   revokeToken,
 } from '@/infrastructure/firebase/tokens';
-import { Button, IconButton, useToast } from '@/ui';
+import { Button, IconButton, Input, useToast } from '@/ui';
 import { useAuth } from '../hooks';
 import { Shell } from '../shell/Shell';
 import styles from './Settings.module.css';
@@ -88,8 +88,7 @@ function Tokens({ uid }: { uid: string }) {
       <form className={styles.form} onSubmit={(e) => void create(e)}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Etiqueta</span>
-          <input
-            className={styles.input}
+          <Input
             value={label}
             maxLength={MAX_LABEL_LENGTH}
             placeholder="p. ej. Claude Code en mi portátil"
@@ -200,9 +199,9 @@ function AllowedEmails() {
       <form className={styles.form} onSubmit={(e) => void add(e)}>
         <label className={styles.field}>
           <span className={styles.fieldLabel}>Correo</span>
-          <input
-            className={styles.input}
+          <Input
             type="email"
+            placeholder="nombre@dominio.com"
             value={email}
             maxLength={254}
             onChange={(e) => setEmail(e.target.value)}

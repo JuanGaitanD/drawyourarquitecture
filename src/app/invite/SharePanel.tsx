@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { MemberJoin } from '@/application/ports';
 import type { Invite } from '@/domain/invite';
 import type { Role } from '@/domain/project';
-import { Button, IconButton, useToast } from '@/ui';
+import { Button, IconButton, Select, useToast } from '@/ui';
 import { identity, inviteRepo, projectRepo } from '../services';
 import styles from './SharePanel.module.css';
 import { syncAcl, syncAclWithRetry } from './syncAcl';
@@ -126,7 +126,8 @@ export function SharePanel({ projectId }: { projectId: string }) {
         impide nuevos accesos, pero no saca a quienes ya entraron con él: para eso usa «Revocar y quitar».
       </p>
       <div className={styles.row}>
-        <select
+        <Select
+          size="sm"
           className={styles.select}
           aria-label="Rol de la invitación"
           value={role}
@@ -134,7 +135,7 @@ export function SharePanel({ projectId }: { projectId: string }) {
         >
           <option value="editor">Puede editar</option>
           <option value="viewer">Solo lectura</option>
-        </select>
+        </Select>
         <Button
           size="sm"
           variant="primary"

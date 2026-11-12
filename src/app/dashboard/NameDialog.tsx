@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { MAX_FOLDER_NAME_LENGTH, normalizeFolderName } from '@/domain/folder';
-import { Button, Dialog, DialogContent } from '@/ui';
+import { Button, Dialog, DialogContent, Input } from '@/ui';
 import styles from './FolderView.module.css';
 
 /** Diálogo con un campo de nombre (crear y renombrar carpetas). `onSubmit` recibe el nombre normalizado. */
@@ -59,9 +59,8 @@ export function NameDialog({
     >
       <DialogContent size="sm" title={title} initialFocus={inputRef}>
         <form className={styles.nameForm} onSubmit={(e) => void submit(e)}>
-          <input
+          <Input
             ref={inputRef}
-            className={styles.nameInput}
             value={value}
             maxLength={MAX_FOLDER_NAME_LENGTH}
             aria-label="Nombre de la carpeta"

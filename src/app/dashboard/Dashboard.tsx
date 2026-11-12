@@ -2,7 +2,7 @@ import { FolderOpen, FolderX, Search, TriangleAlert, X } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'wouter';
 import { path } from '@/domain/folder';
-import { Button } from '@/ui';
+import { Button, Input } from '@/ui';
 import { useAuth, useMyFolders, useMyProjects, useSharedProjects } from '../hooks';
 import { Shell } from '../shell/Shell';
 import { Breadcrumbs } from './Breadcrumbs';
@@ -118,7 +118,7 @@ export function Dashboard({ folderId = null }: { folderId?: string | null }) {
                     <ProjectTabs value={tab} counts={counts} onChange={setTab} />
                     <div className={styles.search}>
                       <Search className={styles.searchIcon} size={16} aria-hidden="true" />
-                      <input
+                      <Input
                         type="search"
                         className={styles.input}
                         placeholder="Buscar por título"
