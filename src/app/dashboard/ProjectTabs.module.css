@@ -35,6 +35,14 @@
   color: var(--text);
 }
 
+@media (forced-colors: active) {
+  .tab[aria-selected='true'] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
+}
+
 .count {
   min-width: 1.25rem;
   padding: 0 var(--space-1);

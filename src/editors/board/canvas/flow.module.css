@@ -49,6 +49,14 @@
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+@media (forced-colors: active) {
+  .flow :global(.react-flow__controls-button[aria-pressed='true']) {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
+}
 .flow :global(.react-flow__minimap) {
   margin-bottom: 24px;
   border: 1px solid var(--border);

@@ -73,19 +73,10 @@ a {
   }
 }
 
-/* forced-colors (Windows «alto contraste»): los fondos y sombras que marcan «activo» se pierden. Los estados activos
-   (pestaña, herramienta o conmutador pulsado, interruptor, opción elegida) se invierten con los colores del
-   sistema; `!important` porque deben ganar a los fondos de cada componente, que el modo forzado descartaría. */
-@media (forced-colors: active) {
-  [aria-pressed='true'],
-  [aria-selected='true'],
-  [aria-checked='true'],
-  [data-checked] {
-    background: Highlight !important;
-    color: HighlightText !important;
-    forced-color-adjust: none;
-  }
-}
+/* forced-colors (Windows «alto contraste»): los fondos y sombras que marcan «activo» se pierden. Cada componente propio
+   (IconButton, pestañas, conmutadores, opciones elegidas…) invierte su estado activo con `Highlight`/`HighlightText`
+   en su propio módulo, junto a la regla del estado: aquí no hay selectores globales por atributo, que alcanzarían a
+   Excalidraw, React Flow y Radix. */
 
 ::selection {
   background: var(--selection-soft);

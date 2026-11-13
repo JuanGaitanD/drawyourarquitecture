@@ -75,6 +75,14 @@
   box-shadow: var(--shadow-sm);
 }
 
+@media (forced-colors: active) {
+  .segment[aria-pressed='true'] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
+}
+
 /* Plantillas */
 .grid {
   display: grid;
@@ -107,6 +115,14 @@
   border-color: var(--selection);
   background: var(--accent-soft);
   box-shadow: 0 0 0 1px var(--selection);
+}
+
+@media (forced-colors: active) {
+  .card[data-checked] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
 }
 .card:has(input:focus-visible) {
   outline: 2px solid var(--focus-ring);

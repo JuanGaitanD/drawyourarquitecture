@@ -164,6 +164,14 @@
   border-color: var(--accent);
   background: var(--accent);
 }
+
+@media (forced-colors: active) {
+  .switch[aria-checked='true'] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
+}
 .knob {
   position: absolute;
   top: 2px;

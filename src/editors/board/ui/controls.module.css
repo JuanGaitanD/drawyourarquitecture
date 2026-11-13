@@ -54,6 +54,14 @@
   border-color: var(--border-strong);
   color: var(--text);
 }
+
+@media (forced-colors: active) {
+  .seg[aria-pressed='true'] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
+}
 .toggle {
   flex: none;
   justify-content: flex-start;
@@ -64,6 +72,14 @@
   background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
+}
+
+@media (forced-colors: active) {
+  .toggle[aria-pressed='true'] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
 }
 .toggleIcon {
   display: inline-flex;
@@ -86,6 +102,13 @@
 }
 .color[aria-pressed='true'] {
   border-color: var(--selection);
+}
+/* En alto contraste los bordes se unifican: el color elegido se marca con un fondo detrás de la muestra. */
+@media (forced-colors: active) {
+  .color[aria-pressed='true'] {
+    background: Highlight !important;
+    forced-color-adjust: none;
+  }
 }
 @media (hover: hover) {
   .color:hover:not([aria-pressed='true']) {

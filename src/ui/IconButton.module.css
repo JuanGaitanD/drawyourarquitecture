@@ -51,6 +51,14 @@
   color: var(--accent);
 }
 
+@media (forced-colors: active) {
+  .button[aria-pressed='true'] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
+}
+
 /* Deshabilitado sin bajar la opacidad: texto tenue legible y sin respuesta al cursor. */
 .button:disabled {
   color: var(--text-faint);

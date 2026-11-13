@@ -279,6 +279,14 @@
   color: var(--accent);
   font-weight: 600;
 }
+
+@media (forced-colors: active) {
+  .option[data-checked] {
+    background: Highlight !important;
+    color: HighlightText !important;
+    forced-color-adjust: none;
+  }
+}
 .option:has(.radio:focus-visible) {
   outline: 2px solid var(--focus-ring);
   outline-offset: -4px;
