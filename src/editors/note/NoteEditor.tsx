@@ -132,6 +132,7 @@ function Session({
   const role = roleOf(project, identity.current()?.uid);
   const viewOnly = role === 'viewer';
   const [title, setTitle] = useState(project.title);
+  const [titleEdit, setTitleEdit] = useState<string | null>(null); // texto del título sin confirmar (ver TopBar)
   const [isPublic, setIsPublic] = useState(project.isPublic);
   const [encoded, setEncoded] = useState<string | null>(null);
   const [tooLarge, setTooLarge] = useState(false);
@@ -266,6 +267,8 @@ function Session({
             canShare={role === 'owner'}
             title={title}
             onTitle={rename}
+            edit={titleEdit}
+            onEdit={setTitleEdit}
             status={autosave.status}
             tooLarge={tooLarge}
             isPublic={isPublic}

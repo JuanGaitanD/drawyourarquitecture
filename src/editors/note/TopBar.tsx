@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, CloudOff, Copy, Globe, Library, LoaderCircle, Share2, TriangleAlert } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef } from 'react';
 import type { SaveStatus } from '@/application/saveQueue';
 import { Button, IconButton, Input, Popover, PopoverContent, PopoverTrigger, useToast } from '@/ui';
 import { PresenceAvatars } from '@/app/invite/PresenceAvatars';
@@ -10,6 +10,12 @@ import styles from './TopBar.module.css';
 export interface TopBarProps {
   title: string;
   onTitle: (title: string) => void;
+  /**
+   * Texto del título mientras se escribe (`null` = no se edita). Vive en quien monta la barra y no aquí: al cruzar
+   * los 1100 px la barra se desmonta de una ubicación y se monta en la otra, y el texto sin confirmar debe sobrevivir.
+   */
+  edit: string | null;
+  onEdit: (edit: string | null) => void;
   status: SaveStatus;
   /** La nota pesa más que el tope de guardado: no se guarda hasta que se reduzca. */
   tooLarge: boolean;
@@ -41,8 +47,16 @@ function StatusIcon({ status }: { status: SaveStatus }) {
 
 /** Barra de la esquina superior derecha: volver, título editable, estado de guardado y compartir. */
 export function TopBar(p: TopBarProps) {
-  // `edit` solo existe mientras se escribe; fuera de eso manda el título guardado.
-  const [edit, setEdit] = useState<string | null>(null);
+  const { edit, onEdit: setEdit } = p;
+  const input = useRef<HTMLInputElement>(null);
+  // Se montó a media edición (la barra cambió de ubicación): el foco vuelve al título y el cursor al final.
+  useEffect(() => {
+    const el = input.current;
+    if (edit === null || !el || document.activeElement === el) return;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar
+  }, []);
   const s = p.tooLarge ? { label: 'Demasiado grande para guardar', tone: 'danger' } : STATUS[p.status];
   const commit = () => {
     if (edit !== null && edit.trim() !== p.title) p.onTitle(edit);
@@ -53,6 +67,7 @@ export function TopBar(p: TopBarProps) {
     <div className={`${styles.bar} ${p.library?.docked ? styles.docked : ''}`} data-densidad="compacta">
       <IconButton label="Volver al panel" size="sm" icon={<ArrowLeft size={16} />} onClick={p.onBack} />
       <input
+        ref={input}
         className={styles.title}
         aria-label="Título de la nota"
         value={edit ?? p.title}
