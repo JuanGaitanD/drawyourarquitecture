@@ -41,6 +41,66 @@ test.describe('maquetación', () => {
     expect(barra!.y + barra!.height).toBeLessThanOrEqual(herramienta!.y);
   });
 
+  test('nota: el título a medio escribir sobrevive al cruzar los 1100 px y conserva el foco', async ({ page }) => {
+    await signIn(page);
+    await newProject(page, 'Nota');
+    const titulo = page.getByRole('textbox', { name: 'Título de la nota' });
+    const nombre = uniq('Cruce');
+    // En los dos sentidos: barra acoplada → flotante y flotante → acoplada (al girar una tableta, por ejemplo).
+    for (const [de, a] of [
+      [1000, 1200],
+      [1200, 1000],
+    ]) {
+      await page.setViewportSize({ width: de, height: 844 });
+      await titulo.fill(`${nombre} ${de}`);
+      await page.setViewportSize({ width: a, height: 844 });
+      await expect(titulo).toHaveValue(`${nombre} ${de}`);
+      await expect(titulo).toBeFocused();
+      await page.keyboard.type('!'); // sigue escribiendo sin volver a hacer clic
+      await expect(titulo).toHaveValue(`${nombre} ${de}!`);
+    }
+    await titulo.press('Enter');
+    await page.reload();
+    await expect(page.getByRole('textbox', { name: 'Título de la nota' })).toHaveValue(`${nombre} 1200!`);
+  });
+
+  for (const ancho of [768, 1440]) {
+    test(`nota (${ancho} px): anillo doble en la barra y el foco vuelve a Compartir al cerrar el panel`, async ({
+      page,
+    }) => {
+      await signIn(page);
+      await newProject(page, 'Nota');
+      await page.setViewportSize({ width: ancho, height: 844 });
+      const compartir = page.getByRole('button', { name: 'Compartir', exact: true });
+      await expect(compartir).toBeVisible();
+      // Tab hasta «Compartir»: el anillo es el del sistema (2 px, con hueco), no el filete de 1 px de Excalidraw.
+      await page.getByRole('button', { name: 'Volver al panel' }).focus();
+      for (let i = 0; i < 3; i++) await page.keyboard.press('Tab');
+      await expect(compartir).toBeFocused();
+      const anillo = await compartir.evaluate((el) => {
+        const c = getComputedStyle(el);
+        return { ancho: c.outlineWidth, estilo: c.outlineStyle, hueco: c.boxShadow };
+      });
+      expect(anillo.estilo).toBe('solid');
+      expect(anillo.ancho).toBe('2px');
+      expect(anillo.hueco).toMatch(/2px/);
+      // Escape, clic fuera y de nuevo Escape tras abrir con el ratón: siempre vuelve al botón.
+      await page.keyboard.press('Enter');
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(compartir).toBeFocused();
+      await compartir.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(compartir).toBeFocused();
+      await compartir.click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await page.mouse.click(ancho / 2, 600);
+      await expect(page.getByRole('dialog')).toBeHidden();
+      await expect(compartir).toBeFocused();
+    });
+  }
+
   for (const [tipo, nuevo] of [
     ['diagrama', 'Diagrama'],
     ['nota', 'Nota'],
