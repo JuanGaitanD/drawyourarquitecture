@@ -58,8 +58,11 @@ export function TopBar(p: TopBarProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar
   }, []);
   const s = p.tooLarge ? { label: 'Demasiado grande para guardar', tone: 'danger' } : STATUS[p.status];
+  // Escape descarta: el blur que sigue no debe guardar (leería el `edit` de antes de descartar).
+  const discard = useRef(false);
   const commit = () => {
-    if (edit !== null && edit.trim() !== p.title) p.onTitle(edit);
+    if (!discard.current && edit !== null && edit.trim() !== p.title) p.onTitle(edit);
+    discard.current = false;
     setEdit(null);
   };
 
@@ -78,7 +81,7 @@ export function TopBar(p: TopBarProps) {
         onKeyDown={(e) => {
           if (e.key === 'Enter') e.currentTarget.blur();
           if (e.key === 'Escape') {
-            setEdit(null);
+            discard.current = true;
             e.currentTarget.blur();
           }
         }}
@@ -119,6 +122,7 @@ function SharePopover({
 }) {
   const { toast } = useToast();
   const trigger = useRef<HTMLButtonElement>(null);
+  const escaped = useRef(false);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url);
@@ -144,13 +148,17 @@ function SharePopover({
       <PopoverContent
         align="end"
         className={styles.share}
-        // Al cerrar (Escape o clic fuera) el foco vuelve al botón que abrió el panel. Radix no lo hace tras un clic
-        // fuera y, con la barra dentro de Excalidraw, este se lo queda; pero un clic fuera que dejó el foco en otro
-        // control (el editor de texto del lienzo, por ejemplo) no se le quita.
+        // Al cerrar con Escape el foco vuelve al botón que abrió el panel (con la barra dentro de Excalidraw, Firefox y
+        // WebKit lo dejaban en el lienzo). Tras un clic fuera se respeta Radix: el foco queda donde se hizo clic, para
+        // que Espacio o Enter en el lienzo no vuelvan a abrir el panel.
+        onEscapeKeyDown={() => {
+          escaped.current = true;
+        }}
         onCloseAutoFocus={(e) => {
+          if (!escaped.current) return;
+          escaped.current = false;
           e.preventDefault();
-          const a = document.activeElement;
-          if (!a || a === document.body || a.classList.contains('excalidraw')) trigger.current?.focus();
+          trigger.current?.focus();
         }}
       >
         <div className={styles.shareRow}>

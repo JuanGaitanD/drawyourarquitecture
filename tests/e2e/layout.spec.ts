@@ -84,7 +84,8 @@ test.describe('maquetación', () => {
       expect(anillo.estilo).toBe('solid');
       expect(anillo.ancho).toBe('2px');
       expect(anillo.hueco).toMatch(/2px/);
-      // Escape, clic fuera y de nuevo Escape tras abrir con el ratón: siempre vuelve al botón.
+      // Escape (abierto con teclado y con el ratón) devuelve el foco al botón; un clic en el lienzo no se lo devuelve.
+      const titulo = page.getByRole('textbox', { name: 'Título de la nota' });
       await page.keyboard.press('Enter');
       await expect(page.getByRole('dialog')).toBeVisible();
       await page.keyboard.press('Escape');
@@ -97,7 +98,14 @@ test.describe('maquetación', () => {
       await expect(page.getByRole('dialog')).toBeVisible();
       await page.mouse.click(ancho / 2, 600);
       await expect(page.getByRole('dialog')).toBeHidden();
-      await expect(compartir).toBeFocused();
+      await expect(compartir).not.toBeFocused();
+      // Escape en el título descarta lo escrito y no lo guarda.
+      const antes = await titulo.inputValue();
+      await titulo.fill(`${antes} descartado`);
+      await titulo.press('Escape');
+      await expect(titulo).toHaveValue(antes);
+      await page.reload();
+      await expect(page.getByRole('textbox', { name: 'Título de la nota' })).toHaveValue(antes);
     });
   }
 
