@@ -1,22 +1,67 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <rect width="1200" height="630" fill="#2543b3"/>
-  <!-- Rejilla tenue de pizarra -->
-  <g stroke="#fff" stroke-opacity=".07" stroke-width="2">
-    <path d="M0 105h1200M0 210h1200M0 315h1200M0 420h1200M0 525h1200"/>
-    <path d="M150 0v630M300 0v630M450 0v630M600 0v630M750 0v630M900 0v630M1050 0v630"/>
+  <!-- Lámina de plano: papel grafito cálido, cuadrícula de puntos, marcas de registro y cajetín (ver «Sistema visual» del
+       HANDOFF). Colores = tokens claros de src/ui/tokens.css. Tipografía IBM Plex Sans: scripts/render-og.mjs la
+       incrusta desde @fontsource al renderizar; abierto suelto, este SVG usa la del sistema. -->
+  <defs>
+    <pattern id="puntos" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="12" cy="12" r="1.3" fill="#e0deda"/>
+    </pattern>
+    <marker id="punta" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M1 1.5L8.5 5L1 8.5" fill="none" stroke="#221f1b" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="630" fill="#f7f6f3"/>
+  <rect width="1200" height="630" fill="url(#puntos)"/>
+
+  <!-- Marcas de registro de la lámina -->
+  <path d="M40 76V40h36M1124 40h36v36M1160 554v36h-36M76 590H40v-36" fill="none" stroke="#8e8a84" stroke-width="3"/>
+
+  <!-- Marca: nodo–conector–nodo, la misma de favicon.svg (escala 3) -->
+  <g transform="translate(110 82) scale(3)">
+    <rect width="32" height="32" rx="6" fill="#136a55"/>
+    <path d="M14 11.5h4a4 4 0 0 1 4 4V18" fill="none" stroke="#f9fdfb" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="6" y="7.5" width="8.5" height="8.5" rx="2.5" fill="#f9fdfb"/>
+    <circle cx="22" cy="22.5" r="4.75" fill="#f9fdfb"/>
+    <path d="M2.5 6.5v-4h4M25.5 2.5h4v4M29.5 25.5v4h-4M2.5 25.5v4h4" fill="none" stroke="#f9fdfb" stroke-width="1.25" opacity=".55"/>
   </g>
-  <!-- Marca (la misma de favicon.svg, escala 8) -->
-  <g transform="translate(110 150) scale(10)" fill="none">
-    <rect width="32" height="32" rx="9" fill="#fff" fill-opacity=".14"/>
-    <path d="M11 11.5h5.5a3 3 0 0 1 3 3V20" stroke="#fff" stroke-width="1.75" stroke-linecap="round"/>
-    <rect x="6.5" y="8" width="7" height="7" rx="2" fill="#fff"/>
-    <circle cx="19.5" cy="22" r="4" fill="#fff"/>
-    <rect x="21" y="6.5" width="5" height="5" rx="1.5" fill="#fff" opacity=".7"/>
-    <path d="M19.5 14.5V11.5h1.5" stroke="#fff" stroke-width="1.75" stroke-linecap="round" opacity=".7"/>
+
+  <g font-family="'IBM Plex Sans', ui-sans-serif, system-ui, 'Segoe UI', Arial, sans-serif">
+    <text x="102" y="340" font-size="196" font-weight="600" letter-spacing="-4" fill="#221f1b">DYA</text>
+    <text x="110" y="404" font-size="46" font-weight="500" fill="#5e5a55">Draw your Architecture</text>
+
+    <!-- Cajetín: dos celdas separadas por filete -->
+    <rect x="110" y="466" width="980" height="100" fill="#fefdfc" stroke="#8e8a84" stroke-width="2.5"/>
+    <path d="M730 466v100" stroke="#8e8a84" stroke-width="2.5"/>
+    <g font-size="16" font-weight="500" letter-spacing="1.6" fill="#6f6b66">
+      <text x="136" y="501">DESCRIPCIÓN</text>
+      <text x="756" y="501">SITIO</text>
+    </g>
+    <g font-size="32" font-weight="500" fill="#221f1b">
+      <text x="136" y="545">Notas y diagramas de arquitectura</text>
+      <text x="756" y="545">dya.juandgaitan.com</text>
+    </g>
   </g>
-  <g fill="#fff" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
-    <text x="490" y="290" font-size="56" font-weight="700">DYA</text>
-    <text x="490" y="352" font-size="32" opacity=".88">Draw your Architecture</text>
-    <text x="490" y="404" font-size="24" opacity=".7">Notas y diagramas de arquitectura</text>
+
+  <!-- Esbozo de un diagrama con sus marcas de registro -->
+  <g>
+    <rect x="720" y="92" width="370" height="322" fill="#efeeea"/>
+    <rect x="720" y="92" width="370" height="322" fill="url(#puntos)"/>
+    <path d="M730 112V102h10M1070 102h10v10M1080 394v10h-10M740 404h-10v-10" fill="none" stroke="#8e8a84" stroke-width="3"/>
+    <g fill="#fefdfc" stroke="#221f1b" stroke-width="3">
+      <rect x="752" y="132" width="116" height="68" rx="4"/>
+      <rect x="942" y="132" width="116" height="68" rx="4"/>
+      <rect x="752" y="304" width="116" height="68" rx="4"/>
+    </g>
+    <rect x="942" y="304" width="116" height="68" rx="4" fill="#dbf1e9" stroke="#136a55" stroke-width="3"/>
+    <g fill="none" stroke="#221f1b" stroke-width="3" stroke-linecap="round" marker-end="url(#punta)">
+      <path d="M868 166H934"/>
+      <path d="M810 200V296"/>
+      <path d="M1000 200V296" stroke="#136a55"/>
+      <path d="M868 338H934"/>
+    </g>
+    <g stroke="#8e8a84" stroke-width="3" stroke-linecap="round">
+      <path d="M770 150h50M770 166h30M960 150h50M960 166h30M770 322h50M770 338h30"/>
+    </g>
+    <path d="M960 322h50M960 338h30" stroke="#136a55" stroke-width="3" stroke-linecap="round"/>
   </g>
 </svg>
