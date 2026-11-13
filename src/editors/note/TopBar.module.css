@@ -31,6 +31,20 @@
   flex: none;
 }
 
+/* Con la barra flotante (dentro de Excalidraw) su CSS pisa el foco de cada botón y campo con `outline: transparent` y un
+   filete de 1 px (`.excalidraw button:focus-visible`, especificidad 0,2,1). Mismo anillo doble del sistema; el
+   `:not(:disabled)` solo sube la especificidad para ganarle. Acoplada no hace falta, pero no estorba. */
+.bar :is(button, input):not(:disabled):focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--focus-gap);
+}
+@media (forced-colors: active) {
+  .bar :is(button, input):not(:disabled):focus-visible {
+    outline-color: Highlight;
+  }
+}
+
 .title {
   width: 9.5rem;
   min-width: 0;

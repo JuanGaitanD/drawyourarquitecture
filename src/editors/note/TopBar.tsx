@@ -118,6 +118,7 @@ function SharePopover({
   projectId: string;
 }) {
   const { toast } = useToast();
+  const trigger = useRef<HTMLButtonElement>(null);
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url);
@@ -134,12 +135,24 @@ function SharePopover({
     <Popover>
       <PopoverTrigger asChild>
         <IconButton
+          ref={trigger}
           label="Compartir"
           size="sm"
           icon={isPublic ? <Globe size={16} /> : <Share2 size={16} />}
         />
       </PopoverTrigger>
-      <PopoverContent align="end" className={styles.share}>
+      <PopoverContent
+        align="end"
+        className={styles.share}
+        // Al cerrar (Escape o clic fuera) el foco vuelve al botón que abrió el panel. Radix no lo hace tras un clic
+        // fuera y, con la barra dentro de Excalidraw, este se lo queda; pero un clic fuera que dejó el foco en otro
+        // control (el editor de texto del lienzo, por ejemplo) no se le quita.
+        onCloseAutoFocus={(e) => {
+          e.preventDefault();
+          const a = document.activeElement;
+          if (!a || a === document.body || a.classList.contains('excalidraw')) trigger.current?.focus();
+        }}
+      >
         <div className={styles.shareRow}>
           <div>
             <p className={styles.shareTitle}>Enlace público</p>
